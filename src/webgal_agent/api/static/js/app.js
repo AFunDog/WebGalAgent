@@ -14,19 +14,6 @@ const API = {
     if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
     return r.json();
   },
-  async put(url, body) {
-    const r = await fetch(url, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
-    return r.json();
-  },
-  async del(url) {
-    const r = await fetch(url, { method: "DELETE" });
-    if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
-  },
 };
 
 // ===== Icons (inline SVG) =====
@@ -34,10 +21,6 @@ const ICONS = {
   knowledge: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
   workflow: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="6" r="3"/><circle cx="19" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><path d="M8 6h8M12 9v6M9 8l3 7M15 8l-3 7"/></svg>`,
   task: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
-  plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
-  edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
-  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
-  refresh: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>`,
   send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
 };
 
@@ -47,15 +30,17 @@ let knowledgeEntries = [];
 let categories = [];
 let tasks = [];
 let workflows = [];
-let selectedEntry = null;
-let showEditorModal = false;
-let editorMode = "create"; // "create" | "edit"
-let editorForm = { category: "custom", title: "", tags: "", body: "" };
+let filterCategory = "";
+let filterKeyword = "";
 
 // ===== Page: Knowledge =====
 async function loadKnowledge() {
   try {
-    knowledgeEntries = await API.get("/api/knowledge");
+    const params = new URLSearchParams();
+    if (filterCategory) params.set("category", filterCategory);
+    if (filterKeyword) params.set("keyword", filterKeyword);
+    const qs = params.toString();
+    knowledgeEntries = await API.get("/api/knowledge" + (qs ? "?" + qs : ""));
     categories = await API.get("/api/knowledge/categories");
   } catch (e) {
     console.error("Failed to load knowledge:", e);
@@ -63,80 +48,12 @@ async function loadKnowledge() {
   render();
 }
 
-async function deleteEntry(id) {
-  if (!confirm("确定删除此条目？")) return;
-  try {
-    await API.del(`/api/knowledge/${id}`);
-    knowledgeEntries = knowledgeEntries.filter(e => e.id !== id);
-    if (selectedEntry && selectedEntry.id === id) selectedEntry = null;
-  } catch (e) {
-    alert("删除失败: " + e.message);
-  }
-  render();
-}
-
 async function reloadKnowledge() {
   try {
-    await API.post("/api/reload", {});
+    await API.post("/api/knowledge/reload", {});
     await loadKnowledge();
   } catch (e) {
     alert("重载失败: " + e.message);
-  }
-}
-
-function openCreateEditor() {
-  editorMode = "create";
-  editorForm = { category: "custom", title: "", tags: "", body: "" };
-  showEditorModal = true;
-  render();
-}
-
-function openEditEditor(entry) {
-  editorMode = "edit";
-  editorForm = {
-    category: entry.category,
-    title: entry.title,
-    tags: entry.tags.join(", "),
-    body: entry.body,
-  };
-  selectedEntry = entry;
-  showEditorModal = true;
-  render();
-}
-
-function closeEditor() {
-  showEditorModal = false;
-  selectedEntry = null;
-  render();
-}
-
-async function saveEntry() {
-  const tags = editorForm.tags
-    .split(",")
-    .map(t => t.trim())
-    .filter(Boolean);
-
-  try {
-    if (editorMode === "create") {
-      await API.post("/api/knowledge", {
-        category: editorForm.category,
-        title: editorForm.title,
-        tags,
-        body: editorForm.body,
-      });
-    } else if (selectedEntry) {
-      await API.put(`/api/knowledge/${selectedEntry.id}`, {
-        category: editorForm.category,
-        title: editorForm.title,
-        tags,
-        body: editorForm.body,
-      });
-    }
-    showEditorModal = false;
-    selectedEntry = null;
-    await loadKnowledge();
-  } catch (e) {
-    alert("保存失败: " + e.message);
   }
 }
 
@@ -189,9 +106,7 @@ function render() {
         ${currentPage === "workflows" ? renderWorkflowsPage() : ""}
         ${currentPage === "tasks" ? renderTasksPage() : ""}
       </main>
-    </div>
-    ${showEditorModal ? renderEditorModal() : ""}
-  `;
+    </div>`;
   bindEvents();
 }
 
@@ -213,9 +128,9 @@ function renderSidebar() {
 
 function renderKnowledgePage() {
   const entriesHtml = knowledgeEntries.length === 0
-    ? `<div class="empty-state"><p>暂无知识条目，点击「新增条目」开始</p></div>`
+    ? `<div class="empty-state"><p>暂无知识条目</p></div>`
     : knowledgeEntries.map(e => `
-      <div class="card" style="cursor:pointer" data-select-entry="${e.id}">
+      <div class="card">
         <div class="card-header">
           <h3>${esc(e.title)}</h3>
           <div>
@@ -223,19 +138,19 @@ function renderKnowledgePage() {
             ${e.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("")}
           </div>
         </div>
-        <p style="color:var(--text-muted);font-size:13px;white-space:pre-wrap;max-height:60px;overflow:hidden">${esc(e.body.slice(0, 200))}</p>
-        <div style="display:flex;gap:6px;margin-top:12px">
-          <button class="btn btn-ghost btn-sm" data-edit-entry="${e.id}">编辑</button>
-          <button class="btn btn-ghost btn-sm btn-danger" data-delete-entry="${e.id}">删除</button>
-        </div>
+        <pre style="color:var(--text-muted);font-size:13px;white-space:pre-wrap;font-family:inherit;margin:0">${esc(e.body)}</pre>
       </div>`).join("");
 
   return `
     <h2 class="page-title">知识库</h2>
-    <div style="display:flex;gap:8px;margin-bottom:20px">
-      <button class="btn btn-primary" data-action="create-entry">${ICONS.plus} 新增条目</button>
-      <button class="btn btn-ghost" data-action="reload">${ICONS.refresh} 从磁盘重载</button>
-      <span style="margin-left:auto;color:var(--text-muted);font-size:13px;align-self:center">${knowledgeEntries.length} 条记录</span>
+    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+      <select id="filter-category" class="form-select" style="width:auto">
+        <option value="">全部分类</option>
+        ${categories.map(c => `<option value="${esc(c)}" ${filterCategory === c ? "selected" : ""}>${esc(c)}</option>`).join("")}
+      </select>
+      <input id="filter-keyword" class="form-input" style="width:200px" placeholder="搜索关键词..." value="${esc(filterKeyword)}" />
+      <button class="btn btn-primary btn-sm" data-action="filter-knowledge">筛选</button>
+      <span style="margin-left:auto;color:var(--text-muted);font-size:13px">${knowledgeEntries.length} 条记录</span>
     </div>
     ${entriesHtml}`;
 }
@@ -245,7 +160,7 @@ function renderWorkflowsPage() {
     <h2 class="page-title">工作流</h2>
     <div class="grid-2">
       ${workflows.map(w => `
-        <div class="card" data-workflow-detail="${w}">
+        <div class="card">
           <div class="card-header">
             <h3>${w === "sequential" ? "顺序流水线" : w === "debate" ? "辩论迭代" : esc(w)}</h3>
             <span class="badge badge-muted">${esc(w)}</span>
@@ -271,7 +186,7 @@ function renderWorkflowsPage() {
 function renderTasksPage() {
   const tasksHtml = tasks.length === 0
     ? `<div class="empty-state"><p>暂无任务，在下方创建新任务</p></div>`
-    : tasks.reverse().map(t => {
+    : tasks.slice().reverse().map(t => {
         const statusClass = t.status === "completed" ? "success" : t.status === "running" ? "warning" : t.status === "failed" ? "danger" : "muted";
         return `
         <div class="card">
@@ -315,39 +230,6 @@ function renderTasksPage() {
     ${tasksHtml}`;
 }
 
-function renderEditorModal() {
-  return `
-    <div class="modal-overlay" data-action="close-editor">
-      <div class="modal" onclick="event.stopPropagation()">
-        <h2>${editorMode === "create" ? "新增知识条目" : "编辑知识条目"}</h2>
-        <div class="form-group">
-          <label>标题</label>
-          <input id="editor-title" class="form-input" value="${esc(editorForm.title)}" />
-        </div>
-        <div class="form-group">
-          <label>分类</label>
-          <select id="editor-category" class="form-select">
-            ${["character", "setting", "plot", "reference", "custom"].map(c =>
-              `<option value="${c}" ${editorForm.category === c ? "selected" : ""}>${c}</option>`
-            ).join("")}
-          </select>
-        </div>
-        <div class="form-group">
-          <label>标签（逗号分隔）</label>
-          <input id="editor-tags" class="form-input" value="${esc(editorForm.tags)}" />
-        </div>
-        <div class="form-group">
-          <label>内容（Markdown）</label>
-          <textarea id="editor-body" class="form-textarea" style="min-height:240px">${esc(editorForm.body)}</textarea>
-        </div>
-        <div class="modal-actions">
-          <button class="btn btn-ghost" data-action="close-editor">取消</button>
-          <button class="btn btn-primary" data-action="save-entry">保存</button>
-        </div>
-      </div>
-    </div>`;
-}
-
 function esc(str) {
   const d = document.createElement("div");
   d.textContent = str || "";
@@ -361,31 +243,11 @@ function bindEvents() {
     el.onclick = e => { e.preventDefault(); navigate(el.dataset.nav); };
   });
 
-  // Knowledge actions
-  document.querySelector("[data-action='create-entry']")?.addEventListener("click", openCreateEditor);
-  document.querySelector("[data-action='reload']")?.addEventListener("click", reloadKnowledge);
-  document.querySelector("[data-action='close-editor']")?.addEventListener("click", closeEditor);
-  document.querySelector("[data-action='save-entry']")?.addEventListener("click", () => {
-    editorForm.title = document.getElementById("editor-title")?.value || "";
-    editorForm.category = document.getElementById("editor-category")?.value || "custom";
-    editorForm.tags = document.getElementById("editor-tags")?.value || "";
-    editorForm.body = document.getElementById("editor-body")?.value || "";
-    saveEntry();
-  });
-
-  // Entry actions
-  document.querySelectorAll("[data-edit-entry]").forEach(btn => {
-    btn.onclick = e => {
-      e.stopPropagation();
-      const entry = knowledgeEntries.find(en => en.id === btn.dataset.editEntry);
-      if (entry) openEditEditor(entry);
-    };
-  });
-  document.querySelectorAll("[data-delete-entry]").forEach(btn => {
-    btn.onclick = e => {
-      e.stopPropagation();
-      deleteEntry(btn.dataset.deleteEntry);
-    };
+  // Knowledge filter
+  document.querySelector("[data-action='filter-knowledge']")?.addEventListener("click", () => {
+    filterCategory = document.getElementById("filter-category")?.value || "";
+    filterKeyword = document.getElementById("filter-keyword")?.value || "";
+    loadKnowledge();
   });
 
   // Task actions

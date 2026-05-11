@@ -9,24 +9,6 @@ from pydantic import BaseModel, Field
 
 # ---------- Knowledge ----------
 
-class KnowledgeCreateRequest(BaseModel):
-    """Request body for creating a knowledge entry."""
-
-    category: str = "custom"
-    title: str
-    tags: list[str] = Field(default_factory=list)
-    body: str = ""
-
-
-class KnowledgeUpdateRequest(BaseModel):
-    """Request body for updating a knowledge entry."""
-
-    category: str | None = None
-    title: str | None = None
-    tags: list[str] | None = None
-    body: str | None = None
-
-
 class KnowledgeResponse(BaseModel):
     """Knowledge entry returned by the API."""
 
