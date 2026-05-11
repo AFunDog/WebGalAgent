@@ -21,7 +21,7 @@ async def get_pipeline_info() -> WorkflowInfoResponse:
     from webgal_agent.api.app import get_task_manager
 
     info = get_task_manager().get_workflow_info()
-    agents_info: list[dict[str, str]] = info.get("agents", [])
+    agents_info = info["agents"]
     return WorkflowInfoResponse(
         name=info["name"],
         type=info["type"],

@@ -78,6 +78,7 @@ def create_app(
         _task_manager = TaskManager(
             knowledge_store=_knowledge_store,
             provider_manager=_provider_manager,
+            task_dir=os.getenv("WEBGAL_TASK_DIR", "data/tasks"),
         )
 
     # Register API routes

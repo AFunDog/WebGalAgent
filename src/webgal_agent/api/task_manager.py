@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +26,9 @@ AGENT_DESCRIPTIONS: dict[str, str] = {
     "script_writer": "接受用户输入、剧本大纲和知识库，生成各章节剧本",
     "script_converter": "接受用户输入、剧本和知识库，转换为 WebGal 引擎脚本",
 }
+
+# Output directory for persisted task data
+DEFAULT_TASK_DIR = "data/tasks"
 
 
 class TaskInfo:
@@ -78,6 +82,100 @@ def _load_prompts() -> dict[str, str]:
     return result
 
 
+def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) -> Path:
+    """Persist task data to disk.
+
+    Saves:
+      - ``{task_id}/process.json`` — full intermediate process (all messages)
+      - ``{task_id}/result.txt``   — final output from the last agent (WebGal script)
+
+    Returns the task directory path.
+    """
+    task_path = Path(task_dir) / task.id
+    task_path.mkdir(parents=True, exist_ok=True)
+
+    # --- Save intermediate process as JSON ---
+    process_data = {
+        "task_id": task.id,
+        "status": task.status,
+        "workflow": task.workflow_name,
+        "user_input": task.content,
+        "created_at": task.created_at.isoformat(),
+        "errors": task.errors,
+        "steps": [
+            {
+                "step": i + 1,
+                "agent": m.receiver if m.type == MessageType.TASK else m.sender,
+                "type": m.type.value,
+                "sender": m.sender,
+                "receiver": m.receiver,
+                "content": m.content,
+                "created_at": m.created_at.isoformat(),
+            }
+            for i, m in enumerate(task.messages)
+        ],
+    }
+
+    process_file = task_path / "process.json"
+    process_file.write_text(
+        json.dumps(process_data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    # --- Save final result as .txt (WebGal script) ---
+    if task.messages:
+        last_msg = task.messages[-1]
+        result_file = task_path / "result.txt"
+        result_file.write_text(last_msg.content, encoding="utf-8")
+
+    # --- Also save each step's output individually ---
+    for i, msg in enumerate(task.messages):
+        if msg.type == MessageType.RESULT:
+            step_name = msg.sender
+            step_file = task_path / f"step_{i + 1}_{step_name}.txt"
+            step_file.write_text(msg.content, encoding="utf-8")
+
+    return task_path
+
+
+def _load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, TaskInfo]:
+    """Load previously persisted tasks from disk on startup."""
+    tasks: dict[str, TaskInfo] = {}
+    task_path = Path(task_dir)
+
+    if not task_path.exists():
+        return tasks
+
+    for task_folder in sorted(task_path.iterdir()):
+        process_file = task_folder / "process.json"
+        if not process_file.exists():
+            continue
+
+        try:
+            data = json.loads(process_file.read_text(encoding="utf-8"))
+            task = TaskInfo(task_id=data["task_id"], content=data["user_input"])
+            task.workflow_name = data.get("workflow", "pipeline")
+            task.status = data.get("status", "unknown")
+            task.errors = data.get("errors", [])
+            task.created_at = datetime.fromisoformat(data["created_at"])
+
+            # Reconstruct messages from steps
+            for step in data.get("steps", []):
+                msg = Message(
+                    type=MessageType(step["type"]),
+                    sender=step["sender"],
+                    receiver=step["receiver"],
+                    content=step["content"],
+                )
+                task.messages.append(msg)
+
+            tasks[task.id] = task
+        except (KeyError, ValueError, json.JSONDecodeError):
+            continue
+
+    return tasks
+
+
 class TaskManager:
     """Manages pipeline workflow executions."""
 
@@ -85,11 +183,15 @@ class TaskManager:
         self,
         knowledge_store: KnowledgeStore | None = None,
         provider_manager: ProviderConfigManager | None = None,
+        task_dir: str | Path = DEFAULT_TASK_DIR,
     ) -> None:
-        self._tasks: dict[str, TaskInfo] = {}
+        self._task_dir = Path(task_dir)
         self._knowledge_store = knowledge_store
         self._provider_manager = provider_manager
         self._prompts = _load_prompts()
+
+        # Load previously persisted tasks
+        self._tasks: dict[str, TaskInfo] = _load_tasks_from_disk(self._task_dir)
 
     @property
     def workflow_types(self) -> list[str]:
@@ -173,6 +275,9 @@ class TaskManager:
             task.errors.append(str(exc))
             task.status = "failed"
 
+        # Persist to disk
+        _save_task_to_disk(task, self._task_dir)
+
         return task
 
     def get_task(self, task_id: str) -> TaskInfo | None:
@@ -181,10 +286,10 @@ class TaskManager:
     def list_tasks(self) -> list[TaskInfo]:
         return list(self._tasks.values())
 
-    def get_workflow_info(self) -> dict[str, object]:
+    def get_workflow_info(self) -> dict[str, str | list[dict[str, str]]]:
         """Return info about the pipeline workflow."""
         agents = self._build_agents()
-        agent_list = [
+        agent_list: list[dict[str, str]] = [
             {
                 "name": a.name,
                 "description": a.description,
