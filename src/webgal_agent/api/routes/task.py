@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import PlainTextResponse
 
 from webgal_agent.api.models import CreateTaskRequest, TaskResponse
 
@@ -38,6 +41,48 @@ async def get_task(task_id: str) -> TaskResponse:
     if task is None:
         raise HTTPException(status_code=404, detail="任务未找到")
     return TaskResponse(**task.to_dict())
+
+
+@router.get("/{task_id}/results")
+async def list_result_files(task_id: str) -> list[str]:
+    """列出任务结果目录下的所有文件。"""
+    from webgal_agent.api.app import get_task_manager
+
+    manager = get_task_manager()
+    task = manager.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务未找到")
+
+    result_dir = Path(manager._task_dir) / task_id / "result"
+    if not result_dir.exists():
+        return []
+
+    files: list[str] = []
+    for f in sorted(result_dir.rglob("*")):
+        if f.is_file():
+            files.append(f.relative_to(result_dir).as_posix())
+    return files
+
+
+@router.get("/{task_id}/results/{file_path:path}", response_class=PlainTextResponse)
+async def get_result_file(task_id: str, file_path: str) -> str:
+    """获取任务结果文件内容。"""
+    from webgal_agent.api.app import get_task_manager
+
+    manager = get_task_manager()
+    task = manager.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="任务未找到")
+
+    result_dir = (Path(manager._task_dir) / task_id / "result").resolve()
+    target = (result_dir / file_path).resolve()
+
+    if not target.is_relative_to(result_dir):
+        raise HTTPException(status_code=403, detail="不允许路径穿越")
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="文件未找到")
+
+    return target.read_text(encoding="utf-8")
 
 
 @router.post("/{task_id}/cancel", response_model=TaskResponse)

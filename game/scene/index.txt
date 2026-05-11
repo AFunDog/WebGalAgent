@@ -1,1 +1,0 @@
-callScene:AiSu_DailyLife.txt;

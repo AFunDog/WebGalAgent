@@ -177,29 +177,13 @@ def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) 
         encoding="utf-8",
     )
 
-    # --- 保存最终结果为 .txt（WebGal 脚本）---
+    # --- 保存最终结果 ---
+    # write_result 工具已将脚本直接写入 result/ 目录
+    # 这里将最后一个智能体的文本输出保存为 result.txt 作为摘要/备份
     if task.messages:
         last_msg = task.messages[-1]
-        result_content = last_msg.content
-
-        # 尝试从 script_converter 的工具调用中提取 write_file 写入的脚本内容
-        tool_calls = last_msg.metadata.get("tool_calls", [])
-        written_contents: list[str] = []
-        for tc in tool_calls:
-            if tc.get("tool") == "write_file" and tc.get("success"):
-                args = tc.get("args", {})
-                tc_content = args.get("content", "")
-                tc_path = args.get("path", "")
-                # 跳过 index.txt 等入口文件，只保留场景脚本
-                if tc_content and "callScene" not in tc_content and "end;" not in tc_content:
-                    written_contents.append(tc_content)
-
-        # 如果工具写入了场景脚本，优先使用工具写入的内容作为最终结果
-        if written_contents:
-            result_content = "\n\n".join(written_contents)
-
         result_file = task_path / "result.txt"
-        result_file.write_text(result_content, encoding="utf-8")
+        result_file.write_text(last_msg.content, encoding="utf-8")
 
     # --- 同时保存每个步骤的独立输出 ---
     for i, msg in enumerate(task.messages):
@@ -281,15 +265,18 @@ class TaskManager:
     def workflow_types(self) -> list[str]:
         return ["pipeline"]
 
-    def _build_agents(self) -> dict[str, Agent]:
+    def _build_agents(self, task_id: str = "") -> dict[str, Agent]:
         from webgal_agent.tools.asset_query import AssetQueryTool
-        from webgal_agent.tools.file_ops import ReadFileTool, WriteFileTool
+        from webgal_agent.tools.file_ops import ReadFileTool, WriteResultTool
 
         # 通用工具（所有智能体都可以使用）
         common_tools: list[Tool] = [
             ReadFileTool(),
-            WriteFileTool(),
         ]
+
+        # 结果写入工具（需要 task_id）
+        if task_id:
+            common_tools.append(WriteResultTool(task_id=task_id, task_dir=self._task_dir))
 
         # 素材查询工具（script_converter 专用）
         asset_tool = AssetQueryTool()
@@ -412,7 +399,7 @@ class TaskManager:
         logger = logging.getLogger("webgal_agent.task_manager")
 
         try:
-            agents = self._build_agents()
+            agents = self._build_agents(task_id=task.id)
             # 记录当前活跃智能体，供状态查询使用
             self._active_agents = agents
 
