@@ -53,6 +53,12 @@ class WorkflowInfoResponse(BaseModel):
 
 # ---------- 任务 ----------
 
+class CreateTaskRequest(BaseModel):
+    """创建任务请求体。"""
+
+    content: str
+
+
 class TaskMessageResponse(BaseModel):
     """任务执行中的消息。"""
 

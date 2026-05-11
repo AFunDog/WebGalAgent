@@ -4,18 +4,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from webgal_agent.api.models import TaskResponse
+from webgal_agent.api.models import CreateTaskRequest, TaskResponse
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
 @router.post("", response_model=TaskResponse, status_code=201)
-async def create_task(content: str) -> TaskResponse:
+async def create_task(req: CreateTaskRequest) -> TaskResponse:
     """启动新的流水线任务。"""
     from webgal_agent.api.app import get_task_manager
 
     manager = get_task_manager()
-    task = await manager.start_task(content=content)
+    task = await manager.start_task(content=req.content)
     return TaskResponse(**task.to_dict())
 
 
