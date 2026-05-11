@@ -6,6 +6,7 @@ import json
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import TypedDict
 
 import yaml
 
@@ -29,6 +30,26 @@ AGENT_DESCRIPTIONS: dict[str, str] = {
 
 # Output directory for persisted task data
 DEFAULT_TASK_DIR = "data/tasks"
+
+
+class AgentInfoDict(TypedDict):
+    """Agent info for workflow API response."""
+
+    name: str
+    description: str
+    state: str
+    provider: str
+    model: str
+
+
+class WorkflowInfoDict(TypedDict):
+    """Workflow info for API response."""
+
+    name: str
+    type: str
+    description: str
+    agents: list[AgentInfoDict]
+    order: list[str]
 
 
 class TaskInfo:
@@ -286,10 +307,10 @@ class TaskManager:
     def list_tasks(self) -> list[TaskInfo]:
         return list(self._tasks.values())
 
-    def get_workflow_info(self) -> dict[str, str | list[dict[str, str]]]:
+    def get_workflow_info(self) -> WorkflowInfoDict:
         """Return info about the pipeline workflow."""
         agents = self._build_agents()
-        agent_list: list[dict[str, str]] = [
+        agent_list: list[AgentInfoDict] = [
             {
                 "name": a.name,
                 "description": a.description,

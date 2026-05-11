@@ -47,6 +47,7 @@ a { color: var(--primary-hover); text-decoration: none; }
   font-size: 18px;
   font-weight: 700;
   background: linear-gradient(135deg, var(--primary), #a78bfa);
+  background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
