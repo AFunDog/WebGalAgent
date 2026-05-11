@@ -341,6 +341,7 @@ class TaskManager:
         task_id = uuid.uuid4().hex[:12]
         task = TaskInfo(task_id=task_id, content=content)
         self._tasks[task_id] = task
+        task.status = "running"
 
         # 后台启动执行，不阻塞当前请求
         asyncio.create_task(self._run_pipeline(task))
@@ -349,36 +350,40 @@ class TaskManager:
 
     async def _run_pipeline(self, task: TaskInfo) -> None:
         """在后台执行流水线工作流。"""
-        agents = self._build_agents()
-        knowledge_contexts = self._build_all_knowledge_contexts()
-
-        workflow = PipelineWorkflow(
-            agents=agents,
-            order=PIPELINE_ORDER,
-            user_input=task.content,
-            knowledge_contexts=knowledge_contexts,
-        )
-
-        initial = Message(
-            type=MessageType.TASK,
-            sender="user",
-            receiver="outline_writer",
-            content=task.content,
-        )
-
-        task.status = "running"
+        import logging
+        logger = logging.getLogger("webgal_agent.task_manager")
 
         try:
+            agents = self._build_agents()
+            knowledge_contexts = self._build_all_knowledge_contexts()
+
+            workflow = PipelineWorkflow(
+                agents=agents,
+                order=PIPELINE_ORDER,
+                user_input=task.content,
+                knowledge_contexts=knowledge_contexts,
+            )
+
+            initial = Message(
+                type=MessageType.TASK,
+                sender="user",
+                receiver="outline_writer",
+                content=task.content,
+            )
+
+            task.status = "running"
+
             result: WorkflowResult = await workflow.execute(initial)
             task.messages = result.messages
             task.errors = result.errors
             task.status = "completed" if result.success else "failed"
         except Exception as exc:
+            logger.exception("流水线执行失败: task_id=%s", task.id)
             task.errors.append(str(exc))
             task.status = "failed"
-
-        # 持久化到磁盘
-        _save_task_to_disk(task, self._task_dir)
+        finally:
+            # 持久化到磁盘
+            _save_task_to_disk(task, self._task_dir)
 
     def get_task(self, task_id: str) -> TaskInfo | None:
         return self._tasks.get(task_id)

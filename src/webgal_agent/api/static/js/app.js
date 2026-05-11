@@ -78,6 +78,9 @@ async function loadWorkflows() {
 }
 
 // ===== Page: Tasks =====
+// 跟踪当前活跃的轮询定时器
+let activePolls = {};
+
 async function loadTasks() {
   try {
     tasks = await API.get("/api/tasks");
@@ -85,6 +88,12 @@ async function loadTasks() {
     console.error("Failed to load tasks:", e);
   }
   render();
+  // 对进行中的任务启动轮询
+  tasks.forEach(t => {
+    if ((t.status === "running" || t.status === "pending") && !activePolls[t.id]) {
+      pollTaskStatus(t.id);
+    }
+  });
 }
 
 async function createTask(content) {
@@ -99,28 +108,63 @@ async function createTask(content) {
 }
 
 function pollTaskStatus(taskId) {
+  // 避免重复轮询
+  if (activePolls[taskId]) return;
+
   let attempts = 0;
   const maxAttempts = 600; // 最多轮询 10 分钟（每秒一次）
   const timer = setInterval(async () => {
     attempts++;
     try {
       const task = await API.get("/api/tasks/" + taskId);
-      // 更新列表中对应任务的状态
+      // 局部更新列表中对应任务，避免全量 render 导致页面跳顶
       const idx = tasks.findIndex(t => t.id === taskId);
       if (idx !== -1) {
         tasks[idx] = task;
-        render();
+        updateTaskCard(task);
       }
       if (task.status !== "running" && task.status !== "pending") {
         clearInterval(timer);
+        delete activePolls[taskId];
       }
     } catch (e) {
       console.error("轮询任务状态失败:", e);
     }
     if (attempts >= maxAttempts) {
       clearInterval(timer);
+      delete activePolls[taskId];
     }
   }, 1000);
+  activePolls[taskId] = timer;
+}
+
+function updateTaskCard(task) {
+  const card = document.getElementById("task-card-" + task.id);
+  if (!card) return;
+
+  const statusClass = task.status === "completed" ? "success" : task.status === "running" ? "warning" : task.status === "failed" ? "danger" : "muted";
+  const badge = card.querySelector(".badge");
+  if (badge) {
+    badge.className = "badge badge-" + statusClass;
+    badge.textContent = task.status;
+  }
+
+  // 更新消息列表
+  const msgContainer = card.querySelector(".task-messages");
+  if (msgContainer) {
+    msgContainer.innerHTML = task.messages.map(m => `
+      <div class="msg-bubble ${m.type}">
+        <div><strong>${esc(m.sender)}</strong> → <strong>${esc(m.receiver)}</strong></div>
+        <div style="white-space:pre-wrap;margin-top:4px">${esc(m.content)}</div>
+        <div class="msg-meta">${esc(m.type)} · ${new Date(m.created_at).toLocaleTimeString()}</div>
+      </div>`).join("");
+  }
+
+  // 更新错误
+  const errEl = card.querySelector(".task-errors");
+  if (errEl) {
+    errEl.textContent = task.errors.length ? task.errors.join("; ") : "";
+  }
 }
 
 // ===== Page: Providers =====
@@ -326,14 +370,14 @@ function renderTasksPage() {
     : tasks.slice().reverse().map(t => {
         const statusClass = t.status === "completed" ? "success" : t.status === "running" ? "warning" : t.status === "failed" ? "danger" : "muted";
         return `
-        <div class="card">
+        <div class="card" id="task-card-${esc(t.id)}">
           <div class="card-header">
             <h3>${esc(t.content.slice(0, 80))}</h3>
             <span class="badge badge-${statusClass}">${esc(t.status)}</span>
           </div>
           <p style="color:var(--text-muted);font-size:12px">ID: ${esc(t.id)} · 创建时间: ${new Date(t.created_at).toLocaleString()}</p>
-          ${t.errors.length ? `<p style="color:var(--danger);font-size:12px;margin-top:4px">${esc(t.errors.join("; "))}</p>` : ""}
-          <div style="margin-top:12px">
+          ${t.errors.length ? `<p class="task-errors" style="color:var(--danger);font-size:12px;margin-top:4px">${esc(t.errors.join("; "))}</p>` : '<p class="task-errors" style="display:none"></p>'}
+          <div class="task-messages" style="margin-top:12px">
             ${t.messages.map(m => `
               <div class="msg-bubble ${m.type}">
                 <div><strong>${esc(m.sender)}</strong> → <strong>${esc(m.receiver)}</strong></div>
