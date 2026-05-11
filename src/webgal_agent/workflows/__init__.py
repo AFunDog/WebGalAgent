@@ -1,6 +1,5 @@
 """Workflow patterns for multi-agent collaboration."""
 
-from webgal_agent.workflows.sequential import SequentialWorkflow
-from webgal_agent.workflows.debate import DebateWorkflow
+from webgal_agent.workflows.pipeline import PipelineWorkflow
 
-__all__ = ["SequentialWorkflow", "DebateWorkflow"]
+__all__ = ["PipelineWorkflow"]

@@ -38,16 +38,10 @@ class WorkflowInfoResponse(BaseModel):
     name: str
     agents: list[AgentInfoResponse]
     type: str
+    description: str = ""
 
 
 # ---------- Task ----------
-
-class TaskCreateRequest(BaseModel):
-    """Request body for creating a new task."""
-
-    content: str
-    workflow: str = "sequential"
-
 
 class TaskMessageResponse(BaseModel):
     """A message within a task execution."""

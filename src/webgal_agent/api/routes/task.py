@@ -4,18 +4,18 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from webgal_agent.api.models import TaskCreateRequest, TaskResponse
+from webgal_agent.api.models import TaskResponse
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
 @router.post("", response_model=TaskResponse, status_code=201)
-async def create_task(req: TaskCreateRequest) -> TaskResponse:
-    """Start a new workflow execution."""
+async def create_task(content: str) -> TaskResponse:
+    """Start a new pipeline task."""
     from webgal_agent.api.app import get_task_manager
 
     manager = get_task_manager()
-    task = await manager.start_task(content=req.content, workflow_name=req.workflow)
+    task = await manager.start_task(content=content)
     return TaskResponse(**task.to_dict())
 
 

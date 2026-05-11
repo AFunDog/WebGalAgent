@@ -2,24 +2,29 @@
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 from datetime import datetime
+from pathlib import Path
 
-from webgal_agent.agents import ArtistAgent, DirectorAgent, ReviewerAgent, WriterAgent
-from webgal_agent.core.agent import Agent, AgentConfig
+import yaml
+
+from webgal_agent.agents import OutlineWriterAgent, ScriptConverterAgent, ScriptWriterAgent
+from webgal_agent.core.agent import Agent
 from webgal_agent.core.message import Message, MessageType
 from webgal_agent.core.workflow import WorkflowResult
-from webgal_agent.workflows.debate import DebateWorkflow
-from webgal_agent.workflows.sequential import SequentialWorkflow
+from webgal_agent.knowledge import KnowledgeStore
+from webgal_agent.workflows.pipeline import PipelineWorkflow
+
+# Pipeline step order: A → B → C
+PIPELINE_ORDER = ["outline_writer", "script_writer", "script_converter"]
 
 
 class TaskInfo:
     """Tracks a single workflow execution."""
 
-    def __init__(self, task_id: str, workflow_name: str, content: str) -> None:
+    def __init__(self, task_id: str, content: str) -> None:
         self.id = task_id
-        self.workflow_name = workflow_name
+        self.workflow_name = "pipeline"
         self.content = content
         self.status: str = "pending"
         self.messages: list[Message] = []
@@ -48,52 +53,80 @@ class TaskInfo:
         }
 
 
-class TaskManager:
-    """Manages workflow executions and their lifecycle."""
+def _load_prompts() -> dict[str, str]:
+    """Load agent prompts from configs/prompts.yaml."""
+    prompts_path = Path("configs/prompts.yaml")
+    if not prompts_path.exists():
+        return {}
 
-    def __init__(self) -> None:
+    data = yaml.safe_load(prompts_path.read_text(encoding="utf-8"))
+    if not data or not isinstance(data, dict):
+        return {}
+
+    result: dict[str, str] = {}
+    for key, value in data.items():
+        if isinstance(value, dict) and "system_prompt" in value:
+            result[key] = value["system_prompt"].strip()
+    return result
+
+
+class TaskManager:
+    """Manages pipeline workflow executions."""
+
+    def __init__(self, knowledge_store: KnowledgeStore | None = None) -> None:
         self._tasks: dict[str, TaskInfo] = {}
-        self._workflow_registry: dict[str, type[SequentialWorkflow | DebateWorkflow]] = {
-            "sequential": SequentialWorkflow,
-            "debate": DebateWorkflow,
-        }
+        self._knowledge_store = knowledge_store
+        self._prompts = _load_prompts()
 
     @property
     def workflow_types(self) -> list[str]:
-        return list(self._workflow_registry.keys())
+        return ["pipeline"]
 
     def _build_agents(self) -> dict[str, Agent]:
         return {
-            "director": DirectorAgent(),
-            "writer": WriterAgent(),
-            "artist": ArtistAgent(),
-            "reviewer": ReviewerAgent(),
+            "outline_writer": OutlineWriterAgent(system_prompt=self._prompts.get("outline_writer", "")),
+            "script_writer": ScriptWriterAgent(system_prompt=self._prompts.get("script_writer", "")),
+            "script_converter": ScriptConverterAgent(system_prompt=self._prompts.get("script_converter", "")),
         }
 
-    def _build_workflow(self, workflow_name: str, agents: dict[str, Agent]) -> SequentialWorkflow | DebateWorkflow:
-        cls = self._workflow_registry.get(workflow_name)
-        if cls is None:
-            raise ValueError(f"Unknown workflow type: {workflow_name}")
+    def _build_knowledge_context(self) -> str:
+        """Format knowledge base entries as context text for agents."""
+        if self._knowledge_store is None:
+            return ""
 
-        if cls is SequentialWorkflow:
-            return cls(agents=agents, order=["director", "writer", "artist", "reviewer"])
-        if cls is DebateWorkflow:
-            return cls(agents=agents, creator="writer", reviewer="reviewer", max_iterations=3)
-        raise ValueError(f"Unhandled workflow type: {workflow_name}")
+        entries = self._knowledge_store.list_all()
+        if not entries:
+            return ""
 
-    async def start_task(self, content: str, workflow_name: str = "sequential") -> TaskInfo:
-        """Create and start a new task."""
+        parts: list[str] = []
+        for entry in entries:
+            header = f"### {entry.title}"
+            if entry.category:
+                header += f" [{entry.category}]"
+            parts.append(f"{header}\n{entry.body}")
+
+        return "\n\n".join(parts)
+
+    async def start_task(self, content: str) -> TaskInfo:
+        """Create and start a new pipeline task."""
         task_id = uuid.uuid4().hex[:12]
-        task = TaskInfo(task_id=task_id, workflow_name=workflow_name, content=content)
+        task = TaskInfo(task_id=task_id, content=content)
         self._tasks[task_id] = task
 
         agents = self._build_agents()
-        workflow = self._build_workflow(workflow_name, agents)
+        knowledge_context = self._build_knowledge_context()
+
+        workflow = PipelineWorkflow(
+            agents=agents,
+            order=PIPELINE_ORDER,
+            user_input=content,
+            knowledge_context=knowledge_context,
+        )
 
         initial = Message(
             type=MessageType.TASK,
             sender="user",
-            receiver="director",
+            receiver="outline_writer",
             content=content,
         )
 
@@ -116,33 +149,17 @@ class TaskManager:
     def list_tasks(self) -> list[TaskInfo]:
         return list(self._tasks.values())
 
-    def get_workflow_info(self, workflow_name: str) -> dict[str, object] | None:
-        """Return static info about a workflow type."""
-        if workflow_name not in self._workflow_registry:
-            return None
-
+    def get_workflow_info(self) -> dict[str, object]:
+        """Return info about the pipeline workflow."""
         agents = self._build_agents()
         agent_list = [
             {"name": a.name, "description": a.description, "state": a.state.value}
             for a in agents.values()
         ]
-
-        if workflow_name == "sequential":
-            order = ["director", "writer", "artist", "reviewer"]
-            return {
-                "name": "sequential",
-                "type": "SequentialWorkflow",
-                "description": "顺序流水线：智能体按固定顺序依次执行",
-                "agents": agent_list,
-                "order": order,
-            }
-        if workflow_name == "debate":
-            return {
-                "name": "debate",
-                "type": "DebateWorkflow",
-                "description": "辩论迭代：创作者与审核员交替执行直到达到质量阈值",
-                "agents": agent_list,
-                "creator": "writer",
-                "reviewer": "reviewer",
-            }
-        return None
+        return {
+            "name": "pipeline",
+            "type": "PipelineWorkflow",
+            "description": "三阶段流水线：A(大纲) → B(剧本) → C(WebGal脚本)",
+            "agents": agent_list,
+            "order": PIPELINE_ORDER,
+        }

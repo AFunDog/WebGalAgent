@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from webgal_agent.api.models import AgentInfoResponse, WorkflowInfoResponse
+from webgal_agent.agents import OutlineWriterAgent, ScriptConverterAgent, ScriptWriterAgent
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
@@ -12,24 +13,19 @@ router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 @router.get("", response_model=list[str])
 async def list_workflows() -> list[str]:
     """List available workflow types."""
+    return ["pipeline"]
+
+
+@router.get("/pipeline", response_model=WorkflowInfoResponse)
+async def get_pipeline_info() -> WorkflowInfoResponse:
+    """Get pipeline workflow info."""
     from webgal_agent.api.app import get_task_manager
 
-    return get_task_manager().workflow_types
-
-
-@router.get("/{workflow_name}", response_model=WorkflowInfoResponse)
-async def get_workflow_info(workflow_name: str) -> WorkflowInfoResponse:
-    """Get detailed info about a workflow type."""
-    from webgal_agent.api.app import get_task_manager
-
-    info = get_task_manager().get_workflow_info(workflow_name)
-    if info is None:
-        raise HTTPException(status_code=404, detail="Workflow not found")
-
+    info = get_task_manager().get_workflow_info()
     return WorkflowInfoResponse(
         name=info["name"],
         type=info["type"],
-        description=info.get("description", ""),
+        description=info["description"],
         agents=[
             AgentInfoResponse(
                 name=a["name"], description=a["description"], state=a["state"]
@@ -42,9 +38,7 @@ async def get_workflow_info(workflow_name: str) -> WorkflowInfoResponse:
 @router.get("/agents/status", response_model=list[AgentInfoResponse])
 async def get_agents_status() -> list[AgentInfoResponse]:
     """Get current status of all agents."""
-    from webgal_agent.agents import ArtistAgent, DirectorAgent, ReviewerAgent, WriterAgent
-
-    agents = [DirectorAgent(), WriterAgent(), ArtistAgent(), ReviewerAgent()]
+    agents = [OutlineWriterAgent(), ScriptWriterAgent(), ScriptConverterAgent()]
     return [
         AgentInfoResponse(name=a.name, description=a.description, state=a.state.value)
         for a in agents

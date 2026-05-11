@@ -1,8 +1,7 @@
 """Concrete agent implementations."""
 
-from webgal_agent.agents.director import DirectorAgent
-from webgal_agent.agents.writer import WriterAgent
-from webgal_agent.agents.artist import ArtistAgent
-from webgal_agent.agents.reviewer import ReviewerAgent
+from webgal_agent.agents.outline_writer import OutlineWriterAgent
+from webgal_agent.agents.script_writer import ScriptWriterAgent
+from webgal_agent.agents.script_converter import ScriptConverterAgent
 
-__all__ = ["DirectorAgent", "WriterAgent", "ArtistAgent", "ReviewerAgent"]
+__all__ = ["OutlineWriterAgent", "ScriptWriterAgent", "ScriptConverterAgent"]

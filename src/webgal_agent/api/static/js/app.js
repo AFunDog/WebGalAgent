@@ -29,7 +29,7 @@ let currentPage = "knowledge";
 let knowledgeEntries = [];
 let categories = [];
 let tasks = [];
-let workflows = [];
+let workflowInfo = null;
 let filterCategory = "";
 let filterKeyword = "";
 
@@ -48,19 +48,10 @@ async function loadKnowledge() {
   render();
 }
 
-async function reloadKnowledge() {
-  try {
-    await API.post("/api/knowledge/reload", {});
-    await loadKnowledge();
-  } catch (e) {
-    alert("重载失败: " + e.message);
-  }
-}
-
 // ===== Page: Workflow =====
 async function loadWorkflows() {
   try {
-    workflows = await API.get("/api/workflows");
+    workflowInfo = await API.get("/api/workflows/pipeline");
   } catch (e) {
     console.error("Failed to load workflows:", e);
   }
@@ -77,9 +68,9 @@ async function loadTasks() {
   render();
 }
 
-async function createTask(content, workflow) {
+async function createTask(content) {
   try {
-    await API.post("/api/tasks", { content, workflow });
+    await API.post("/api/tasks", { content });
     await loadTasks();
   } catch (e) {
     alert("创建任务失败: " + e.message);
@@ -156,22 +147,28 @@ function renderKnowledgePage() {
 }
 
 function renderWorkflowsPage() {
+  const agentSteps = workflowInfo
+    ? workflowInfo.agents.map((a, i) => {
+        const stepLabels = ["A: 编写剧本大纲", "B: 生成章节剧本", "C: 转换为 WebGal 脚本"];
+        const arrow = i < workflowInfo.agents.length - 1 ? `<div style="text-align:center;color:var(--text-muted);font-size:24px;padding:4px 0">↓</div>` : "";
+        return `
+          <div class="card">
+            <div class="card-header">
+              <h3>${stepLabels[i] || a.name}</h3>
+              <span class="badge badge-muted">${esc(a.name)}</span>
+            </div>
+            <p style="color:var(--text-muted);font-size:13px">${esc(a.description)}</p>
+          </div>
+          ${arrow}`;
+      }).join("")
+    : `<div class="empty-state"><p>加载中...</p></div>`;
+
   return `
     <h2 class="page-title">工作流</h2>
-    <div class="grid-2">
-      ${workflows.map(w => `
-        <div class="card">
-          <div class="card-header">
-            <h3>${w === "sequential" ? "顺序流水线" : w === "debate" ? "辩论迭代" : esc(w)}</h3>
-            <span class="badge badge-muted">${esc(w)}</span>
-          </div>
-          <p style="color:var(--text-muted);font-size:13px">${
-            w === "sequential"
-              ? "智能体按固定顺序依次执行，前一个的输出作为后一个的输入"
-              : "创作者与审核员交替执行，直到质量评分达到阈值"
-          }</p>
-        </div>`).join("")}
+    <div class="card" style="margin-bottom:20px">
+      <p style="color:var(--text-muted);font-size:14px">${workflowInfo ? esc(workflowInfo.description) : ""}</p>
     </div>
+    ${agentSteps}
     <div class="card" style="margin-top:20px">
       <div class="card-header"><h3>智能体状态</h3></div>
       <div class="table-wrap">
@@ -192,10 +189,7 @@ function renderTasksPage() {
         <div class="card">
           <div class="card-header">
             <h3>${esc(t.content.slice(0, 80))}</h3>
-            <div>
-              <span class="badge badge-${statusClass}">${esc(t.status)}</span>
-              <span class="tag">${esc(t.workflow)}</span>
-            </div>
+            <span class="badge badge-${statusClass}">${esc(t.status)}</span>
           </div>
           <p style="color:var(--text-muted);font-size:12px">ID: ${esc(t.id)} · 创建时间: ${new Date(t.created_at).toLocaleString()}</p>
           ${t.errors.length ? `<p style="color:var(--danger);font-size:12px;margin-top:4px">${esc(t.errors.join("; "))}</p>` : ""}
@@ -217,13 +211,6 @@ function renderTasksPage() {
       <div class="form-group">
         <label>任务内容</label>
         <textarea id="task-content" class="form-textarea" placeholder="请输入任务描述..."></textarea>
-      </div>
-      <div class="form-group">
-        <label>工作流类型</label>
-        <select id="task-workflow" class="form-select">
-          <option value="sequential">顺序流水线</option>
-          <option value="debate">辩论迭代</option>
-        </select>
       </div>
       <button class="btn btn-primary" data-action="create-task">${ICONS.send} 执行任务</button>
     </div>
@@ -253,9 +240,8 @@ function bindEvents() {
   // Task actions
   document.querySelector("[data-action='create-task']")?.addEventListener("click", () => {
     const content = document.getElementById("task-content")?.value || "";
-    const workflow = document.getElementById("task-workflow")?.value || "sequential";
     if (!content.trim()) { alert("请输入任务内容"); return; }
-    createTask(content, workflow);
+    createTask(content);
   });
 
   // Load agent status on workflow page

@@ -53,7 +53,7 @@ def create_app(knowledge_dir: str | Path = "data/knowledge") -> FastAPI:
     async def _startup() -> None:
         global _knowledge_store, _task_manager
         _knowledge_store = FileKnowledgeStore(_resolved_knowledge_dir)
-        _task_manager = TaskManager()
+        _task_manager = TaskManager(knowledge_store=_knowledge_store)
 
     # Register API routes
     app.include_router(knowledge.router)

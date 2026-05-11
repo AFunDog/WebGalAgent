@@ -1,0 +1,17 @@
+# 智能体提示词配置
+# TODO: 请为每个智能体填写实际的系统提示词
+
+outline_writer:
+  # A：接受用户的初始输入和知识库，编写剧本大纲
+  system_prompt: |
+    TODO: 请填写剧本大纲编写者的系统提示词
+
+script_writer:
+  # B：接受用户的初始输入、A生成的剧本大纲、知识库，对每个章节生成对应的剧本
+  system_prompt: |
+    TODO: 请填写剧本编写者的系统提示词
+
+script_converter:
+  # C：接受用户初始输入、B生成的剧本、知识库，将剧本转为webgal可以识别产生动画的脚本
+  system_prompt: |
+    TODO: 请填写脚本转换者的系统提示词
