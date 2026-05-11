@@ -18,7 +18,7 @@ class PipelineWorkflow(Workflow):
     previous agent's output, this pipeline ensures every agent receives:
 
     - The original user input
-    - The knowledge base context
+    - The knowledge base context (filtered per agent)
     - All preceding agents' outputs
 
     This matches the design:
@@ -34,10 +34,13 @@ class PipelineWorkflow(Workflow):
         order: list[str],
         user_input: str = "",
         knowledge_context: str = "",
+        knowledge_contexts: dict[str, str] | None = None,
     ) -> None:
         super().__init__(agents)
         self._order = order
         self._user_input = user_input
+        # Per-agent knowledge contexts take precedence over the global one
+        self._knowledge_contexts = knowledge_contexts or {}
         self._knowledge_context = knowledge_context
 
     @property
@@ -56,7 +59,13 @@ class PipelineWorkflow(Workflow):
             if self._user_input:
                 context_parts.append(f"【用户输入】\n{self._user_input}")
 
-            if self._knowledge_context:
+            if self._knowledge_contexts:
+                # Use per-agent knowledge context
+                agent_knowledge = self._knowledge_contexts.get(agent_name, "")
+                if agent_knowledge:
+                    context_parts.append(f"【知识库】\n{agent_knowledge}")
+            elif self._knowledge_context:
+                # Fallback to global knowledge context
                 context_parts.append(f"【知识库】\n{self._knowledge_context}")
 
             for idx, output in enumerate(accumulated_outputs):

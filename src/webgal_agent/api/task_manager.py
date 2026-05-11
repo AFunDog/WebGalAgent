@@ -16,6 +16,7 @@ from webgal_agent.core.agent import Agent
 from webgal_agent.core.message import Message, MessageType
 from webgal_agent.core.workflow import WorkflowResult
 from webgal_agent.knowledge import KnowledgeStore
+from webgal_agent.knowledge.models import KnowledgeEntry
 from webgal_agent.workflows.pipeline import PipelineWorkflow
 
 # Pipeline step order: A → B → C
@@ -100,6 +101,35 @@ def _load_prompts() -> dict[str, str]:
     for key, value in data.items():
         if isinstance(value, dict) and "system_prompt" in value:
             result[key] = value["system_prompt"].strip()
+    return result
+
+
+def _load_knowledge_requirements() -> dict[str, dict[str, list[str]]]:
+    """Load per-agent knowledge requirements from configs/prompts.yaml.
+
+    Returns a dict mapping agent name to its knowledge filter config::
+
+        {
+            "outline_writer": {"categories": ["character", "setting"], "tags": []},
+            "script_converter": {"categories": ["reference"], "tags": ["webgal"]},
+        }
+    """
+    prompts_path = Path("configs/prompts.yaml")
+    if not prompts_path.exists():
+        return {}
+
+    data = yaml.safe_load(prompts_path.read_text(encoding="utf-8"))
+    if not data or not isinstance(data, dict):
+        return {}
+
+    result: dict[str, dict[str, list[str]]] = {}
+    for key, value in data.items():
+        if isinstance(value, dict) and "knowledge" in value:
+            knowledge_cfg = value["knowledge"]
+            result[key] = {
+                "categories": knowledge_cfg.get("categories", []),
+                "tags": knowledge_cfg.get("tags", []),
+            }
     return result
 
 
@@ -210,6 +240,7 @@ class TaskManager:
         self._knowledge_store = knowledge_store
         self._provider_manager = provider_manager
         self._prompts = _load_prompts()
+        self._knowledge_requirements = _load_knowledge_requirements()
 
         # Load previously persisted tasks
         self._tasks: dict[str, TaskInfo] = _load_tasks_from_disk(self._task_dir)
@@ -244,12 +275,41 @@ class TaskManager:
 
         return agents
 
-    def _build_knowledge_context(self) -> str:
-        """Format knowledge base entries as context text for agents."""
+    def _build_knowledge_context(self, agent_name: str = "") -> str:
+        """Format knowledge base entries as context text for a specific agent.
+
+        If the agent has knowledge requirements configured in prompts.yaml,
+        only matching entries are included. Otherwise, all entries are returned.
+        """
         if self._knowledge_store is None:
             return ""
 
-        entries = self._knowledge_store.list_all()
+        # Determine filter criteria for this agent
+        requirements = self._knowledge_requirements.get(agent_name, {}) if agent_name else {}
+        categories = requirements.get("categories", [])
+        tags = requirements.get("tags", [])
+
+        if categories or tags:
+            # Filter by categories and tags (union: match any category OR any tag)
+            entries_by_category: list[KnowledgeEntry] = []
+            entries_by_tags: list[KnowledgeEntry] = []
+            if categories:
+                for cat in categories:
+                    entries_by_category.extend(self._knowledge_store.query(category=cat))
+            if tags:
+                entries_by_tags = self._knowledge_store.query(tags=tags)
+
+            # Merge and deduplicate
+            seen_ids: set[str] = set()
+            entries: list[KnowledgeEntry] = []
+            for entry in entries_by_category + entries_by_tags:
+                if entry.id not in seen_ids:
+                    seen_ids.add(entry.id)
+                    entries.append(entry)
+        else:
+            # No requirements configured — return all entries
+            entries = self._knowledge_store.list_all()
+
         if not entries:
             return ""
 
@@ -262,6 +322,10 @@ class TaskManager:
 
         return "\n\n".join(parts)
 
+    def _build_all_knowledge_contexts(self) -> dict[str, str]:
+        """Build knowledge context for each agent in the pipeline."""
+        return {name: self._build_knowledge_context(name) for name in PIPELINE_ORDER}
+
     async def start_task(self, content: str) -> TaskInfo:
         """Create and start a new pipeline task."""
         task_id = uuid.uuid4().hex[:12]
@@ -269,13 +333,13 @@ class TaskManager:
         self._tasks[task_id] = task
 
         agents = self._build_agents()
-        knowledge_context = self._build_knowledge_context()
+        knowledge_contexts = self._build_all_knowledge_contexts()
 
         workflow = PipelineWorkflow(
             agents=agents,
             order=PIPELINE_ORDER,
             user_input=content,
-            knowledge_context=knowledge_context,
+            knowledge_contexts=knowledge_contexts,
         )
 
         initial = Message(

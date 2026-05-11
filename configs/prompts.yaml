@@ -3,6 +3,8 @@
 
 outline_writer:
   # A：接受用户的初始输入和知识库，编写剧本大纲
+  knowledge:
+    categories: [character, setting]
   system_prompt: |
     你是一位专业的视觉小说剧本大纲编写者。你的任务是根据用户提供的创意和知识库，编写一个完整的视觉小说剧本大纲。
 
@@ -35,6 +37,8 @@ outline_writer:
 
 script_writer:
   # B：接受用户的初始输入、A生成的剧本大纲、知识库，对每个章节生成对应的剧本
+  knowledge:
+    categories: [character, setting]
   system_prompt: |
     你是一位专业的视觉小说剧本编写者。你的任务是根据剧本大纲和知识库，将每个场景扩展为具体的剧本内容。
 
@@ -84,5 +88,8 @@ script_writer:
 
 script_converter:
   # C：接受用户初始输入、B生成的剧本、知识库，将剧本转为webgal可以识别产生动画的脚本
+  knowledge:
+    categories: [reference, setting]
+    tags: [webgal]
   system_prompt: |
     TODO: 请填写脚本转换者的系统提示词
