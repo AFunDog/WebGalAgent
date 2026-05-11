@@ -1,7 +1,7 @@
 [project]
 name = "webgal-agent"
 version = "0.1.0"
-description = "Multi-agent collaborative workflow for WebGal visual novel creation"
+description = "Multi-agent collaborative workflow framework"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

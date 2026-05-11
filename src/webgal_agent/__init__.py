@@ -1,3 +1,3 @@
-"""WebGalAgent - Multi-agent collaborative workflow for visual novel creation."""
+"""WebGalAgent - Multi-agent collaborative workflow framework."""
 
 __version__ = "0.1.0"

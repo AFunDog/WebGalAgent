@@ -1,10 +1,10 @@
-"""Artist agent — visual asset description and management.
+"""Artist agent — visual and creative asset generation.
 
 The Artist is responsible for:
-- Describing visual scene compositions
-- Generating image prompts for AI art tools
-- Managing character appearance descriptions
-- Defining background and CG scene layouts
+- Describing visual compositions and layouts
+- Generating prompts for creative tools
+- Managing visual style definitions
+- Ensuring creative consistency
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from webgal_agent.core.message import Message, MessageType
 
 
 class ArtistAgent(Agent):
-    """Agent that handles visual asset descriptions and prompts."""
+    """Agent that handles creative and visual asset generation."""
 
     def __init__(self, config: AgentConfig | None = None) -> None:
         config = config or AgentConfig(
@@ -25,13 +25,13 @@ class ArtistAgent(Agent):
 
     def system_prompt(self) -> str:
         return (
-            "你是一个视觉小说的美术指导（Artist）。"
+            "你是一个创意资产专家（Artist）。"
             "你的职责是：\n"
-            "1. 根据剧本需求描述场景构图\n"
-            "2. 生成角色立绘的提示词（prompt）\n"
-            "3. 定义背景和 CG 的视觉风格\n"
-            "4. 确保视觉资产与叙事风格一致\n\n"
-            "输出应包含详细的视觉描述和可用于 AI 绘图的英文提示词。"
+            "1. 根据需求描述视觉构图和创意方案\n"
+            "2. 生成可用的提示词（prompt）\n"
+            "3. 定义视觉风格和规范\n"
+            "4. 确保创意资产与整体风格一致\n\n"
+            "输出应包含详细的描述和可操作的提示词。"
         )
 
     async def run(self, message: Message) -> Message:

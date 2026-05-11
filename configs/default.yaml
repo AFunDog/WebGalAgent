@@ -1,7 +1,7 @@
-# WebGalAgent 默认配置
+# Multi-Agent 默认配置
 
 app:
-  name: WebGalAgent
+  name: AgentWorkflow
   debug: false
 
 llm:
