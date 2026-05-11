@@ -38,12 +38,15 @@ const ICONS = {
 let currentPage = "knowledge";
 let knowledgeEntries = [];
 let categories = [];
+let allTags = [];
+let agentRequirements = [];
 let tasks = [];
 let workflowInfo = null;
 let providerData = null;
 let providerPresets = null;
 let filterCategory = "";
 let filterKeyword = "";
+let filterTags = [];
 let editingAgent = null; // which agent is being edited in the modal
 
 // ===== Page: Knowledge =====
@@ -52,9 +55,12 @@ async function loadKnowledge() {
     const params = new URLSearchParams();
     if (filterCategory) params.set("category", filterCategory);
     if (filterKeyword) params.set("keyword", filterKeyword);
+    if (filterTags.length > 0) params.set("tags", filterTags.join(","));
     const qs = params.toString();
     knowledgeEntries = await API.get("/api/knowledge" + (qs ? "?" + qs : ""));
     categories = await API.get("/api/knowledge/categories");
+    allTags = await API.get("/api/knowledge/tags");
+    agentRequirements = await API.get("/api/knowledge/agent-requirements");
   } catch (e) {
     console.error("Failed to load knowledge:", e);
   }
@@ -182,6 +188,41 @@ function renderSidebar() {
 }
 
 function renderKnowledgePage() {
+  // Agent labels for display
+  const agentLabels = {
+    outline_writer: "A: 剧本大纲编写",
+    script_writer: "B: 章节剧本生成",
+    script_converter: "C: WebGal 脚本转换",
+  };
+
+  // Agent knowledge requirements section
+  const requirementsHtml = agentRequirements.length === 0
+    ? ""
+    : `
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header"><h3>智能体知识需求</h3></div>
+      <div class="agent-req-grid">
+        ${agentRequirements.map(r => `
+          <div class="agent-req-item">
+            <div class="agent-req-name">${esc(agentLabels[r.agent] || r.agent)}</div>
+            <div class="agent-req-details">
+              ${r.categories.length ? `<div><span class="agent-req-label">分类:</span> ${r.categories.map(c => `<span class="tag tag-clickable" data-action="filter-by-category" data-category="${esc(c)}">${esc(c)}</span>`).join("")}</div>` : ""}
+              ${r.tags.length ? `<div><span class="agent-req-label">标签:</span> ${r.tags.map(t => `<span class="tag tag-clickable tag-accent" data-action="filter-by-tag" data-tag="${esc(t)}">${esc(t)}</span>`).join("")}</div>` : ""}
+              ${!r.categories.length && !r.tags.length ? `<div style="color:var(--text-muted);font-size:12px">无筛选 — 加载全部知识</div>` : ""}
+            </div>
+          </div>`).join("")}
+      </div>
+    </div>`;
+
+  // Tag filter chips
+  const tagChipsHtml = allTags.length === 0
+    ? ""
+    : `
+    <div class="tag-filter-row">
+      <span class="tag-filter-label">标签:</span>
+      ${allTags.map(t => `<span class="tag tag-clickable ${filterTags.includes(t) ? "tag-active" : ""}" data-action="toggle-tag" data-tag="${esc(t)}">${esc(t)}</span>`).join("")}
+    </div>`;
+
   const entriesHtml = knowledgeEntries.length === 0
     ? `<div class="empty-state"><p>暂无知识条目</p></div>`
     : knowledgeEntries.map(e => `
@@ -189,8 +230,8 @@ function renderKnowledgePage() {
         <div class="card-header">
           <h3>${esc(e.title)}</h3>
           <div>
-            <span class="tag">${esc(e.category)}</span>
-            ${e.tags.map(t => `<span class="tag">${esc(t)}</span>`).join("")}
+            <span class="tag tag-clickable" data-action="filter-by-category" data-category="${esc(e.category)}">${esc(e.category)}</span>
+            ${e.tags.map(t => `<span class="tag tag-clickable tag-accent ${filterTags.includes(t) ? "tag-active" : ""}" data-action="filter-by-tag" data-tag="${esc(t)}">${esc(t)}</span>`).join("")}
           </div>
         </div>
         <pre style="color:var(--text-muted);font-size:13px;white-space:pre-wrap;font-family:inherit;margin:0">${esc(e.body)}</pre>
@@ -198,16 +239,21 @@ function renderKnowledgePage() {
 
   return `
     <h2 class="page-title">知识库</h2>
-    <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap;align-items:center">
+    ${requirementsHtml}
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
       <select id="filter-category" class="form-select" style="width:auto">
         <option value="">全部分类</option>
         ${categories.map(c => `<option value="${esc(c)}" ${filterCategory === c ? "selected" : ""}>${esc(c)}</option>`).join("")}
       </select>
       <input id="filter-keyword" class="form-input" style="width:200px" placeholder="搜索关键词..." value="${esc(filterKeyword)}" />
       <button class="btn btn-primary btn-sm" data-action="filter-knowledge">筛选</button>
+      <button class="btn btn-ghost btn-sm" data-action="clear-filter">重置</button>
       <span style="margin-left:auto;color:var(--text-muted);font-size:13px">${knowledgeEntries.length} 条记录</span>
     </div>
-    ${entriesHtml}`;
+    ${tagChipsHtml}
+    <div style="margin-top:16px">
+    ${entriesHtml}
+    </div>`;
 }
 
 function renderWorkflowsPage() {
@@ -436,6 +482,50 @@ function bindEvents() {
     filterCategory = document.getElementById("filter-category")?.value || "";
     filterKeyword = document.getElementById("filter-keyword")?.value || "";
     loadKnowledge();
+  });
+
+  // Clear knowledge filter
+  document.querySelector("[data-action='clear-filter']")?.addEventListener("click", () => {
+    filterCategory = "";
+    filterKeyword = "";
+    filterTags = [];
+    loadKnowledge();
+  });
+
+  // Filter by clicking category tag
+  document.querySelectorAll("[data-action='filter-by-category']").forEach(el => {
+    el.onclick = e => {
+      e.preventDefault();
+      filterCategory = el.dataset.category || "";
+      loadKnowledge();
+    };
+  });
+
+  // Filter by clicking tag in agent requirements or entry card
+  document.querySelectorAll("[data-action='filter-by-tag']").forEach(el => {
+    el.onclick = e => {
+      e.preventDefault();
+      const tag = el.dataset.tag;
+      if (tag && !filterTags.includes(tag)) {
+        filterTags = [tag];
+        loadKnowledge();
+      }
+    };
+  });
+
+  // Toggle tag chips in filter row
+  document.querySelectorAll("[data-action='toggle-tag']").forEach(el => {
+    el.onclick = e => {
+      e.preventDefault();
+      const tag = el.dataset.tag;
+      if (!tag) return;
+      if (filterTags.includes(tag)) {
+        filterTags = filterTags.filter(t => t !== tag);
+      } else {
+        filterTags.push(tag);
+      }
+      loadKnowledge();
+    };
   });
 
   // Task actions

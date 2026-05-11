@@ -1,10 +1,10 @@
 # WebGalAgent
 
-多智能体协作工作流框架 — 让多个 AI Agent 以不同角色协同完成复杂任务。
+多智能体协作工作流框架 — 让多个 AI Agent 以不同角色协同完成视觉小说剧本创作。
 
 ## 项目简介
 
-WebGalAgent 是一个通用的多智能体协作框架。核心思路是将复杂任务拆解为多个子任务，分配给不同角色的智能体（Agent），通过工作流（Workflow）编排它们的协作方式，最终汇聚结果。
+WebGalAgent 是一个面向视觉小说（Visual Novel）创作的多智能体协作框架。核心思路是将剧本创作流程拆解为三个阶段，分别由不同角色的智能体完成，通过 Pipeline 工作流串联执行，最终输出 WebGal 引擎可识别的脚本。
 
 ### 核心概念
 
@@ -14,24 +14,20 @@ WebGalAgent 是一个通用的多智能体协作框架。核心思路是将复�
 | **Message** | 智能体之间的通信单元，包含类型、发送方、接收方和内容 |
 | **Workflow** | 工作流模式，定义智能体之间的协作顺序和消息流转方式 |
 | **Memory** | 智能体的记忆系统，存储对话历史 |
-| **Knowledge** | 知识库，存储角色、设定等参考信息，供智能体运行时查询 |
+| **Knowledge** | 知识库，存储角色、设定、技能等参考信息，按需提供给对应智能体 |
 | **Tool** | 工具，扩展智能体的能力（如文件读写） |
 
-### 内置角色
+### 内置智能体
 
 | 角色 | 职责 |
 |------|------|
-| **Director** | 导演 — 接收高层需求，分解为子任务，协调整体流程 |
-| **Writer** | 创作者 — 根据任务生成结构化内容 |
-| **Artist** | 创意专家 — 生成视觉描述和创意提示词 |
-| **Reviewer** | 审核员 — 评估输出质量，给出改进建议和评分 |
+| **OutlineWriter** (A) | 剧本大纲编写者 — 根据用户输入和知识库，编写包含场景的大纲 |
+| **ScriptWriter** (B) | 剧本编写者 — 根据大纲和知识库，将每个场景扩展为描写和对话 |
+| **ScriptConverter** (C) | 脚本转换者 — 根据剧本和知识库，转换为 WebGal 引擎可执行的脚本 |
 
-### 内置工作流
+### 工作流
 
-| 模式 | 说明 |
-|------|------|
-| **SequentialWorkflow** | 顺序流水线 — 智能体按固定顺序依次执行，前一个的输出作为后一个的输入 |
-| **DebateWorkflow** | 辩论迭代 — 创作者与审核员交替执行，直到质量评分达到阈值或达到最大迭代次数 |
+**PipelineWorkflow**：三阶段顺序流水线 A → B → C，每个智能体接收用户输入 + 知识库 + 前序输出，依次执行。
 
 ---
 
@@ -39,7 +35,7 @@ WebGalAgent 是一个通用的多智能体协作框架。核心思路是将复�
 
 - **Python** ≥ 3.12
 - **包管理**: [hatch](https://hatch.pypa.io/) 或 pip
-- **LLM API**: OpenAI 兼容接口（OpenAI / Azure / 本地模型等）
+- **LLM API**: OpenAI 兼容接口（OpenAI / DeepSeek / SiliconFlow / 本地模型等）
 
 ---
 
@@ -65,165 +61,177 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-### 3. 配置环境变量
+### 3. 配置提供商
 
-复制示例文件并填入你的 API Key：
+编辑 `configs/providers.yaml`，填入你的 API Key 和模型配置：
+
+```yaml
+defaults: &defaults
+  provider: openai
+  model: deepseek-ai/DeepSeek-V4-Flash
+  base_url: https://api.siliconflow.cn/v1/chat/completions
+  api_key: "sk-your-api-key-here"
+  temperature: 0.7
+  max_tokens: 409600
+
+outline_writer:
+  <<: *defaults
+script_writer:
+  <<: *defaults
+script_converter:
+  <<: *defaults
+```
+
+### 4. 启动服务
 
 ```bash
-cp .env.example .env
+python -m webgal_agent
 ```
 
-编辑 `.env`：
-
-```env
-LLM_API_KEY=sk-your-api-key-here
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4o
-```
+访问 http://127.0.0.1:8000 即可打开 Web UI。
 
 ---
 
-## 快速开始
+## 配置说明
 
-### 顺序流水线
+### 配置文件结构
 
-```python
-import asyncio
-from webgal_agent.agents import DirectorAgent, WriterAgent
-from webgal_agent.core.agent import AgentConfig
-from webgal_agent.core.message import Message, MessageType
-from webgal_agent.workflows import SequentialWorkflow
-
-
-async def main():
-    # 创建智能体
-    director = DirectorAgent()
-    writer = WriterAgent()
-
-    # 组建顺序工作流
-    workflow = SequentialWorkflow(
-        agents={"director": director, "writer": writer},
-        order=["director", "writer"],
-    )
-
-    # 发起任务
-    initial = Message(
-        type=MessageType.TASK,
-        sender="user",
-        receiver="director",
-        content="请帮我写一个关于时间旅行的短故事",
-    )
-
-    result = await workflow.execute(initial)
-
-    # 查看结果
-    for msg in result.messages:
-        print(f"[{msg.sender} → {msg.receiver}] {msg.content}")
-
-
-asyncio.run(main())
+```
+configs/
+├── default.yaml       # 默认配置（应用、LLM、工作流、记忆）
+├── providers.yaml     # 智能体提供商配置（模型、API Key、参数）
+└── prompts.yaml       # 智能体提示词 & 知识需求配置
 ```
 
-### 辩论迭代（创作者 + 审核员）
+### prompts.yaml
 
-```python
-from webgal_agent.agents import WriterAgent, ReviewerAgent
-from webgal_agent.workflows import DebateWorkflow
+每个智能体可配置 `system_prompt`（系统提示词）和 `knowledge`（知识需求）：
 
+```yaml
+outline_writer:
+  knowledge:
+    categories: [character, setting]
+  system_prompt: |
+    你是一位专业的视觉小说剧本大纲编写者……
 
-async def main():
-    writer = WriterAgent()
-    reviewer = ReviewerAgent()
-
-    workflow = DebateWorkflow(
-        agents={"writer": writer, "reviewer": reviewer},
-        creator="writer",
-        reviewer="reviewer",
-        max_iterations=3,
-        threshold=0.8,  # 审核评分 ≥ 0.8 即通过
-    )
-
-    initial = Message(
-        type=MessageType.TASK,
-        sender="user",
-        receiver="writer",
-        content="写一段产品介绍文案",
-    )
-
-    result = await workflow.execute(initial)
-    print(f"成功: {result.success}, 迭代次数: {result.metadata.get('iterations')}")
+script_converter:
+  knowledge:
+    categories: [reference, setting]
+    tags: [webgal]
+  system_prompt: |
+    你是一位专业的视觉小说脚本转换者……
 ```
+
+`knowledge` 中的 `categories` 和 `tags` 用于控制该智能体接收哪些知识条目（并集匹配），未配置则加载全部。
+
+### providers.yaml
+
+每个智能体可独立配置 LLM 提供商，使用 YAML anchor 实现继承：
+
+```yaml
+defaults: &defaults
+  provider: openai
+  model: gpt-4o
+  base_url: https://api.openai.com/v1
+  api_key: "sk-..."
+  temperature: 0.7
+  max_tokens: 4096
+
+outline_writer:
+  <<: *defaults       # 继承 defaults，可按需覆盖
+```
+
+### 命令行参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--host` | `127.0.0.1` | 绑定地址 |
+| `--port` | `8000` | 绑定端口 |
+| `--reload` | `false` | 启用自动重载 |
+| `--knowledge-dir` | `data/knowledge` | 知识库目录 |
+| `--providers-path` | `configs/providers.yaml` | 提供商配置文件路径 |
 
 ---
 
 ## 知识库
 
-知识库用于存储角色信息、世界观、设定等参考资料，智能体运行时可以查询。
+知识库用于存储角色信息、世界观、技能文档等参考资料，智能体运行时按配置需求查询。
 
 ### 目录结构
 
 ```
 data/knowledge/
 ├── characters/          # 角色信息
-│   ├── 主角.md
-│   └── 伙伴A.md
-└── settings/            # 世界设定
-    ├── 世界观.md
-    └── 主场景.md
+│   ├── 千早愛音.md
+│   └── 長崎素世.md
+├── settings/            # 世界设定
+│   └── BanG_Dream_MyGO世界观.md
+└── skills/              # 技能文档
+    └── webgal_script_syntax.md
 ```
 
 ### 文件格式
 
-每个知识条目是一个 Markdown 文件，顶部用 YAML Frontmatter 存储元数据，正文为自由格式的 Markdown：
+每个知识条目是一个 Markdown 文件，顶部用 YAML Frontmatter 存储元数据：
 
 ```markdown
 ---
 category: character
-tags: [protagonist, human]
-title: Alice
+tags: [protagonist, guitarist]
+title: 千早愛音
 ---
 
-# Alice
+# 千早愛音
 
 ## 基本信息
-- 年龄：18
-- 性别：女
+- 年龄：16
+- 学校：月之森女子学园
 
 ## 性格
-勇敢、善良、略带倔强
-
-## 背景
-来自边境小镇的冒险者……
+开朗活泼、有点冒失……
 ```
 
-### 加载与查询
+**分类 (category)** 的可选值：
 
-```python
-from webgal_agent.knowledge import FileKnowledgeStore
+| 分类 | 说明 |
+|------|------|
+| `character` | 角色信息 |
+| `setting` | 世界观设定 |
+| `plot` | 剧情参考 |
+| `reference` | 参考文档（如技能语法） |
+| `custom` | 自定义 |
 
-# 加载知识库
-store = FileKnowledgeStore("data/knowledge")
+### 智能体知识需求
 
-# 按类别查询
-characters = store.query(category="character")
+在 `configs/prompts.yaml` 中为每个智能体配置需要的知识类别和标签：
 
-# 按标签查询
-protagonists = store.query(tags=["protagonist"])
+```yaml
+outline_writer:
+  knowledge:
+    categories: [character, setting]    # 只接收角色和设定类知识
 
-# 关键词搜索
-results = store.query(keyword="Alice")
-
-# 获取条目内容（可直接放入 LLM prompt）
-for entry in characters:
-    print(entry.full_content())
-
-# 热更新（修改文件后重新加载）
-store.reload()
+script_converter:
+  knowledge:
+    categories: [reference, setting]    # 接收参考文档和设定
+    tags: [webgal]                      # 接收含 webgal 标签的知识
 ```
+
+运行时，系统会根据配置自动筛选知识条目，只将相关内容注入对应智能体的上下文，避免无关信息浪费 token。
 
 ### 新增知识条目
 
 在 `data/knowledge/` 下的任意子目录中新建 `.md` 文件即可。目录结构自由组织，`FileKnowledgeStore` 会递归扫描所有 `.md` 文件。
+
+### API 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/knowledge` | 列出知识条目，支持 `?category=`、`?keyword=`、`?tags=` 筛选 |
+| GET | `/api/knowledge/categories` | 获取所有分类 |
+| GET | `/api/knowledge/tags` | 获取所有标签 |
+| GET | `/api/knowledge/agent-requirements` | 获取各智能体的知识需求配置 |
+| GET | `/api/knowledge/{id}` | 获取单条知识 |
+| POST | `/api/knowledge/reload` | 从磁盘重新加载知识库 |
 
 ---
 
@@ -231,69 +239,55 @@ store.reload()
 
 ```
 WebGalAgent/
-├── pyproject.toml              # 项目配置 & 依赖
+├── pyproject.toml                  # 项目配置 & 依赖
 ├── configs/
-│   └── default.yaml            # 默认配置文件
+│   ├── default.yaml                # 默认配置
+│   ├── providers.yaml              # 智能体提供商配置
+│   └── prompts.yaml                # 智能体提示词 & 知识需求
 ├── data/
-│   └── knowledge/              # 知识库（Markdown + Frontmatter）
+│   └── knowledge/                  # 知识库（Markdown + Frontmatter）
 │       ├── characters/
-│       └── settings/
+│       ├── settings/
+│       └── skills/
 ├── src/webgal_agent/
 │   ├── __init__.py
-│   ├── core/                   # 核心抽象层
-│   │   ├── agent.py            #   Agent 基类 & 状态机
-│   │   ├── message.py          #   消息模型 & 消息类型
-│   │   ├── workflow.py         #   Workflow 基类 & 执行结果
-│   │   ├── memory.py           #   记忆抽象 & 内存实现
-│   │   └── context.py          #   跨 Agent 共享上下文
-│   ├── agents/                 # 具体智能体实现
-│   │   ├── director.py         #   导演
-│   │   ├── writer.py           #   创作者
-│   │   ├── artist.py           #   创意专家
-│   │   └── reviewer.py          #   审核员
-│   ├── workflows/              # 工作流模式
-│   │   ├── sequential.py       #   顺序流水线
-│   │   └── debate.py           #   辩论迭代
-│   ├── knowledge/              # 知识库
-│   │   ├── models.py           #   知识条目模型
-│   │   └── store.py            #   存储抽象 & 文件加载
-│   ├── tools/                  # 工具扩展
-│   │   ├── base.py             #   Tool 基类
-│   │   └── file_ops.py         #   文件读写工具
-│   ├── config/                 # 配置管理
-│   │   └── settings.py         #   pydantic-settings 配置
+│   ├── __main__.py                 # CLI 入口（启动 Web 服务）
+│   ├── core/                       # 核心抽象层
+│   │   ├── agent.py                #   Agent 基类 & 状态机
+│   │   ├── message.py              #   消息模型 & 消息类型
+│   │   ├── workflow.py             #   Workflow 基类 & 执行结果
+│   │   ├── memory.py               #   记忆抽象 & 内存实现
+│   │   └── context.py              #   跨 Agent 共享上下文
+│   ├── agents/                     # 具体智能体实现
+│   │   ├── outline_writer.py       #   A: 剧本大纲编写
+│   │   ├── script_writer.py        #   B: 章节剧本生成
+│   │   └── script_converter.py     #   C: WebGal 脚本转换
+│   ├── workflows/                  # 工作流模式
+│   │   └── pipeline.py             #   Pipeline 顺序流水线
+│   ├── knowledge/                  # 知识库
+│   │   ├── models.py               #   知识条目模型 & 分类枚举
+│   │   └── store.py                #   存储抽象 & 文件加载
+│   ├── api/                        # FastAPI Web 层
+│   │   ├── app.py                  #   应用工厂
+│   │   ├── models.py               #   API 响应模型
+│   │   ├── task_manager.py         #   任务管理器（编排 Agent & 知识注入）
+│   │   ├── routes/                 #   REST API 路由
+│   │   └── static/                 #   前端静态文件（HTML/CSS/JS）
+│   ├── tools/                      # 工具扩展
+│   │   ├── base.py                 #   Tool 基类
+│   │   └── file_ops.py             #   文件读写工具
+│   ├── config/                     # 配置管理
+│   │   ├── settings.py             #   pydantic-settings 配置
+│   │   └── provider_manager.py     #   提供商配置管理器
 │   └── utils/
-│       └── logging.py          #   日志配置（rich）
-└── tests/                      # 测试
+│       └── logging.py              #   日志配置（Rich）
+└── tests/                          # 测试
     ├── conftest.py
     └── core/
         ├── test_agent.py
         ├── test_message.py
         └── test_workflow.py
 ```
-
----
-
-## 配置说明
-
-### 环境变量
-
-所有配置均可通过环境变量覆盖，支持 `.env` 文件：
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `WEBGAL_DEBUG` | `false` | 调试模式 |
-| `WEBGAL_PROJECT_DIR` | `.` | 项目目录 |
-| `LLM_PROVIDER` | `openai` | LLM 提供商 |
-| `LLM_MODEL` | `gpt-4o` | 模型名称 |
-| `LLM_BASE_URL` | `https://api.openai.com/v1` | API 地址 |
-| `LLM_API_KEY` | - | API 密钥 |
-| `LLM_TEMPERATURE` | `0.7` | 生成温度 |
-| `LLM_MAX_TOKENS` | `4096` | 最大 Token 数 |
-
-### YAML 配置文件
-
-参考 `configs/default.yaml`，可按需修改各智能体使用的模型和工作流参数。
 
 ---
 
@@ -308,20 +302,18 @@ from webgal_agent.core.agent import Agent, AgentConfig
 from webgal_agent.core.message import Message, MessageType
 
 
-class TranslatorAgent(Agent):
-    def __init__(self) -> None:
-        super().__init__(config=AgentConfig(
-            name="translator",
-            description="Translation agent",
-        ))
+class CustomAgent(Agent):
+    def __init__(self, config: AgentConfig, system_prompt: str = "") -> None:
+        super().__init__(config=config)
+        self._custom_prompt = system_prompt
 
     def system_prompt(self) -> str:
-        return "你是一个专业翻译，将内容翻译为指定语言。"
+        return self._custom_prompt or "你是一个自定义智能体。"
 
     async def run(self, message: Message) -> Message:
-        # 接入 LLM 进行实际翻译
+        # 接入 LLM 进行实际处理
         ...
-        return message.reply(content="翻译结果...", msg_type=MessageType.RESULT)
+        return message.reply(content="处理结果...", msg_type=MessageType.RESULT)
 ```
 
 ### 创建自定义工作流
@@ -395,6 +387,7 @@ pytest -v
 - **pydantic-settings** — 配置管理（环境变量 / .env）
 - **PyYAML** — YAML 解析
 - **OpenAI SDK** — LLM 调用
+- **FastAPI + Uvicorn** — Web API & 服务
 - **httpx** — 异步 HTTP 客户端
 - **Rich** — 终端美化输出
 - **pytest + pytest-asyncio** — 异步测试

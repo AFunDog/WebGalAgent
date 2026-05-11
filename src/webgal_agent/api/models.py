@@ -22,6 +22,14 @@ class KnowledgeResponse(BaseModel):
     updated_at: datetime
 
 
+class AgentKnowledgeRequirementsResponse(BaseModel):
+    """Per-agent knowledge requirements from prompts.yaml."""
+
+    agent: str
+    categories: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+
 # ---------- Workflow ----------
 
 class AgentInfoResponse(BaseModel):

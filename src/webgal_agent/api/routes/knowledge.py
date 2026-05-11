@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from webgal_agent.api.models import KnowledgeResponse
+from webgal_agent.api.models import AgentKnowledgeRequirementsResponse, KnowledgeResponse
 from webgal_agent.knowledge import FileKnowledgeStore, KnowledgeEntry
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
@@ -15,6 +15,13 @@ def _get_store() -> FileKnowledgeStore:
     from webgal_agent.api.app import get_knowledge_store
 
     return get_knowledge_store()
+
+
+def _get_task_manager():
+    """Lazily get the shared task manager instance."""
+    from webgal_agent.api.app import get_task_manager
+
+    return get_task_manager()
 
 
 def _entry_to_response(entry: KnowledgeEntry) -> KnowledgeResponse:
@@ -34,10 +41,18 @@ def _entry_to_response(entry: KnowledgeEntry) -> KnowledgeResponse:
 async def list_entries(
     category: str | None = None,
     keyword: str | None = None,
+    tags: str | None = None,
 ) -> list[KnowledgeResponse]:
-    """List all knowledge entries, optionally filtered by category or keyword."""
+    """List all knowledge entries, optionally filtered by category, keyword, or tags.
+
+    The ``tags`` parameter accepts a comma-separated list of tag values.
+    Entries matching **any** of the given tags are returned.
+    """
     store = _get_store()
-    if category or keyword:
+    if tags:
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+        entries = store.query(category=category, keyword=keyword, tags=tag_list)
+    elif category or keyword:
         entries = store.query(category=category, keyword=keyword)
     else:
         entries = store.list_all()
@@ -50,6 +65,29 @@ async def list_categories() -> list[str]:
     store = _get_store()
     entries = store.list_all()
     return sorted({e.category for e in entries})
+
+
+@router.get("/tags", response_model=list[str])
+async def list_tags() -> list[str]:
+    """List all distinct tags across all entries."""
+    store = _get_store()
+    entries = store.list_all()
+    return sorted({t for e in entries for t in e.tags})
+
+
+@router.get("/agent-requirements", response_model=list[AgentKnowledgeRequirementsResponse])
+async def get_agent_requirements() -> list[AgentKnowledgeRequirementsResponse]:
+    """Get per-agent knowledge requirements configured in prompts.yaml."""
+    tm = _get_task_manager()
+    requirements = tm._knowledge_requirements
+    return [
+        AgentKnowledgeRequirementsResponse(
+            agent=name,
+            categories=req.get("categories", []),
+            tags=req.get("tags", []),
+        )
+        for name, req in requirements.items()
+    ]
 
 
 @router.get("/{entry_id}", response_model=KnowledgeResponse)
