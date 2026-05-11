@@ -56,6 +56,10 @@ def create_app(
     import os
 
     from webgal_agent.api.task_manager import TaskManager
+    from webgal_agent.utils.logging import setup_logging
+
+    # 初始化日志（抑制 uvicorn 访问日志）
+    setup_logging()
 
     _resolved_knowledge_dir = str(Path(
         knowledge_dir or os.getenv("WEBGAL_KNOWLEDGE_DIR", "data/knowledge"),

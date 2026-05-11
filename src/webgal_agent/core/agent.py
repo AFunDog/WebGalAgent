@@ -129,6 +129,12 @@ class Agent(abc.ABC):
     async def _call_llm(self, system_prompt: str, user_content: str) -> str:
         """调用 LLM 并返回生成文本（不含工具调用）。"""
         client = self._get_client()
+        logger.info(
+            "[%s] LLM 请求 ▶ model=%s",
+            self._config.name, self._config.model,
+        )
+        logger.debug("[%s] system_prompt:\n%s", self._config.name, system_prompt[:500])
+        logger.debug("[%s] user_content:\n%s", self._config.name, user_content[:500])
         response = await client.chat.completions.create(
             model=self._config.model,
             messages=[
@@ -138,7 +144,13 @@ class Agent(abc.ABC):
             temperature=self._config.temperature,
             max_tokens=self._config.max_tokens,
         )
-        return response.choices[0].message.content or ""
+        content = response.choices[0].message.content or ""
+        logger.info(
+            "[%s] LLM 响应 ◀ 长度=%d",
+            self._config.name, len(content),
+        )
+        logger.debug("[%s] response:\n%s", self._config.name, content[:500])
+        return content
 
     async def _call_llm_with_tools(
         self,
@@ -177,6 +189,15 @@ class Agent(abc.ABC):
 
         tool_call_records: list[ToolCallRecord] = []
 
+        logger.info(
+            "[%s] LLM 请求 ▶ model=%s, tools=%s",
+            self._config.name,
+            self._config.model,
+            [t.name for t in self._tools.values()],
+        )
+        logger.debug("[%s] system_prompt:\n%s", self._config.name, system_prompt[:500])
+        logger.debug("[%s] user_content:\n%s", self._config.name, user_content[:500])
+
         for round_idx in range(max_tool_rounds):
             response = await client.chat.completions.create(
                 model=self._config.model,
@@ -191,8 +212,14 @@ class Agent(abc.ABC):
 
             # 没有 tool_calls → LLM 给出了最终文本回复
             if not assistant_msg.tool_calls:
+                content = assistant_msg.content or ""
+                logger.info(
+                    "[%s] LLM 响应 ◀ 长度=%d, 工具调用=%d次",
+                    self._config.name, len(content), len(tool_call_records),
+                )
+                logger.debug("[%s] response:\n%s", self._config.name, content[:500])
                 return LLMResponse(
-                    content=assistant_msg.content or "",
+                    content=content,
                     tool_calls=tool_call_records,
                 )
 

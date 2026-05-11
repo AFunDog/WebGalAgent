@@ -1,0 +1,170 @@
+setTransform:{"alpha":0} -target=stage-main -duration=500;
+changeFigure:none;
+changeFigure:none -left;
+changeFigure:none -right;
+changeBg:BandDream背景与BGM/背景整合/方便查找/B（soyo家）/B11.png -next -transform={"brightness":0.8};
+bgm:bangDream_bgm/04_Nobiri.mp3 -enter=2000 -volume=50;
+setTransform:{"alpha":1} -target=stage-main -duration=1000;
+
+:晚上八点，长崎素世家的客厅里暖黄色的灯光洒在木质地板上，|茶几上摊开着两本数学作业和几支散落的笔;
+wait:1000;
+
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/default -right -transform={"position":{"x":200}};
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/default -left -transform={"position":{"x":-200}};
+wait:500;
+
+:千早爱音整个人趴在桌上，下巴抵着练习册，手里的笔在她灵活的手指间转来转去，|转了一圈又一圈，就是没有落在纸上的意思;
+setAnimation:enter -target=anon -next;
+setAnimation:enter -target=soyo -next;
+wait:800;
+
+:长崎素世端坐在对面，一手捧着冒着热气的红茶，另一只手安静地翻动着数学题册，|目光专注而平静;
+:她偶尔抬眼，蓝眸淡淡地扫过对面那个明显心不在焉的粉发少女，|嘴角微微抿了一下，没有说话;
+wait:500;
+
+; ========== 场景2 ==========
+:时间一分一秒地过去，客厅里只剩下翻页声和笔转动的细微声响;
+wait:1000;
+
+:爱音终于忍不住"啪"地一声把笔拍在桌上，整个人往后一靠，瘫在沙发靠背上;
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/surprised01 -right -transform={"position":{"x":200}};
+千早爱音:啊啊啊——不行了不行了，这数学题也太难了吧，|我的脑子已经停止运转了！;
+
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/smile01 -left -transform={"position":{"x":-200}};
+:素世轻轻放下茶杯，动作优雅地端起自己的练习册，不紧不慢地翻过一页;
+长崎素世:小爱音如果专心做的话，早就写完了吧;
+
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/angry01 -right;
+千早爱音:我明明很专心了啊！;
+:爱音立刻坐直身子，一脸不服气;
+
+长崎素世:是吗？那刚才有个人，一边说着"好难好难"，一边手机屏幕亮着，|上面是Nyamuchi的新视频……;
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/smile02 -left;
+:素世歪了歪头，棕色的长发滑过肩头，蓝眸里带着促狭的笑意;
+
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/surprised01 -right;
+千早爱音:诶——！素世世你看到了啊！;
+:爱音的脸一下子红了，手忙脚乱地把手机往书包里塞;
+
+长崎素世:嗯，看得一清二楚哦，连视频标题都记住了，|叫《挑战一口气吃十个甜甜圈》对吧？;
+
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/sad01 -right;
+千早爱音:呜……素世世太可怕了，明明一直在写作业，|居然还能注意到我在干嘛;
+:爱音嘟着嘴，像一只被抓住把柄的小动物;
+
+; ========== 场景3 ==========
+:又过了好一会儿，爱音终于勉强写完了半页，然后又一次把笔扔下;
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/smile01 -right;
+千早爱音:素世世！我们休息一下吧，就十分钟！十分钟就好！;
+:她双手合十，眼睛里闪着期待的光;
+
+长崎素世:先把作业写完比较好哦，等会儿越拖越晚……;
+:素世嘴上这么说着，却已经站起身，拿起爱音面前的空杯子，走向厨房;
+changeFigure:none -id=soyo;
+wait:500;
+
+:不一会儿，她端着一杯冒着热气的红茶回来，轻轻放在爱音面前;
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/default -left -transform={"position":{"x":-200}};
+wait:500;
+
+:爱音双手捧起茶杯，暖意透过杯壁传到掌心，她抬眼看向素世，嘴角勾起一个狡黠的笑容;
+千早爱音:素世世真的好温柔啊，明明嘴上说要我写作业，|结果还是给我泡茶了;
+
+:素世没有立刻回应，重新坐回自己的位置，端起自己的茶杯抿了一口;
+:但爱音眼尖地捕捉到——那双白皙的耳朵尖，悄悄地泛起了一层淡淡的粉红色;
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/serious03 -left;
+长崎素世:……只是刚好我也要喝而已;
+:她的声音比平时低了那么一点点;
+
+; ========== 场景4 ==========
+:休息过后，爱音总算收起了玩心，伏在桌上认真对付起那些数学题;
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/serious01 -right;
+:笔尖沙沙地划过纸面，她咬着下唇，眉头微微皱起;
+:过了一会儿，她停在一道英语题前，盯着看了好一会儿，眉头越皱越紧;
+
+千早爱音:素世世，这道题……我不会;
+:她难得老实地说出"不会"两个字，声音里带着一点不甘;
+
+:素世放下自己的作业，起身绕到爱音身边，弯下腰凑过来看;
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/default -right -transform={"position":{"x":50}};
+:棕色的长发垂落下来，几乎擦到爱音的脸颊;
+
+长崎素世:嗯……这道题的话，先看这里，这个从句是修饰前面的名词的……;
+:素世的声音轻柔而清晰，手指点在题目上，耐心地讲解着;
+:但爱音的目光却不由自主地从题目上移开了——素世靠得很近，|近到她能闻到一股淡淡的香味，不是香水，更像是洗衣液残留的、干净的、温暖的气息;
+:她的呼吸微微一滞;
+
+长崎素世:……小爱音，有在听吗？;
+:素世的声音带着一丝无奈;
+:下一秒，一只温暖的手轻轻落在爱音的头顶，不重不轻地拍了两下;
+:爱音猛地回过神来，对上素世那双带着笑意的蓝眸;
+
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/surprised01 -right;
+千早爱音:有有有！在听在听！真的在听！;
+:她慌忙低下头，假装认真地盯着题目，耳朵却红得发烫;
+
+; ========== 场景5 ==========
+:时钟的指针终于指向了十点;
+:爱音"啪"地合上练习册，整个人向后一倒，在沙发上伸了一个大大的懒腰;
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/smile02 -right;
+千早爱音:完成——！终于写完了！我感觉我的灵魂已经飞走了四分之三！;
+
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/smile01 -left -transform={"position":{"x":-200}};
+:素世也合上自己的作业本，端起已经凉了的红茶，小口抿了一下;
+长崎素世:辛苦了，小爱音;
+:她的语气比平时柔和了几分;
+
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/smile03 -right;
+:爱音从沙发上坐起来，眼睛转了转，忽然露出一个灿烂的笑容;
+千早爱音:素世世——我今晚可以住下来吗？;
+
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/surprised01 -left;
+:素世端着茶杯的手顿了一下，蓝眸微微睁大;
+长崎素世:……你明天不是要穿校服吗？;
+
+千早爱音:没关系啦，我让妈妈明天送过来就好！|反正素世世家离学校也不远！;
+:爱音笑得眉眼弯弯，语气轻快得像在说"今晚吃咖喱饭吧"一样自然;
+
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/serious01 -left;
+:素世别过脸去，目光落在自己手中的茶杯上，棕色的发丝遮住了半张脸;
+长崎素世:……随便你;
+:她的声音很小，小到几乎要被客厅里的空调声盖过去;
+:但爱音还是听见了，而且她还看见了——素世嘴角那一抹藏都藏不住的、微微上扬的弧度;
+
+; ========== 场景6 ==========
+:时钟的指针已经走过了十点半;
+:客厅里，爱音整个人横躺在沙发上，滚来滚去，像一只撒欢的小狗;
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/smile02 -right;
+千早爱音:哇——素世世家的沙发好舒服啊！|这个软硬度刚刚好！我要在这上面睡觉！今晚就睡这里！;
+
+:素世端着收拾好的茶杯从厨房走出来，看到这一幕，无奈地叹了口气;
+:但她眼中没有一丝不耐烦，反而带着淡淡的宠溺;
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/smile01 -left;
+
+长崎素世:小爱音，睡衣我给你准备好了，先去洗澡吧;
+:她走到沙发边，把叠好的睡衣放在爱音旁边——是一件浅蓝色的居家服，看起来是她自己备用的;
+
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/smile04 -right;
+:爱音"嗖"地一下从沙发上弹起来，拿起睡衣，站得笔直，调皮地朝素世敬了一个礼;
+千早爱音:遵命——素世妈妈！;
+
+:客厅里安静了一秒;
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/smile02 -left;
+:素世先是一愣，然后——她忍不住"噗嗤"一声笑了出来，眉眼弯弯，连肩膀都在轻轻抖动;
+长崎素世:什么素世妈妈啊……快去洗澡啦;
+:她伸手轻轻推了推爱音的肩膀，声音里带着笑意和一丝无可奈何的纵容;
+
+changeFigure:anon/casual-2023/model _2x.json -id=anon -motion=anon/idle01 -expression=anon/smile03 -right;
+:爱音抱着睡衣，笑嘻嘻地朝浴室跑去，跑到一半又回过头来;
+千早爱音:素世世等我出来一起看电影吧！我上次看到一部超有趣的！;
+:不等素世回答，她已经一溜烟钻进了浴室;
+
+changeFigure:soyo/casual-2023/model_4x.json -id=soyo -motion=soyo/idle01 -expression=soyo/smile01 -left;
+:素世站在原地，看着那个粉色的身影消失在门后，轻轻摇了摇头;
+:她转身走向客厅的沙发，弯腰把爱音散落在地上的书包和文具一件件捡起来，整齐地摆好;
+:嘴角那抹笑意，却始终没有消失;
+
+wait:1000;
+:窗外的夜色很深，但素世家的客厅里，灯光温暖而安静;
+bgm:none -enter=3000;
+wait:2000;

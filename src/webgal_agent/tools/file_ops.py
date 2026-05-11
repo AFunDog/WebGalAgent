@@ -2,9 +2,34 @@
 
 from __future__ import annotations
 
+import os
 import pathlib
 
 from webgal_agent.tools.base import Tool, ToolResult
+
+
+def _resolve_allowed_dirs() -> list[pathlib.Path]:
+    """解析允许读取的目录列表。
+
+    包括项目根目录和配置的 WebGal 游戏目录。
+    """
+    dirs: list[pathlib.Path] = [pathlib.Path(".").resolve()]
+
+    game_dir = os.getenv("WEBGAL_GAME_DIR")
+    if game_dir:
+        dirs.append(pathlib.Path(game_dir).resolve())
+    else:
+        config_path = pathlib.Path("configs/default.yaml")
+        if config_path.exists():
+            import yaml
+            data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            if data and isinstance(data, dict):
+                assets_cfg = data.get("assets", {})
+                dir_str = assets_cfg.get("game_dir", "")
+                if dir_str:
+                    dirs.append(pathlib.Path(dir_str).resolve())
+
+    return dirs
 
 
 class ReadFileTool(Tool):
@@ -12,6 +37,7 @@ class ReadFileTool(Tool):
 
     def __init__(self, base_dir: str | pathlib.Path = ".") -> None:
         self._base_dir = pathlib.Path(base_dir).resolve()
+        self._allowed_dirs = _resolve_allowed_dirs()
 
     @property
     def name(self) -> str:
@@ -19,7 +45,7 @@ class ReadFileTool(Tool):
 
     @property
     def description(self) -> str:
-        return "读取指定路径文件的内容。路径相对于项目根目录。"
+        return "读取指定路径文件的内容。路径相对于项目根目录或游戏素材目录。"
 
     @property
     def parameters(self) -> dict[str, object]:
@@ -28,7 +54,7 @@ class ReadFileTool(Tool):
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "要读取的文件路径，相对于项目根目录",
+                    "description": "要读取的文件路径，相对于项目根目录或游戏素材目录",
                 },
             },
             "required": ["path"],
@@ -39,9 +65,26 @@ class ReadFileTool(Tool):
         if not path:
             return ToolResult(success=False, error="缺少 'path' 参数")
 
-        target = (self._base_dir / str(path)).resolve()
-        if not target.is_relative_to(self._base_dir):
-            return ToolResult(success=False, error="不允许路径穿越")
+        target = pathlib.Path(str(path)).resolve()
+
+        # 如果是绝对路径，直接检查是否在允许的目录内
+        if pathlib.Path(str(path)).is_absolute():
+            allowed = any(target.is_relative_to(d) for d in self._allowed_dirs if d.exists())
+            if not allowed:
+                return ToolResult(success=False, error=f"路径不在允许的目录内: {path}")
+        else:
+            # 相对路径：先尝试 base_dir，再尝试其他允许的目录
+            target = (self._base_dir / str(path)).resolve()
+            if not target.is_relative_to(self._base_dir):
+                # 尝试其他允许的目录
+                for allowed_dir in self._allowed_dirs:
+                    if allowed_dir.exists():
+                        candidate = (allowed_dir / str(path)).resolve()
+                        if candidate.is_relative_to(allowed_dir):
+                            target = candidate
+                            break
+                else:
+                    return ToolResult(success=False, error="不允许路径穿越")
 
         try:
             content = target.read_text(encoding="utf-8")
@@ -57,6 +100,7 @@ class WriteFileTool(Tool):
 
     def __init__(self, base_dir: str | pathlib.Path = ".") -> None:
         self._base_dir = pathlib.Path(base_dir).resolve()
+        self._allowed_dirs = _resolve_allowed_dirs()
 
     @property
     def name(self) -> str:

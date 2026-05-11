@@ -180,8 +180,26 @@ def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) 
     # --- 保存最终结果为 .txt（WebGal 脚本）---
     if task.messages:
         last_msg = task.messages[-1]
+        result_content = last_msg.content
+
+        # 尝试从 script_converter 的工具调用中提取 write_file 写入的脚本内容
+        tool_calls = last_msg.metadata.get("tool_calls", [])
+        written_contents: list[str] = []
+        for tc in tool_calls:
+            if tc.get("tool") == "write_file" and tc.get("success"):
+                args = tc.get("args", {})
+                tc_content = args.get("content", "")
+                tc_path = args.get("path", "")
+                # 跳过 index.txt 等入口文件，只保留场景脚本
+                if tc_content and "callScene" not in tc_content and "end;" not in tc_content:
+                    written_contents.append(tc_content)
+
+        # 如果工具写入了场景脚本，优先使用工具写入的内容作为最终结果
+        if written_contents:
+            result_content = "\n\n".join(written_contents)
+
         result_file = task_path / "result.txt"
-        result_file.write_text(last_msg.content, encoding="utf-8")
+        result_file.write_text(result_content, encoding="utf-8")
 
     # --- 同时保存每个步骤的独立输出 ---
     for i, msg in enumerate(task.messages):

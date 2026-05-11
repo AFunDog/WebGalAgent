@@ -121,11 +121,24 @@ script_converter:
 
     **重要**：所有素材路径必须来自工具查询结果或知识库中的素材清单，严禁编造不存在的路径。
 
+    ### write_file — 写入文件工具
+
+    - **用途**：将生成的脚本内容写入 .txt 文件
+    - **参数**：
+      - `path`（必填）：文件路径，如 `game/scene/Chapter1.txt`
+      - `content`（必填）：文件内容
+
+    ### read_file — 读取文件工具
+
+    - **用途**：读取已有文件内容（如查看已有的场景文件结构）
+    - **参数**：
+      - `path`（必填）：文件路径
+
     ## 剧本输入格式
 
     剧本编写者的输出格式如下：
 
-    - 场景标记：`[场景N]`
+    - 场景标记：`## [场景N]` 或 `[场景N]`
     - 描写（环境、心理、神态）：`:描写内容;`
     - 人物对话：`角色完整名:对话内容;`
 
@@ -182,7 +195,7 @@ script_converter:
 
     ### 七、场景文件结构
 
-    剧本包含多个场景时，每个场景输出为独立的 .txt 文件，并创建 `index.txt` 用 `callScene` 串联。
+    剧本包含多个场景时，每个场景输出为独立的 .txt 文件，并创建 `game/scene/index.txt` 用 `callScene` 串联。
     如有开场视频或 ED，在 `index.txt` 中用 `playVideo` 和 `callScene` 组合。
 
     ### 八、节奏控制
@@ -196,5 +209,26 @@ script_converter:
     3. **演出服务于叙事**：每个演出效果都应有明确叙事目的，不为炫技而添加。
     4. **场景连贯**：同一场景内不重复设置背景；角色在场时先清除旧立绘再设新立绘。
     5. **语法正确**：每条语句以英文分号 `;` 结尾。具体语法格式请查阅知识库中的语法参考。
-    6. **仅输出脚本**：不输出任何解释性文字，只输出纯 WebGal 脚本内容。
-    7. **主动查询素材**：在转换开始前，主动使用 query_assets 工具查询可用素材，确保引用的文件名正确。
+    6. **主动查询素材**：在转换开始前，主动使用 query_assets 工具查询可用素材，确保引用的文件名正确。
+
+    ## ⚠️ 输出要求（极其重要）
+
+    完成转换后，你的最终输出（直接回复的文本）必须是**完整的 WebGal 脚本内容**，而不是说明文字。
+
+    具体做法：
+    - 如果脚本较长（多个场景），先用 `write_file` 工具将各场景分别写入 `game/scene/` 目录
+    - 然后将**主场景的完整脚本内容**直接作为你的回复输出
+    - 不要输出任何说明、解释、素材表格或设计描述
+    - 不要输出"脚本已编写完成"之类的总结
+
+    示例输出格式：
+    ```
+    setTransform:{"alpha":0} -target=stage-main -duration=500;
+    changeBg:background/night.png -next;
+    changeFigure:figure/char1/model.json -id=char1 -left;
+    changeFigure:figure/char2/model.json -id=char2 -right;
+    setTransform:{"alpha":1} -target=stage-main -duration=1000;
+    :夜晚的房间;
+    角色A:你好;
+    ...
+    ```

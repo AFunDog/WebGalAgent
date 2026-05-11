@@ -1,0 +1,202 @@
+setTransform:{"alpha":0} -target=stage-main -duration=500;
+changeFigure:none;
+changeFigure:none -left;
+changeFigure:none -right;
+changeBg:background/BandDream背景与BGM/背景整理合集/A（角色生活地点）/mygo/素世家客厅（晚上）.png -next;
+bgm:bgm/背景音乐/温馨日常类/大切な時間.mp3 -enter=2000;
+setTransform:{"alpha":1} -target=stage-main -duration=1000;
+
+:晚上八点，长崎素世家的客厅里暖黄的灯光柔和地洒落，茶几上摊开两本数学作业本，旁边摆着一杯冒着热气的红茶;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/thinking01;
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/default;
+
+:爱音咬着笔杆，眉头皱成一团，盯着练习册上的二次函数题目，整个人像蔫了一样趴在茶几上;
+
+:素世则端正地坐在对面，一手托腮一手翻着作业本，姿态优雅，时不时端起红茶杯轻啜一口，神情从容;
+
+千早爱音:呜呜……为什么数学题可以这么难啊……;
+
+长崎素世:小爱音，这才第一题呢;
+
+:素世抬眼看了看爱音，语气轻柔，带着一丝无奈的笑意;
+
+千早爱音:素世世好厉害啊，明明月之森的作业比我们难多了，你居然都快写完了……;
+
+wait:500;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/smile02;
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/smile01;
+
+:晚上八点十五分，爱音终于忍不住了，悄悄挪动位置凑到素世身边，眼睛往素世的作业本上瞄;
+
+:素世头也没抬，伸手用手掌挡住爱音凑过来的脸，轻轻往外推开;
+
+千早爱音:素世世～就一题嘛，让我看一眼，就一眼！;
+
+长崎素世:小爱音，自己先想想，看答案的话考试怎么办;
+
+:素世的声音依然温柔，但语气里带着不容商量的坚定;
+
+千早爱音:可是我真的想不出来嘛……这题好难，我脑子要炸了;
+
+:素世叹了口气，放下手中的笔，把爱音的作业本拉到自己面前;
+
+长崎素世:哪里不会？我教你;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/smile03;
+千早爱音:这里！这个二次函数的顶点坐标，我算出来总是跟答案不一样;
+
+:爱音立刻来了精神，伸手指着题目，眼睛亮晶晶地看着素世;
+
+wait:500;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/smile01;
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/smile02;
+
+:晚上八点半，在素世的讲解下，爱音终于解出了那道题;
+
+:爱音得意地晃着作业本，脸上写满了"快夸我"的表情;
+
+千早爱音:嘿嘿，完成了！果然有素世世在就是不一样！;
+
+:素世抬头瞥了一眼爱音的作业本，目光在几行计算步骤上停留了一下;
+
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/serious02;
+长崎素世:小爱音，你这里跳了一步，虽然答案对了，但过程不完整的话会被扣分的;
+
+:爱音的笑容僵在脸上，缩了缩脖子，重新低头检查自己的计算过程;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/shame01;
+千早爱音:诶……真的耶，我都没发现;
+
+:素世看着爱音乖乖改错的样子，嘴角不自觉地微微上扬，站起身走向厨房;
+
+:不一会儿，她端着一杯新泡的红茶走回来，轻轻放在爱音手边;
+
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/smile01;
+长崎素世:喝点茶，休息一下吧;
+
+wait:500;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/idle01;
+
+:晚上九点，爱音终于又攻克了两道题，但整个人已经彻底没力气了;
+
+:她趴在茶几上，下巴搁在作业本上，发出一声长长的哀叹;
+
+千早爱音:好饿啊……肚子在抗议了……;
+
+:素世放下笔，看了看爱音那副可怜兮兮的样子;
+
+长崎素世:饿了吗……我看看冰箱里有什么;
+
+:爱音一听这话，瞬间从桌上弹起来，眼睛发亮;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/smile03;
+千早爱音:我来帮忙！;
+
+:她兴冲冲地跟在素世身后往厨房走，结果素世回过头，伸出食指轻轻抵在爱音的额头上;
+
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/smile02;
+长崎素世:小爱音乖乖坐着等就好，厨房可不是让你捣乱的地方;
+
+:爱音被指尖抵住，眨了眨眼睛，只好乖乖退回客厅;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/smile02;
+千早爱音:好吧好吧……那素世世要快点哦！;
+
+wait:500;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/smile03;
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/smile01;
+
+:晚上九点十五分，素世从厨房端出两份蔬菜通心粉汤和烤得金黄酥脆的吐司;
+
+:爱音立刻欢呼一声，拿起勺子就开始大口吃起来;
+
+千早爱音:好烫好烫……但是好好吃！;
+
+:她吃得满嘴都是，嘴角还沾着汤渍，一脸满足;
+
+:素世看着爱音这副模样，忍不住轻笑出声，从桌上抽了张纸巾递过去;
+
+长崎素世:小爱音，擦擦嘴，都吃到脸上了;
+
+:爱音接过纸巾胡乱擦了一下，突然抬起头，眼睛亮晶晶地看着素世;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/smile04;
+千早爱音:素世世做的饭真好吃！以后我能常来蹭饭吗？;
+
+:素世愣了一下，没想到爱音会突然这么说，低头轻轻搅动碗里的汤;
+
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/smile01;
+长崎素世:嗯……想来就来吧;
+
+:她的声音很轻，但爱音还是听得清清楚楚，笑得眼睛弯成了月牙;
+
+wait:800;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/smile01;
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/smile02;
+
+:晚上十点，最后一道题终于画上了句号;
+
+:爱音把笔一丢，整个人往后一仰，瘫在沙发上伸了个大大的懒腰;
+
+千早爱音:终于写完了——！累死我了！;
+
+:素世不紧不慢地整理着作业本，将它们摞整齐放进爱音的书包里;
+
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/serious01;
+长崎素世:下次要早点开始写，不要总是拖到截止前一天才做;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/smile03;
+千早爱音:嘿嘿，有素世世在就不怕啦！;
+
+:素世别过脸去，假装生气的样子，但耳尖却悄悄泛上了一层粉色;
+
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/serious03;
+长崎素世:我可不会每次都帮你;
+
+千早爱音:素世世最好了～我下次还来！;
+
+:素世没有回答，但也没有反驳，只是轻轻"哼"了一声;
+
+wait:500;
+
+bgm:none -enter=2000;
+setTransform:{"alpha":0} -target=stage-main -duration=1000;
+changeFigure:none -id=anon;
+changeFigure:none -id=soyo;
+changeBg:background/BandDream背景与BGM/背景整理合集/A（角色生活地点）/mygo/素世家门口.jpg -next;
+setTransform:{"alpha":1} -target=stage-main -duration=1000;
+
+:晚上十点十五分，玄关处，爱音已经穿好了鞋子，背上书包;
+
+changeFigure:figure/anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/smile01;
+changeFigure:figure/soyo/casual-2023/model.json -id=soyo -right -motion=soyo/smile01 -expression=soyo/smile01;
+
+:素世靠在门框边，双手抱在身前，看着爱音系鞋带;
+
+长崎素世:路上小心，到家了发个消息;
+
+:爱音站起身，回头冲素世露出一个灿烂的笑容;
+
+千早爱音:知道啦！素世世晚安！明天学校见！;
+
+:素世轻轻点了点头，嘴角带着浅浅的笑意;
+
+:爱音挥了挥手，转身沿着走廊走去，脚步声渐渐远去;
+
+changeFigure:none -id=anon;
+
+:素世站在门口，看着爱音的身影消失在走廊转角，又过了一会儿才轻轻关上门;
+
+:门合上的瞬间，她低头笑了笑，指尖轻轻拨弄了一下发梢;
+
+changeFigure:none -id=soyo;
+setTransform:{"alpha":0} -target=stage-main -duration=1000;
+wait:500;
+
+end;
