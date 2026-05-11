@@ -30,6 +30,8 @@ class AgentInfoResponse(BaseModel):
     name: str
     description: str
     state: str
+    provider: str = ""
+    model: str = ""
 
 
 class WorkflowInfoResponse(BaseModel):

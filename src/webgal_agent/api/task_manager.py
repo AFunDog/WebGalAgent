@@ -9,6 +9,7 @@ from pathlib import Path
 import yaml
 
 from webgal_agent.agents import OutlineWriterAgent, ScriptConverterAgent, ScriptWriterAgent
+from webgal_agent.config.provider_manager import ProviderConfigManager
 from webgal_agent.core.agent import Agent
 from webgal_agent.core.message import Message, MessageType
 from webgal_agent.core.workflow import WorkflowResult
@@ -17,6 +18,13 @@ from webgal_agent.workflows.pipeline import PipelineWorkflow
 
 # Pipeline step order: A → B → C
 PIPELINE_ORDER = ["outline_writer", "script_writer", "script_converter"]
+
+# Agent descriptions
+AGENT_DESCRIPTIONS: dict[str, str] = {
+    "outline_writer": "接受用户输入和知识库，编写剧本大纲",
+    "script_writer": "接受用户输入、剧本大纲和知识库，生成各章节剧本",
+    "script_converter": "接受用户输入、剧本和知识库，转换为 WebGal 引擎脚本",
+}
 
 
 class TaskInfo:
@@ -73,9 +81,14 @@ def _load_prompts() -> dict[str, str]:
 class TaskManager:
     """Manages pipeline workflow executions."""
 
-    def __init__(self, knowledge_store: KnowledgeStore | None = None) -> None:
+    def __init__(
+        self,
+        knowledge_store: KnowledgeStore | None = None,
+        provider_manager: ProviderConfigManager | None = None,
+    ) -> None:
         self._tasks: dict[str, TaskInfo] = {}
         self._knowledge_store = knowledge_store
+        self._provider_manager = provider_manager
         self._prompts = _load_prompts()
 
     @property
@@ -83,11 +96,30 @@ class TaskManager:
         return ["pipeline"]
 
     def _build_agents(self) -> dict[str, Agent]:
-        return {
-            "outline_writer": OutlineWriterAgent(system_prompt=self._prompts.get("outline_writer", "")),
-            "script_writer": ScriptWriterAgent(system_prompt=self._prompts.get("script_writer", "")),
-            "script_converter": ScriptConverterAgent(system_prompt=self._prompts.get("script_converter", "")),
-        }
+        agents: dict[str, Agent] = {}
+        for name in PIPELINE_ORDER:
+            # Build AgentConfig from provider manager if available
+            if self._provider_manager:
+                config = self._provider_manager.to_agent_config(
+                    name, AGENT_DESCRIPTIONS.get(name, "")
+                )
+            else:
+                from webgal_agent.core.agent import AgentConfig
+                config = AgentConfig(
+                    name=name,
+                    description=AGENT_DESCRIPTIONS.get(name, ""),
+                )
+
+            prompt = self._prompts.get(name, "")
+
+            if name == "outline_writer":
+                agents[name] = OutlineWriterAgent(config=config, system_prompt=prompt)
+            elif name == "script_writer":
+                agents[name] = ScriptWriterAgent(config=config, system_prompt=prompt)
+            elif name == "script_converter":
+                agents[name] = ScriptConverterAgent(config=config, system_prompt=prompt)
+
+        return agents
 
     def _build_knowledge_context(self) -> str:
         """Format knowledge base entries as context text for agents."""
@@ -153,7 +185,13 @@ class TaskManager:
         """Return info about the pipeline workflow."""
         agents = self._build_agents()
         agent_list = [
-            {"name": a.name, "description": a.description, "state": a.state.value}
+            {
+                "name": a.name,
+                "description": a.description,
+                "state": a.state.value,
+                "provider": a._config.provider,
+                "model": a._config.model,
+            }
             for a in agents.values()
         ]
         return {

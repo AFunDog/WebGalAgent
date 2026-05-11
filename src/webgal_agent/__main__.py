@@ -16,7 +16,17 @@ def main() -> None:
         default="data/knowledge",
         help="Path to knowledge base directory (default: data/knowledge)",
     )
+    parser.add_argument(
+        "--providers-path",
+        default="configs/providers.yaml",
+        help="Path to providers config YAML (default: configs/providers.yaml)",
+    )
     args = parser.parse_args()
+
+    # Pass config paths via environment variables so the factory can pick them up
+    import os
+    os.environ["WEBGAL_KNOWLEDGE_DIR"] = args.knowledge_dir
+    os.environ["WEBGAL_PROVIDERS_PATH"] = args.providers_path
 
     uvicorn.run(
         "webgal_agent.api.app:create_app",

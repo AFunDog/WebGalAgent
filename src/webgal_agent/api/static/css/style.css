@@ -239,6 +239,12 @@ tr:hover td { background: rgba(99, 102, 241, 0.04); }
 /* ===== Grid helpers ===== */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
+/* ===== Provider Config ===== */
+.provider-info { display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; font-size: 13px; }
+.provider-field { display: contents; }
+.provider-label { color: var(--text-muted); font-weight: 500; }
+.provider-url { word-break: break-all; }
+
 /* ===== Scrollbar ===== */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }

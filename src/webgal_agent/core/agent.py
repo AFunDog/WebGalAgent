@@ -26,8 +26,12 @@ class AgentConfig(BaseModel):
 
     name: str
     description: str = ""
+    provider: str = "openai"
     model: str = "gpt-4o"
+    base_url: str = "https://api.openai.com/v1"
+    api_key: str = ""
     temperature: float = 0.7
+    max_tokens: int = 4096
     max_retries: int = 3
 
 

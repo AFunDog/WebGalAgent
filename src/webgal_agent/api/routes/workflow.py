@@ -5,7 +5,6 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from webgal_agent.api.models import AgentInfoResponse, WorkflowInfoResponse
-from webgal_agent.agents import OutlineWriterAgent, ScriptConverterAgent, ScriptWriterAgent
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
@@ -22,15 +21,20 @@ async def get_pipeline_info() -> WorkflowInfoResponse:
     from webgal_agent.api.app import get_task_manager
 
     info = get_task_manager().get_workflow_info()
+    agents_info: list[dict[str, str]] = info.get("agents", [])
     return WorkflowInfoResponse(
         name=info["name"],
         type=info["type"],
         description=info["description"],
         agents=[
             AgentInfoResponse(
-                name=a["name"], description=a["description"], state=a["state"]
+                name=a["name"],
+                description=a["description"],
+                state=a["state"],
+                provider=a.get("provider", ""),
+                model=a.get("model", ""),
             )
-            for a in info.get("agents", [])
+            for a in agents_info
         ],
     )
 
@@ -38,8 +42,16 @@ async def get_pipeline_info() -> WorkflowInfoResponse:
 @router.get("/agents/status", response_model=list[AgentInfoResponse])
 async def get_agents_status() -> list[AgentInfoResponse]:
     """Get current status of all agents."""
-    agents = [OutlineWriterAgent(), ScriptWriterAgent(), ScriptConverterAgent()]
+    from webgal_agent.api.app import get_task_manager
+
+    agents = get_task_manager()._build_agents()
     return [
-        AgentInfoResponse(name=a.name, description=a.description, state=a.state.value)
-        for a in agents
+        AgentInfoResponse(
+            name=a.name,
+            description=a.description,
+            state=a.state.value,
+            provider=a._config.provider,
+            model=a._config.model,
+        )
+        for a in agents.values()
     ]

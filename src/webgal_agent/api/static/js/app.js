@@ -14,6 +14,15 @@ const API = {
     if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
     return r.json();
   },
+  async put(url, body) {
+    const r = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`${r.status}: ${await r.text()}`);
+    return r.json();
+  },
 };
 
 // ===== Icons (inline SVG) =====
@@ -22,6 +31,7 @@ const ICONS = {
   workflow: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="6" r="3"/><circle cx="19" cy="6" r="3"/><circle cx="12" cy="18" r="3"/><path d="M8 6h8M12 9v6M9 8l3 7M15 8l-3 7"/></svg>`,
   task: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
   send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
+  settings: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
 };
 
 // ===== App State =====
@@ -30,8 +40,11 @@ let knowledgeEntries = [];
 let categories = [];
 let tasks = [];
 let workflowInfo = null;
+let providerData = null;
+let providerPresets = null;
 let filterCategory = "";
 let filterKeyword = "";
+let editingAgent = null; // which agent is being edited in the modal
 
 // ===== Page: Knowledge =====
 async function loadKnowledge() {
@@ -77,12 +90,60 @@ async function createTask(content) {
   }
 }
 
+// ===== Page: Providers =====
+async function loadProviders() {
+  try {
+    providerData = await API.get("/api/providers");
+    providerPresets = await API.get("/api/providers/presets");
+  } catch (e) {
+    console.error("Failed to load providers:", e);
+  }
+  render();
+}
+
+async function saveProvider(agentName) {
+  const form = document.getElementById("provider-form");
+  if (!form) return;
+
+  const body = {
+    provider: form.provider.value,
+    model: form.model.value,
+    base_url: form.base_url.value,
+    api_key: form.api_key.value,
+    temperature: parseFloat(form.temperature.value),
+    max_tokens: parseInt(form.max_tokens.value),
+  };
+
+  try {
+    if (agentName === "__defaults__") {
+      await API.put("/api/providers", body);
+    } else {
+      await API.put("/api/providers/" + agentName, body);
+    }
+    editingAgent = null;
+    await loadProviders();
+  } catch (e) {
+    alert("保存失败: " + e.message);
+  }
+}
+
+function applyPreset(presetName) {
+  const form = document.getElementById("provider-form");
+  if (!form || !providerPresets || !providerPresets[presetName]) return;
+
+  const preset = providerPresets[presetName];
+  form.provider.value = preset.provider || presetName;
+  form.base_url.value = preset.base_url || "";
+}
+
 // ===== Routing =====
 function navigate(page) {
   currentPage = page;
+  editingAgent = null;
   if (page === "knowledge") loadKnowledge();
   else if (page === "workflows") loadWorkflows();
   else if (page === "tasks") loadTasks();
+  else if (page === "providers") loadProviders();
 }
 
 // ===== Render =====
@@ -96,8 +157,10 @@ function render() {
         ${currentPage === "knowledge" ? renderKnowledgePage() : ""}
         ${currentPage === "workflows" ? renderWorkflowsPage() : ""}
         ${currentPage === "tasks" ? renderTasksPage() : ""}
+        ${currentPage === "providers" ? renderProvidersPage() : ""}
       </main>
-    </div>`;
+    </div>
+    ${editingAgent !== null ? renderProviderModal() : ""}`;
   bindEvents();
 }
 
@@ -110,6 +173,7 @@ function renderSidebar() {
     { id: "knowledge", label: "知识库", icon: ICONS.knowledge },
     { id: "workflows", label: "工作流", icon: ICONS.workflow },
     { id: "tasks", label: "任务执行", icon: ICONS.task },
+    { id: "providers", label: "提供商配置", icon: ICONS.settings },
   ];
   return `
     <nav class="sidebar">
@@ -155,7 +219,10 @@ function renderWorkflowsPage() {
           <div class="card">
             <div class="card-header">
               <h3>${stepLabels[i] || a.name}</h3>
-              <span class="badge badge-muted">${esc(a.name)}</span>
+              <div>
+                <span class="badge badge-muted">${esc(a.name)}</span>
+                <span class="tag" style="margin-left:4px">${esc(a.provider)}/${esc(a.model)}</span>
+              </div>
             </div>
             <p style="color:var(--text-muted);font-size:13px">${esc(a.description)}</p>
           </div>
@@ -173,8 +240,8 @@ function renderWorkflowsPage() {
       <div class="card-header"><h3>智能体状态</h3></div>
       <div class="table-wrap">
         <table id="agent-status-table">
-          <thead><tr><th>名称</th><th>描述</th><th>状态</th></tr></thead>
-          <tbody><tr><td colspan="3" style="color:var(--text-muted)">加载中...</td></tr></tbody>
+          <thead><tr><th>名称</th><th>描述</th><th>提供商</th><th>模型</th><th>状态</th></tr></thead>
+          <tbody><tr><td colspan="5" style="color:var(--text-muted)">加载中...</td></tr></tbody>
         </table>
       </div>
     </div>`;
@@ -217,6 +284,140 @@ function renderTasksPage() {
     ${tasksHtml}`;
 }
 
+function renderProvidersPage() {
+  if (!providerData) {
+    return `<h2 class="page-title">提供商配置</h2><div class="empty-state"><p>加载中...</p></div>`;
+  }
+
+  const defaults = providerData.defaults || {};
+  const agents = providerData.agents || {};
+
+  // Defaults card
+  const defaultsCard = `
+    <div class="card">
+      <div class="card-header">
+        <h3>默认配置</h3>
+        <button class="btn btn-ghost btn-sm" data-action="edit-provider" data-agent="__defaults__">编辑</button>
+      </div>
+      <div class="provider-info">
+        <div class="provider-field"><span class="provider-label">提供商</span><span>${esc(defaults.provider)}</span></div>
+        <div class="provider-field"><span class="provider-label">模型</span><span>${esc(defaults.model)}</span></div>
+        <div class="provider-field"><span class="provider-label">Base URL</span><span class="provider-url">${esc(defaults.base_url)}</span></div>
+        <div class="provider-field"><span class="provider-label">API Key</span><span>${defaults.api_key ? "••••••••" : "未设置"}</span></div>
+        <div class="provider-field"><span class="provider-label">Temperature</span><span>${defaults.temperature}</span></div>
+        <div class="provider-field"><span class="provider-label">Max Tokens</span><span>${defaults.max_tokens}</span></div>
+      </div>
+    </div>`;
+
+  // Per-agent cards
+  const agentLabels = {
+    outline_writer: "A: 剧本大纲编写",
+    script_writer: "B: 章节剧本生成",
+    script_converter: "C: WebGal 脚本转换",
+  };
+
+  const agentCards = Object.entries(agents).map(([name, cfg]) => {
+    const label = agentLabels[name] || name;
+    return `
+    <div class="card">
+      <div class="card-header">
+        <h3>${esc(label)}</h3>
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="tag">${esc(cfg.provider)}/${esc(cfg.model)}</span>
+          <button class="btn btn-ghost btn-sm" data-action="edit-provider" data-agent="${esc(name)}">编辑</button>
+        </div>
+      </div>
+      <div class="provider-info">
+        <div class="provider-field"><span class="provider-label">提供商</span><span>${esc(cfg.provider)}</span></div>
+        <div class="provider-field"><span class="provider-label">模型</span><span>${esc(cfg.model)}</span></div>
+        <div class="provider-field"><span class="provider-label">Base URL</span><span class="provider-url">${esc(cfg.base_url)}</span></div>
+        <div class="provider-field"><span class="provider-label">API Key</span><span>${cfg.api_key ? "••••••••" : "未设置"}</span></div>
+        <div class="provider-field"><span class="provider-label">Temperature</span><span>${cfg.temperature}</span></div>
+        <div class="provider-field"><span class="provider-label">Max Tokens</span><span>${cfg.max_tokens}</span></div>
+      </div>
+    </div>`;
+  }).join("");
+
+  return `
+    <h2 class="page-title">提供商配置</h2>
+    <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px">配置每个智能体使用的 LLM 提供商、模型和参数。未单独配置的智能体将使用默认配置。</p>
+    ${defaultsCard}
+    <h3 style="margin:24px 0 16px;font-size:16px">智能体配置</h3>
+    ${agentCards}`;
+}
+
+function renderProviderModal() {
+  const isDefaults = editingAgent === "__defaults__";
+  const cfg = isDefaults
+    ? (providerData?.defaults || {})
+    : (providerData?.agents?.[editingAgent] || providerData?.defaults || {});
+
+  const agentLabels = {
+    __defaults__: "默认配置",
+    outline_writer: "A: 剧本大纲编写",
+    script_writer: "B: 章节剧本生成",
+    script_converter: "C: WebGal 脚本转换",
+  };
+
+  const presetOptions = providerPresets
+    ? Object.keys(providerPresets).map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join("")
+    : "";
+
+  return `
+    <div class="modal-overlay" data-action="close-modal">
+      <div class="modal">
+        <h2>编辑 — ${esc(agentLabels[editingAgent] || editingAgent)}</h2>
+
+        <div class="form-group">
+          <label>快捷预设</label>
+          <div style="display:flex;gap:8px">
+            <select id="preset-select" class="form-select" style="flex:1">
+              <option value="">选择预设...</option>
+              ${presetOptions}
+            </select>
+            <button class="btn btn-ghost btn-sm" data-action="apply-preset">应用</button>
+          </div>
+        </div>
+
+        <form id="provider-form">
+          <div class="grid-2">
+            <div class="form-group">
+              <label>提供商 (Provider)</label>
+              <input name="provider" class="form-input" value="${esc(cfg.provider || "")}" />
+            </div>
+            <div class="form-group">
+              <label>模型 (Model)</label>
+              <input name="model" class="form-input" value="${esc(cfg.model || "")}" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Base URL</label>
+            <input name="base_url" class="form-input" value="${esc(cfg.base_url || "")}" />
+          </div>
+          <div class="form-group">
+            <label>API Key</label>
+            <input name="api_key" class="form-input" type="password" value="${esc(cfg.api_key || "")}" placeholder="sk-..." />
+          </div>
+          <div class="grid-2">
+            <div class="form-group">
+              <label>Temperature</label>
+              <input name="temperature" class="form-input" type="number" step="0.1" min="0" max="2" value="${cfg.temperature ?? 0.7}" />
+            </div>
+            <div class="form-group">
+              <label>Max Tokens</label>
+              <input name="max_tokens" class="form-input" type="number" min="1" value="${cfg.max_tokens ?? 4096}" />
+            </div>
+          </div>
+        </form>
+
+        <div class="modal-actions">
+          <button class="btn btn-ghost" data-action="close-modal">取消</button>
+          <button class="btn btn-primary" data-action="save-provider">保存</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 function esc(str) {
   const d = document.createElement("div");
   d.textContent = str || "";
@@ -244,6 +445,38 @@ function bindEvents() {
     createTask(content);
   });
 
+  // Edit provider
+  document.querySelectorAll("[data-action='edit-provider']").forEach(el => {
+    el.onclick = e => {
+      e.stopPropagation();
+      editingAgent = el.dataset.agent;
+      render();
+    };
+  });
+
+  // Save provider
+  document.querySelector("[data-action='save-provider']")?.addEventListener("click", () => {
+    saveProvider(editingAgent);
+  });
+
+  // Close modal
+  document.querySelectorAll("[data-action='close-modal']").forEach(el => {
+    el.onclick = e => {
+      if (e.target === el || el.classList.contains("btn-ghost")) {
+        editingAgent = null;
+        render();
+      }
+    };
+  });
+
+  // Apply preset
+  document.querySelector("[data-action='apply-preset']")?.addEventListener("click", () => {
+    const select = document.getElementById("preset-select");
+    if (select?.value) {
+      applyPreset(select.value);
+    }
+  });
+
   // Load agent status on workflow page
   if (currentPage === "workflows") {
     loadAgentStatus();
@@ -259,6 +492,8 @@ async function loadAgentStatus() {
         <tr>
           <td><strong>${esc(a.name)}</strong></td>
           <td style="color:var(--text-muted)">${esc(a.description)}</td>
+          <td><span class="tag">${esc(a.provider || "-")}</span></td>
+          <td>${esc(a.model || "-")}</td>
           <td><span class="badge badge-${a.state === 'idle' ? 'muted' : 'success'}">${esc(a.state)}</span></td>
         </tr>`).join("");
     }
