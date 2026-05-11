@@ -1,4 +1,4 @@
-"""Execution context shared across agents in a workflow."""
+"""工作流中智能体间共享的执行上下文。"""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ from pydantic import BaseModel
 
 
 class SharedContext(BaseModel):
-    """Shared context accessible by all agents in a workflow.
+    """工作流中所有智能体可访问的共享上下文。
 
-    Use this to pass project-level data (e.g., story outline,
-    character definitions) that every agent needs to reference.
+    用于传递项目级数据（如故事大纲、角色定义），
+    供每个智能体引用。
     """
 
     project_name: str = ""
@@ -22,6 +22,6 @@ class SharedContext(BaseModel):
     extra: dict[str, Any] = field(default_factory=dict)
 
     def with_extra(self, key: str, value: Any) -> SharedContext:
-        """Return a copy with an additional entry in ``extra``."""
+        """返回带有新增 ``extra`` 条目的副本。"""
         new_extra = {**self.extra, key: value}
         return self.model_copy(update={"extra": new_extra})

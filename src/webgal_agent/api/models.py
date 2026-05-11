@@ -1,4 +1,4 @@
-"""API request/response schemas."""
+"""API 请求/响应模型。"""
 
 from __future__ import annotations
 
@@ -7,10 +7,10 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-# ---------- Knowledge ----------
+# ---------- 知识库 ----------
 
 class KnowledgeResponse(BaseModel):
-    """Knowledge entry returned by the API."""
+    """API 返回的知识库条目。"""
 
     id: str
     category: str
@@ -23,17 +23,17 @@ class KnowledgeResponse(BaseModel):
 
 
 class AgentKnowledgeRequirementsResponse(BaseModel):
-    """Per-agent knowledge requirements from prompts.yaml."""
+    """从 prompts.yaml 配置的各智能体知识库需求。"""
 
     agent: str
     categories: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
 
 
-# ---------- Workflow ----------
+# ---------- 工作流 ----------
 
 class AgentInfoResponse(BaseModel):
-    """Agent status information."""
+    """智能体状态信息。"""
 
     name: str
     description: str
@@ -43,7 +43,7 @@ class AgentInfoResponse(BaseModel):
 
 
 class WorkflowInfoResponse(BaseModel):
-    """Workflow configuration information."""
+    """工作流配置信息。"""
 
     name: str
     agents: list[AgentInfoResponse]
@@ -51,10 +51,10 @@ class WorkflowInfoResponse(BaseModel):
     description: str = ""
 
 
-# ---------- Task ----------
+# ---------- 任务 ----------
 
 class TaskMessageResponse(BaseModel):
-    """A message within a task execution."""
+    """任务执行中的消息。"""
 
     id: str
     type: str
@@ -65,7 +65,7 @@ class TaskMessageResponse(BaseModel):
 
 
 class TaskResponse(BaseModel):
-    """Task execution status and results."""
+    """任务执行状态和结果。"""
 
     id: str
     status: str

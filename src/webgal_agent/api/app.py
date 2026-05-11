@@ -1,4 +1,4 @@
-"""FastAPI application factory and lifecycle."""
+"""FastAPI 应用工厂与生命周期管理。"""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from webgal_agent.api.routes import knowledge, provider, task, workflow
+from webgal_agent.api.routes import assets, knowledge, provider, task, workflow
 from webgal_agent.config.provider_manager import ProviderConfigManager
 from webgal_agent.knowledge import FileKnowledgeStore
 
 if TYPE_CHECKING:
     from webgal_agent.api.task_manager import TaskManager
 
-# Module-level singletons (initialized in lifespan)
+# 模块级单例（在 lifespan 中初始化）
 _knowledge_store: FileKnowledgeStore | None = None
 _task_manager: TaskManager | None = None
 _provider_manager: ProviderConfigManager | None = None
@@ -45,13 +45,13 @@ def create_app(
     knowledge_dir: str | Path | None = None,
     providers_path: str | Path | None = None,
 ) -> FastAPI:
-    """Create and configure the FastAPI application.
+    """创建并配置 FastAPI 应用。
 
-    Args:
-        knowledge_dir: Path to the knowledge base directory.
-            Defaults to env var ``WEBGAL_KNOWLEDGE_DIR`` or ``data/knowledge``.
-        providers_path: Path to the providers config YAML.
-            Defaults to env var ``WEBGAL_PROVIDERS_PATH`` or ``configs/providers.yaml``.
+    参数：
+        knowledge_dir: 知识库目录路径。
+            默认使用环境变量 ``WEBGAL_KNOWLEDGE_DIR`` 或 ``data/knowledge``。
+        providers_path: 供应商配置 YAML 路径。
+            默认使用环境变量 ``WEBGAL_PROVIDERS_PATH`` 或 ``configs/providers.yaml``。
     """
     import os
 
@@ -81,13 +81,14 @@ def create_app(
             task_dir=os.getenv("WEBGAL_TASK_DIR", "data/tasks"),
         )
 
-    # Register API routes
+    # 注册 API 路由
+    app.include_router(assets.router)
     app.include_router(knowledge.router)
     app.include_router(provider.router)
     app.include_router(workflow.router)
     app.include_router(task.router)
 
-    # Serve static frontend files (must be last — catch-all mount)
+    # 提供静态前端文件（必须放在最后 — 通配挂载）
     if _STATIC_DIR.exists():
         app.mount("/", StaticFiles(directory=str(_STATIC_DIR), html=True), name="static")
 

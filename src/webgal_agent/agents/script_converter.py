@@ -1,7 +1,6 @@
-"""Agent C: Script Converter.
+"""智能体 C：脚本转换器。
 
-Receives user input + script from B + knowledge base,
-converts scripts into WebGal engine format.
+接收用户输入、剧本和知识库，转换为 WebGal 引擎格式。
 """
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ from webgal_agent.core.message import Message, MessageType
 
 
 class ScriptConverterAgent(Agent):
-    """Agent C: 转换为 WebGal 脚本.
+    """智能体 C：转换为 WebGal 脚本。
 
     输入: 用户初始输入 + B 生成的剧本 + 知识库
     输出: WebGal 引擎可识别的动画脚本
@@ -31,7 +30,7 @@ class ScriptConverterAgent(Agent):
         return "TODO: 请在 configs/prompts.yaml 中配置 script_converter 的系统提示词"
 
     async def run(self, message: Message) -> Message:
-        # TODO: integrate with LLM
+        # TODO: 对接 LLM
         return message.reply(
             content="[ScriptConverter] 已收到剧本和知识库，开始转换为 WebGal 脚本...",
             msg_type=MessageType.RESULT,

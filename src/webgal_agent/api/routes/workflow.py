@@ -1,4 +1,4 @@
-"""Workflow info API routes."""
+"""工作流信息 API 路由。"""
 
 from __future__ import annotations
 
@@ -11,13 +11,13 @@ router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
 @router.get("", response_model=list[str])
 async def list_workflows() -> list[str]:
-    """List available workflow types."""
+    """列出可用的工作流类型。"""
     return ["pipeline"]
 
 
 @router.get("/pipeline", response_model=WorkflowInfoResponse)
 async def get_pipeline_info() -> WorkflowInfoResponse:
-    """Get pipeline workflow info."""
+    """获取流水线工作流信息。"""
     from webgal_agent.api.app import get_task_manager
 
     info = get_task_manager().get_workflow_info()
@@ -41,7 +41,7 @@ async def get_pipeline_info() -> WorkflowInfoResponse:
 
 @router.get("/agents/status", response_model=list[AgentInfoResponse])
 async def get_agents_status() -> list[AgentInfoResponse]:
-    """Get current status of all agents."""
+    """获取所有智能体的当前状态。"""
     from webgal_agent.api.app import get_task_manager
 
     agents = get_task_manager()._build_agents()

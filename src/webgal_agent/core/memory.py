@@ -1,4 +1,4 @@
-"""Agent memory abstractions."""
+"""智能体记忆抽象。"""
 
 from __future__ import annotations
 
@@ -8,31 +8,30 @@ from webgal_agent.core.message import Message
 
 
 class Memory(ABC):
-    """Abstract base class for agent memory.
+    """智能体记忆的抽象基类。
 
-    Memory stores the conversation history and any shared context
-    between agents in a workflow.
+    记忆存储对话历史和工作流中智能体间的共享上下文。
     """
 
     @abstractmethod
     def add(self, message: Message) -> None:
-        """Store a message in memory."""
+        """将消息存入记忆。"""
 
     @abstractmethod
     def get_all(self) -> list[Message]:
-        """Retrieve all stored messages."""
+        """检索所有已存储的消息。"""
 
     @abstractmethod
     def clear(self) -> None:
-        """Clear all stored messages."""
+        """清空所有已存储的消息。"""
 
     @abstractmethod
     def get_recent(self, n: int = 10) -> list[Message]:
-        """Retrieve the most recent ``n`` messages."""
+        """检索最近的 ``n`` 条消息。"""
 
 
 class InMemoryMemory(Memory):
-    """Simple in-memory implementation of agent memory."""
+    """基于内存的简单智能体记忆实现。"""
 
     def __init__(self, max_messages: int = 100) -> None:
         self._messages: list[Message] = []

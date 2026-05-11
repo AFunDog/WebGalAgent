@@ -1,4 +1,4 @@
-"""Base agent class and agent state definition."""
+"""智能体基类与状态定义。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from webgal_agent.core.message import Message
 
 
 class AgentState(str, Enum):
-    """Possible states of an agent."""
+    """智能体可能的状态。"""
 
     IDLE = "idle"
     RUNNING = "running"
@@ -22,7 +22,7 @@ class AgentState(str, Enum):
 
 
 class AgentConfig(BaseModel):
-    """Configuration for an agent instance."""
+    """智能体实例的配置。"""
 
     name: str
     description: str = ""
@@ -36,11 +36,10 @@ class AgentConfig(BaseModel):
 
 
 class Agent(abc.ABC):
-    """Abstract base class for all agents.
+    """所有智能体的抽象基类。
 
-    An agent is an autonomous unit that can receive messages, process them
-    using an LLM, and produce responses. Each agent has its own memory
-    and optional tools.
+    智能体是可接收消息、通过 LLM 处理并产生响应的自主单元。
+    每个智能体拥有独立的记忆和可选的工具。
     """
 
     def __init__(
@@ -70,20 +69,19 @@ class Agent(abc.ABC):
 
     @abc.abstractmethod
     async def run(self, message: Message) -> Message:
-        """Process an incoming message and return a response.
+        """处理传入消息并返回响应。
 
-        This is the main entry point for agent execution. Subclasses must
-        implement this method to define their behavior.
+        这是智能体执行的主入口。子类必须实现此方法以定义行为。
         """
 
     @abc.abstractmethod
     def system_prompt(self) -> str:
-        """Return the system prompt for this agent."""
+        """返回该智能体的系统提示词。"""
 
     async def handle(self, message: Message) -> Message:
-        """Handle a message with state management.
+        """带状态管理的消息处理。
 
-        Wraps the ``run`` method with state transitions and error handling.
+        在 ``run`` 方法外包装状态转换和错误处理。
         """
         self._state = AgentState.RUNNING
         try:
@@ -97,6 +95,6 @@ class Agent(abc.ABC):
             raise
 
     def reset(self) -> None:
-        """Reset the agent to idle state and clear memory."""
+        """重置智能体到空闲状态并清空记忆。"""
         self._state = AgentState.IDLE
         self._memory.clear()

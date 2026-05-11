@@ -1,4 +1,4 @@
-"""Workflow orchestration engine."""
+"""工作流编排引擎。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from webgal_agent.core.message import Message, MessageType
 
 @dataclass
 class WorkflowResult:
-    """Result of a workflow execution."""
+    """工作流执行结果。"""
 
     success: bool
     messages: list[Message] = field(default_factory=list)
@@ -21,10 +21,10 @@ class WorkflowResult:
 
 
 class Workflow(abc.ABC):
-    """Abstract base class for workflow patterns.
+    """工作流模式的抽象基类。
 
-    A workflow defines how multiple agents collaborate — the order
-    they execute in, how messages flow, and how results are aggregated.
+    工作流定义了多个智能体如何协作——
+    执行顺序、消息流向和结果聚合方式。
     """
 
     def __init__(self, agents: dict[str, Agent]) -> None:
@@ -35,20 +35,19 @@ class Workflow(abc.ABC):
         return self._agents
 
     def get_agent(self, name: str) -> Agent:
-        """Retrieve a registered agent by name."""
+        """根据名称获取已注册的智能体。"""
         if name not in self._agents:
             raise KeyError(f"Agent '{name}' not found in workflow")
         return self._agents[name]
 
     @abc.abstractmethod
     async def execute(self, initial_message: Message) -> WorkflowResult:
-        """Run the workflow starting from an initial message.
+        """从初始消息开始运行工作流。
 
-        Subclasses implement this to define the execution pattern
-        (sequential, parallel, debate, etc.).
+        子类实现此方法以定义执行模式（顺序、并行、辩论等）。
         """
 
     def reset_all(self) -> None:
-        """Reset all agents in the workflow."""
+        """重置工作流中的所有智能体。"""
         for agent in self._agents.values():
             agent.reset()

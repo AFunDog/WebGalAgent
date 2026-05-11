@@ -1,4 +1,4 @@
-"""Logging configuration using rich."""
+"""基于 rich 的日志配置。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from rich.logging import RichHandler
 
 
 def setup_logging(level: int = logging.INFO) -> None:
-    """Configure application-wide logging with rich output."""
+    """配置应用级 rich 日志输出。"""
     logging.basicConfig(
         level=level,
         format="%(message)s",
@@ -18,5 +18,5 @@ def setup_logging(level: int = logging.INFO) -> None:
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Get a named logger instance."""
+    """获取具名日志器实例。"""
     return logging.getLogger(name)

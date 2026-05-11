@@ -1,1 +1,1 @@
-"""Web UI and REST API for WebGalAgent."""
+"""WebGalAgent 的 Web UI 与 REST API。"""

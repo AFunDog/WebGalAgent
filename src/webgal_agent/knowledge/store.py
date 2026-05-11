@@ -1,4 +1,4 @@
-"""Knowledge store abstractions."""
+"""知识库存储抽象。"""
 
 from __future__ import annotations
 
@@ -12,27 +12,27 @@ from webgal_agent.knowledge.models import KnowledgeEntry
 
 
 class KnowledgeStore(abc.ABC):
-    """Abstract base class for knowledge storage.
+    """知识存储的抽象基类。
 
-    Provides CRUD and query operations that agents use to look up
-    reference information (characters, settings, etc.) at runtime.
+    提供 CRUD 和查询操作，供智能体在运行时
+    查找参考信息（角色、设定等）。
     """
 
     @abc.abstractmethod
     def add(self, entry: KnowledgeEntry) -> KnowledgeEntry:
-        """Add a new entry to the store."""
+        """添加新条目到存储。"""
 
     @abc.abstractmethod
     def get(self, entry_id: str) -> KnowledgeEntry | None:
-        """Retrieve an entry by its ID."""
+        """根据 ID 检索条目。"""
 
     @abc.abstractmethod
     def update(self, entry_id: str, entry: KnowledgeEntry) -> KnowledgeEntry | None:
-        """Update an existing entry. Returns ``None`` if not found."""
+        """更新已有条目。未找到则返回 ``None``。"""
 
     @abc.abstractmethod
     def delete(self, entry_id: str) -> bool:
-        """Delete an entry. Returns ``True`` if it existed."""
+        """删除条目。存在则返回 ``True``。"""
 
     @abc.abstractmethod
     def query(
@@ -41,19 +41,19 @@ class KnowledgeStore(abc.ABC):
         tags: list[str] | None = None,
         keyword: str | None = None,
     ) -> list[KnowledgeEntry]:
-        """Query entries by category, tags, or keyword in title/body."""
+        """按类别、标签或标题/正文关键词查询条目。"""
 
     @abc.abstractmethod
     def list_all(self) -> list[KnowledgeEntry]:
-        """Return all entries in the store."""
+        """返回存储中的所有条目。"""
 
     @abc.abstractmethod
     def count(self) -> int:
-        """Return the total number of entries."""
+        """返回条目总数。"""
 
 
 class InMemoryKnowledgeStore(KnowledgeStore):
-    """Simple in-memory knowledge store backed by a dict."""
+    """基于字典的简单内存知识存储。"""
 
     def __init__(self) -> None:
         self._entries: dict[str, KnowledgeEntry] = {}
@@ -106,13 +106,13 @@ class InMemoryKnowledgeStore(KnowledgeStore):
 
 
 class FileKnowledgeStore(InMemoryKnowledgeStore):
-    """Knowledge store that loads entries from Markdown files with YAML frontmatter.
+    """从带 YAML frontmatter 的 Markdown 文件加载知识条目的存储。
 
-    Each ``.md`` file represents one knowledge entry. The YAML frontmatter
-    provides structured metadata (category, tags, title), while the Markdown
-    body holds the free-form content.
+    每个 ``.md`` 文件代表一条知识条目。YAML frontmatter
+    提供结构化元数据（类别、标签、标题），Markdown 正文
+    保存自由格式内容。
 
-    Example file structure::
+    文件结构示例::
 
         data/knowledge/
         ├── characters/
@@ -122,7 +122,7 @@ class FileKnowledgeStore(InMemoryKnowledgeStore):
             ├── world.md
             └── main-scene.md
 
-    Example ``alice.md``::
+    ``alice.md`` 示例::
 
         ---
         category: character
@@ -150,7 +150,7 @@ class FileKnowledgeStore(InMemoryKnowledgeStore):
         self._load_all()
 
     def _load_all(self) -> None:
-        """Recursively load all Markdown files from the data directory."""
+        """递归加载数据目录中的所有 Markdown 文件。"""
         if not self._data_dir.exists():
             return
 
@@ -158,7 +158,7 @@ class FileKnowledgeStore(InMemoryKnowledgeStore):
             self._load_file(path)
 
     def _load_file(self, path: Path) -> None:
-        """Load a single Markdown file with YAML frontmatter."""
+        """加载单个带 YAML frontmatter 的 Markdown 文件。"""
         text = path.read_text(encoding="utf-8")
         match = self._FRONTMATTER_RE.match(text)
 
@@ -169,7 +169,7 @@ class FileKnowledgeStore(InMemoryKnowledgeStore):
             meta = {}
             body = text
 
-        # Derive title from frontmatter or first heading
+        # 从 frontmatter 或首个标题推导标题
         title = meta.get("title", "")
         if not title:
             heading_match = re.search(r"^#\s+(.+)", body, re.MULTILINE)
@@ -185,6 +185,6 @@ class FileKnowledgeStore(InMemoryKnowledgeStore):
         self.add(entry)
 
     def reload(self) -> None:
-        """Clear and re-load all files from disk."""
+        """清空并从磁盘重新加载所有文件。"""
         self._entries.clear()
         self._load_all()

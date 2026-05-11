@@ -1,4 +1,4 @@
-"""Task manager for tracking workflow executions."""
+"""工作流执行任务管理器。"""
 
 from __future__ import annotations
 
@@ -19,22 +19,22 @@ from webgal_agent.knowledge import KnowledgeStore
 from webgal_agent.knowledge.models import KnowledgeEntry
 from webgal_agent.workflows.pipeline import PipelineWorkflow
 
-# Pipeline step order: A → B → C
+# 流水线步骤顺序：A → B → C
 PIPELINE_ORDER = ["outline_writer", "script_writer", "script_converter"]
 
-# Agent descriptions
+# 智能体描述
 AGENT_DESCRIPTIONS: dict[str, str] = {
     "outline_writer": "接受用户输入和知识库，编写剧本大纲",
     "script_writer": "接受用户输入、剧本大纲和知识库，生成各章节剧本",
     "script_converter": "接受用户输入、剧本和知识库，转换为 WebGal 引擎脚本",
 }
 
-# Output directory for persisted task data
+# 持久化任务数据的输出目录
 DEFAULT_TASK_DIR = "data/tasks"
 
 
 class AgentInfoDict(TypedDict):
-    """Agent info for workflow API response."""
+    """工作流 API 响应中的智能体信息。"""
 
     name: str
     description: str
@@ -44,7 +44,7 @@ class AgentInfoDict(TypedDict):
 
 
 class WorkflowInfoDict(TypedDict):
-    """Workflow info for API response."""
+    """API 响应中的工作流信息。"""
 
     name: str
     type: str
@@ -54,7 +54,7 @@ class WorkflowInfoDict(TypedDict):
 
 
 class TaskInfo:
-    """Tracks a single workflow execution."""
+    """跟踪单个工作流执行。"""
 
     def __init__(self, task_id: str, content: str) -> None:
         self.id = task_id
@@ -88,7 +88,7 @@ class TaskInfo:
 
 
 def _load_prompts() -> dict[str, str]:
-    """Load agent prompts from configs/prompts.yaml."""
+    """从 configs/prompts.yaml 加载智能体提示词。"""
     prompts_path = Path("configs/prompts.yaml")
     if not prompts_path.exists():
         return {}
@@ -105,9 +105,9 @@ def _load_prompts() -> dict[str, str]:
 
 
 def _load_knowledge_requirements() -> dict[str, dict[str, list[str]]]:
-    """Load per-agent knowledge requirements from configs/prompts.yaml.
+    """从 configs/prompts.yaml 加载各智能体的知识库需求配置。
 
-    Returns a dict mapping agent name to its knowledge filter config::
+    返回智能体名称到知识筛选配置的映射::
 
         {
             "outline_writer": {"categories": ["character", "setting"], "tags": []},
@@ -134,18 +134,18 @@ def _load_knowledge_requirements() -> dict[str, dict[str, list[str]]]:
 
 
 def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) -> Path:
-    """Persist task data to disk.
+    """将任务数据持久化到磁盘。
 
-    Saves:
-      - ``{task_id}/process.json`` — full intermediate process (all messages)
-      - ``{task_id}/result.txt``   — final output from the last agent (WebGal script)
+    保存内容：
+      - ``{task_id}/process.json`` — 完整的中间过程（所有消息）
+      - ``{task_id}/result.txt``   — 最后一个智能体的输出（WebGal 脚本）
 
-    Returns the task directory path.
+    返回任务目录路径。
     """
     task_path = Path(task_dir) / task.id
     task_path.mkdir(parents=True, exist_ok=True)
 
-    # --- Save intermediate process as JSON ---
+    # --- 保存中间过程为 JSON ---
     process_data = {
         "task_id": task.id,
         "status": task.status,
@@ -173,13 +173,13 @@ def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) 
         encoding="utf-8",
     )
 
-    # --- Save final result as .txt (WebGal script) ---
+    # --- 保存最终结果为 .txt（WebGal 脚本）---
     if task.messages:
         last_msg = task.messages[-1]
         result_file = task_path / "result.txt"
         result_file.write_text(last_msg.content, encoding="utf-8")
 
-    # --- Also save each step's output individually ---
+    # --- 同时保存每个步骤的独立输出 ---
     for i, msg in enumerate(task.messages):
         if msg.type == MessageType.RESULT:
             step_name = msg.sender
@@ -190,7 +190,7 @@ def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) 
 
 
 def _load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, TaskInfo]:
-    """Load previously persisted tasks from disk on startup."""
+    """启动时从磁盘加载之前持久化的任务。"""
     tasks: dict[str, TaskInfo] = {}
     task_path = Path(task_dir)
 
@@ -210,7 +210,7 @@ def _load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, 
             task.errors = data.get("errors", [])
             task.created_at = datetime.fromisoformat(data["created_at"])
 
-            # Reconstruct messages from steps
+            # 从步骤重建消息
             for step in data.get("steps", []):
                 msg = Message(
                     type=MessageType(step["type"]),
@@ -228,7 +228,7 @@ def _load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, 
 
 
 class TaskManager:
-    """Manages pipeline workflow executions."""
+    """管理流水线工作流执行。"""
 
     def __init__(
         self,
@@ -242,7 +242,7 @@ class TaskManager:
         self._prompts = _load_prompts()
         self._knowledge_requirements = _load_knowledge_requirements()
 
-        # Load previously persisted tasks
+        # 加载之前持久化的任务
         self._tasks: dict[str, TaskInfo] = _load_tasks_from_disk(self._task_dir)
 
     @property
@@ -252,7 +252,7 @@ class TaskManager:
     def _build_agents(self) -> dict[str, Agent]:
         agents: dict[str, Agent] = {}
         for name in PIPELINE_ORDER:
-            # Build AgentConfig from provider manager if available
+            # 从供应商管理器构建 AgentConfig（如果可用）
             if self._provider_manager:
                 config = self._provider_manager.to_agent_config(
                     name, AGENT_DESCRIPTIONS.get(name, "")
@@ -276,21 +276,23 @@ class TaskManager:
         return agents
 
     def _build_knowledge_context(self, agent_name: str = "") -> str:
-        """Format knowledge base entries as context text for a specific agent.
+        """将知识库条目格式化为指定智能体的上下文文本。
 
-        If the agent has knowledge requirements configured in prompts.yaml,
-        only matching entries are included. Otherwise, all entries are returned.
+        如果该智能体在 prompts.yaml 中配置了知识需求，
+        则仅包含匹配的条目；否则返回全部条目。
+
+        对于 script_converter，还会追加可用素材上下文。
         """
         if self._knowledge_store is None:
             return ""
 
-        # Determine filter criteria for this agent
+        # 确定该智能体的筛选条件
         requirements = self._knowledge_requirements.get(agent_name, {}) if agent_name else {}
         categories = requirements.get("categories", [])
         tags = requirements.get("tags", [])
 
         if categories or tags:
-            # Filter by categories and tags (union: match any category OR any tag)
+            # 按类别和标签筛选（并集：匹配任一类别或任一标签）
             entries_by_category: list[KnowledgeEntry] = []
             entries_by_tags: list[KnowledgeEntry] = []
             if categories:
@@ -299,7 +301,7 @@ class TaskManager:
             if tags:
                 entries_by_tags = self._knowledge_store.query(tags=tags)
 
-            # Merge and deduplicate
+            # 合并并去重
             seen_ids: set[str] = set()
             entries: list[KnowledgeEntry] = []
             for entry in entries_by_category + entries_by_tags:
@@ -307,7 +309,7 @@ class TaskManager:
                     seen_ids.add(entry.id)
                     entries.append(entry)
         else:
-            # No requirements configured — return all entries
+            # 未配置需求 — 返回全部条目
             entries = self._knowledge_store.list_all()
 
         if not entries:
@@ -320,14 +322,21 @@ class TaskManager:
                 header += f" [{entry.category}]"
             parts.append(f"{header}\n{entry.body}")
 
+        # 对于 script_converter，追加可用素材上下文
+        if agent_name == "script_converter":
+            from webgal_agent.api.routes.assets import build_assets_context
+            assets_context = build_assets_context()
+            if assets_context:
+                parts.append(assets_context)
+
         return "\n\n".join(parts)
 
     def _build_all_knowledge_contexts(self) -> dict[str, str]:
-        """Build knowledge context for each agent in the pipeline."""
+        """为流水线中的每个智能体构建知识库上下文。"""
         return {name: self._build_knowledge_context(name) for name in PIPELINE_ORDER}
 
     async def start_task(self, content: str) -> TaskInfo:
-        """Create and start a new pipeline task."""
+        """创建并启动新的流水线任务。"""
         task_id = uuid.uuid4().hex[:12]
         task = TaskInfo(task_id=task_id, content=content)
         self._tasks[task_id] = task
@@ -360,7 +369,7 @@ class TaskManager:
             task.errors.append(str(exc))
             task.status = "failed"
 
-        # Persist to disk
+        # 持久化到磁盘
         _save_task_to_disk(task, self._task_dir)
 
         return task
@@ -372,7 +381,7 @@ class TaskManager:
         return list(self._tasks.values())
 
     def get_workflow_info(self) -> WorkflowInfoDict:
-        """Return info about the pipeline workflow."""
+        """返回流水线工作流信息。"""
         agents = self._build_agents()
         agent_list: list[AgentInfoDict] = [
             {

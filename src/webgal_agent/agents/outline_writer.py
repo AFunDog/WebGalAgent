@@ -1,6 +1,6 @@
-"""Agent A: Outline Writer.
+"""智能体 A：大纲编写器。
 
-Receives user input + knowledge base, produces a story outline.
+接收用户输入和知识库，生成剧本大纲。
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from webgal_agent.core.message import Message, MessageType
 
 
 class OutlineWriterAgent(Agent):
-    """Agent A: 编写剧本大纲.
+    """智能体 A：编写剧本大纲。
 
     输入: 用户初始输入 + 知识库
     输出: 剧本大纲
@@ -30,7 +30,7 @@ class OutlineWriterAgent(Agent):
         return "TODO: 请在 configs/prompts.yaml 中配置 outline_writer 的系统提示词"
 
     async def run(self, message: Message) -> Message:
-        # TODO: integrate with LLM
+        # TODO: 对接 LLM
         return message.reply(
             content="[OutlineWriter] 已收到用户输入和知识库，开始编写剧本大纲...",
             msg_type=MessageType.RESULT,

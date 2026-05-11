@@ -1,4 +1,4 @@
-"""Knowledge base API routes (read-only)."""
+"""知识库 API 路由（只读）。"""
 
 from __future__ import annotations
 
@@ -11,14 +11,14 @@ router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
 
 
 def _get_store() -> FileKnowledgeStore:
-    """Lazily get the shared knowledge store instance."""
+    """延迟获取共享知识库实例。"""
     from webgal_agent.api.app import get_knowledge_store
 
     return get_knowledge_store()
 
 
 def _get_task_manager():
-    """Lazily get the shared task manager instance."""
+    """延迟获取共享任务管理器实例。"""
     from webgal_agent.api.app import get_task_manager
 
     return get_task_manager()
@@ -43,10 +43,10 @@ async def list_entries(
     keyword: str | None = None,
     tags: str | None = None,
 ) -> list[KnowledgeResponse]:
-    """List all knowledge entries, optionally filtered by category, keyword, or tags.
+    """列出所有知识库条目，可按类别、关键词或标签筛选。
 
-    The ``tags`` parameter accepts a comma-separated list of tag values.
-    Entries matching **any** of the given tags are returned.
+    ``tags`` 参数接受逗号分隔的标签列表，
+    匹配**任一**标签的条目都会返回。
     """
     store = _get_store()
     if tags:
@@ -61,7 +61,7 @@ async def list_entries(
 
 @router.get("/categories", response_model=list[str])
 async def list_categories() -> list[str]:
-    """List all distinct categories."""
+    """列出所有不重复的类别。"""
     store = _get_store()
     entries = store.list_all()
     return sorted({e.category for e in entries})
@@ -69,7 +69,7 @@ async def list_categories() -> list[str]:
 
 @router.get("/tags", response_model=list[str])
 async def list_tags() -> list[str]:
-    """List all distinct tags across all entries."""
+    """列出所有条目中不重复的标签。"""
     store = _get_store()
     entries = store.list_all()
     return sorted({t for e in entries for t in e.tags})
@@ -77,7 +77,7 @@ async def list_tags() -> list[str]:
 
 @router.get("/agent-requirements", response_model=list[AgentKnowledgeRequirementsResponse])
 async def get_agent_requirements() -> list[AgentKnowledgeRequirementsResponse]:
-    """Get per-agent knowledge requirements configured in prompts.yaml."""
+    """获取 prompts.yaml 中配置的各智能体知识库需求。"""
     tm = _get_task_manager()
     requirements = tm._knowledge_requirements
     return [
@@ -92,17 +92,17 @@ async def get_agent_requirements() -> list[AgentKnowledgeRequirementsResponse]:
 
 @router.get("/{entry_id}", response_model=KnowledgeResponse)
 async def get_entry(entry_id: str) -> KnowledgeResponse:
-    """Get a single knowledge entry by ID."""
+    """根据 ID 获取单个知识库条目。"""
     store = _get_store()
     entry = store.get(entry_id)
     if entry is None:
-        raise HTTPException(status_code=404, detail="Entry not found")
+        raise HTTPException(status_code=404, detail="条目未找到")
     return _entry_to_response(entry)
 
 
 @router.post("/reload", status_code=200)
 async def reload_knowledge() -> dict[str, str]:
-    """Reload knowledge entries from disk."""
+    """从磁盘重新加载知识库条目。"""
     store = _get_store()
     store.reload()
     return {"status": "ok", "count": str(store.count())}

@@ -1,4 +1,4 @@
-"""Core abstractions for the multi-agent framework."""
+"""多智能体框架核心抽象。"""
 
 from webgal_agent.core.agent import Agent, AgentState
 from webgal_agent.core.message import Message, MessageType

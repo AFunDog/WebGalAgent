@@ -1,4 +1,4 @@
-"""Application settings using pydantic-settings."""
+"""基于 pydantic-settings 的应用配置。"""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class LLMSettings(BaseSettings):
-    """LLM provider configuration."""
+    """LLM 供应商配置。"""
 
     model_config = SettingsConfigDict(env_prefix="LLM_")
 
@@ -22,7 +22,7 @@ class LLMSettings(BaseSettings):
 
 
 class AgentSettings(BaseSettings):
-    """Per-agent configuration overrides."""
+    """各智能体的配置覆盖。"""
 
     model_config = SettingsConfigDict(env_prefix="AGENT_")
 
@@ -33,10 +33,10 @@ class AgentSettings(BaseSettings):
 
 
 class AppSettings(BaseSettings):
-    """Top-level application settings.
+    """顶层应用配置。
 
-    Reads from environment variables and optional ``.env`` file.
-    Nested settings are loaded from their own prefixed env vars.
+    从环境变量和可选的 ``.env`` 文件读取。
+    嵌套配置从各自带前缀的环境变量加载。
     """
 
     model_config = SettingsConfigDict(

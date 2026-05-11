@@ -4,6 +4,11 @@ app:
   name: AgentWorkflow
   debug: false
 
+# WebGal 游戏素材目录（绝对路径或相对于项目根目录）
+# 只有 animation/background/bgm/figure 子目录会被扫描
+assets:
+  game_dir: D:\Program\WebGal_Terre\public\games\MyGO3.0.0\game
+
 llm:
   provider: openai
   model: gpt-4o

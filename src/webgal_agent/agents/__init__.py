@@ -1,4 +1,4 @@
-"""Concrete agent implementations."""
+"""智能体具体实现。"""
 
 from webgal_agent.agents.outline_writer import OutlineWriterAgent
 from webgal_agent.agents.script_writer import ScriptWriterAgent

@@ -1,4 +1,4 @@
-"""Configuration management."""
+"""配置管理。"""
 
 from webgal_agent.config.settings import AppSettings, LLMSettings, AgentSettings
 

@@ -1,4 +1,4 @@
-"""Base tool abstraction."""
+"""工具基类抽象。"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 class ToolResult(BaseModel):
-    """Result returned by a tool execution."""
+    """工具执行返回的结果。"""
 
     success: bool
     output: str = ""
@@ -17,28 +17,27 @@ class ToolResult(BaseModel):
 
 
 class Tool(abc.ABC):
-    """Abstract base class for agent tools.
+    """智能体工具的抽象基类。
 
-    Tools extend an agent's capabilities — for example, file I/O,
-    web searches, or WebGal engine operations.
+    工具扩展智能体的能力——例如文件读写、网络搜索或 WebGal 引擎操作。
     """
 
     @property
     @abc.abstractmethod
     def name(self) -> str:
-        """Unique identifier for this tool."""
+        """工具的唯一标识符。"""
 
     @property
     @abc.abstractmethod
     def description(self) -> str:
-        """Human-readable description of what this tool does."""
+        """工具功能的可读描述。"""
 
     @abc.abstractmethod
     async def execute(self, **kwargs: object) -> ToolResult:
-        """Run the tool with the given arguments."""
+        """使用给定参数运行工具。"""
 
     def schema(self) -> dict[str, object]:
-        """Return a JSON-schema-style description for LLM function calling."""
+        """返回用于 LLM 函数调用的 JSON Schema 风格描述。"""
         return {
             "name": self.name,
             "description": self.description,

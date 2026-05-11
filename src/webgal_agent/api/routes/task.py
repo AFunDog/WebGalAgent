@@ -1,4 +1,4 @@
-"""Task execution API routes."""
+"""任务执行 API 路由。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 @router.post("", response_model=TaskResponse, status_code=201)
 async def create_task(content: str) -> TaskResponse:
-    """Start a new pipeline task."""
+    """启动新的流水线任务。"""
     from webgal_agent.api.app import get_task_manager
 
     manager = get_task_manager()
@@ -21,7 +21,7 @@ async def create_task(content: str) -> TaskResponse:
 
 @router.get("", response_model=list[TaskResponse])
 async def list_tasks() -> list[TaskResponse]:
-    """List all tasks."""
+    """列出所有任务。"""
     from webgal_agent.api.app import get_task_manager
 
     manager = get_task_manager()
@@ -30,11 +30,11 @@ async def list_tasks() -> list[TaskResponse]:
 
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(task_id: str) -> TaskResponse:
-    """Get a task's execution details."""
+    """获取任务执行详情。"""
     from webgal_agent.api.app import get_task_manager
 
     manager = get_task_manager()
     task = manager.get_task(task_id)
     if task is None:
-        raise HTTPException(status_code=404, detail="Task not found")
+        raise HTTPException(status_code=404, detail="任务未找到")
     return TaskResponse(**task.to_dict())
