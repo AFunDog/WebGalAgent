@@ -152,12 +152,7 @@ function updateTaskCard(task) {
   // 更新消息列表
   const msgContainer = card.querySelector(".task-messages");
   if (msgContainer) {
-    msgContainer.innerHTML = task.messages.map(m => `
-      <div class="msg-bubble ${m.type}">
-        <div><strong>${esc(m.sender)}</strong> → <strong>${esc(m.receiver)}</strong></div>
-        <div style="white-space:pre-wrap;margin-top:4px">${esc(m.content)}</div>
-        <div class="msg-meta">${esc(m.type)} · ${new Date(m.created_at).toLocaleTimeString()}</div>
-      </div>`).join("");
+    msgContainer.innerHTML = task.messages.map(m => renderMsgBubble(m)).join("");
   }
 
   // 更新错误
@@ -165,6 +160,33 @@ function updateTaskCard(task) {
   if (errEl) {
     errEl.textContent = task.errors.length ? task.errors.join("; ") : "";
   }
+}
+
+function renderMsgBubble(m) {
+  // 渲染工具调用记录（如果有）
+  const toolCalls = m.metadata && m.metadata.tool_calls;
+  let toolCallsHtml = "";
+  if (toolCalls && toolCalls.length > 0) {
+    toolCallsHtml = `
+      <div class="tool-calls" style="margin-top:6px;padding:6px 8px;background:var(--bg-secondary);border-radius:4px;font-size:12px">
+        <div style="color:var(--text-muted);margin-bottom:4px">🔧 工具调用 (${toolCalls.length})</div>
+        ${toolCalls.map(tc => `
+          <div style="margin-bottom:4px;padding-left:8px;border-left:2px solid ${tc.success ? 'var(--success)' : 'var(--danger)'}">
+            <strong>${esc(tc.tool)}</strong>(${Object.entries(tc.args || {}).map(([k,v]) => `${esc(k)}=${esc(JSON.stringify(v))}`).join(", ")})
+            ${tc.success ? "" : ' <span style="color:var(--danger)">✗</span>'}
+            <details style="margin-top:2px"><summary style="cursor:pointer;color:var(--text-muted)">结果</summary><pre style="white-space:pre-wrap;margin:2px 0 0">${esc(typeof tc.result === 'string' ? tc.result : JSON.stringify(tc.result, null, 2))}</pre></details>
+          </div>
+        `).join("")}
+      </div>`;
+  }
+
+  return `
+    <div class="msg-bubble ${m.type}">
+      <div><strong>${esc(m.sender)}</strong> → <strong>${esc(m.receiver)}</strong></div>
+      <div style="white-space:pre-wrap;margin-top:4px">${esc(m.content)}</div>
+      ${toolCallsHtml}
+      <div class="msg-meta">${esc(m.type)} · ${new Date(m.created_at).toLocaleTimeString()}</div>
+    </div>`;
 }
 
 // ===== Page: Providers =====
@@ -378,12 +400,7 @@ function renderTasksPage() {
           <p style="color:var(--text-muted);font-size:12px">ID: ${esc(t.id)} · 创建时间: ${new Date(t.created_at).toLocaleString()}</p>
           ${t.errors.length ? `<p class="task-errors" style="color:var(--danger);font-size:12px;margin-top:4px">${esc(t.errors.join("; "))}</p>` : '<p class="task-errors" style="display:none"></p>'}
           <div class="task-messages" style="margin-top:12px">
-            ${t.messages.map(m => `
-              <div class="msg-bubble ${m.type}">
-                <div><strong>${esc(m.sender)}</strong> → <strong>${esc(m.receiver)}</strong></div>
-                <div style="white-space:pre-wrap;margin-top:4px">${esc(m.content)}</div>
-                <div class="msg-meta">${esc(m.type)} · ${new Date(m.created_at).toLocaleTimeString()}</div>
-              </div>`).join("")}
+            ${t.messages.map(m => renderMsgBubble(m)).join("")}
           </div>
         </div>`;
       }).join("");

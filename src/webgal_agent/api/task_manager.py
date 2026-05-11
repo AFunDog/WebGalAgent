@@ -18,6 +18,7 @@ from webgal_agent.core.message import Message, MessageType
 from webgal_agent.core.workflow import WorkflowResult
 from webgal_agent.knowledge import KnowledgeStore
 from webgal_agent.knowledge.models import KnowledgeEntry
+from webgal_agent.tools.base import Tool
 from webgal_agent.workflows.pipeline import PipelineWorkflow
 
 # 流水线步骤顺序：A → B → C
@@ -79,6 +80,7 @@ class TaskInfo:
                     "sender": m.sender,
                     "receiver": m.receiver,
                     "content": m.content,
+                    "metadata": m.metadata,
                     "created_at": m.created_at.isoformat(),
                 }
                 for m in self.messages
@@ -162,6 +164,7 @@ def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) 
                 "sender": m.sender,
                 "receiver": m.receiver,
                 "content": m.content,
+                "metadata": m.metadata,
                 "created_at": m.created_at.isoformat(),
             }
             for i, m in enumerate(task.messages)
@@ -218,6 +221,7 @@ def _load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, 
                     sender=step["sender"],
                     receiver=step["receiver"],
                     content=step["content"],
+                    metadata=step.get("metadata", {}),
                 )
                 task.messages.append(msg)
 
@@ -257,6 +261,25 @@ class TaskManager:
         return ["pipeline"]
 
     def _build_agents(self) -> dict[str, Agent]:
+        from webgal_agent.tools.asset_query import AssetQueryTool
+        from webgal_agent.tools.file_ops import ReadFileTool, WriteFileTool
+
+        # 通用工具（所有智能体都可以使用）
+        common_tools: list[Tool] = [
+            ReadFileTool(),
+            WriteFileTool(),
+        ]
+
+        # 素材查询工具（script_converter 专用）
+        asset_tool = AssetQueryTool()
+
+        # 每个智能体可用的工具配置
+        agent_tools: dict[str, list[Tool]] = {
+            "outline_writer": [],
+            "script_writer": [],
+            "script_converter": [asset_tool],
+        }
+
         agents: dict[str, Agent] = {}
         for name in PIPELINE_ORDER:
             # 从供应商管理器构建 AgentConfig（如果可用）
@@ -272,13 +295,15 @@ class TaskManager:
                 )
 
             prompt = self._prompts.get(name, "")
+            # 合并通用工具 + 智能体专属工具
+            tools = common_tools + agent_tools.get(name, [])
 
             if name == "outline_writer":
-                agents[name] = OutlineWriterAgent(config=config, system_prompt=prompt)
+                agents[name] = OutlineWriterAgent(config=config, system_prompt=prompt, tools=tools)
             elif name == "script_writer":
-                agents[name] = ScriptWriterAgent(config=config, system_prompt=prompt)
+                agents[name] = ScriptWriterAgent(config=config, system_prompt=prompt, tools=tools)
             elif name == "script_converter":
-                agents[name] = ScriptConverterAgent(config=config, system_prompt=prompt)
+                agents[name] = ScriptConverterAgent(config=config, system_prompt=prompt, tools=tools)
 
         return agents
 

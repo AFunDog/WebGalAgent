@@ -67,6 +67,7 @@ class TaskMessageResponse(BaseModel):
     sender: str
     receiver: str
     content: str
+    metadata: dict[str, object] = Field(default_factory=dict)
     created_at: datetime
 
 

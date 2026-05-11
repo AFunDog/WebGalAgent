@@ -19,7 +19,20 @@ class ReadFileTool(Tool):
 
     @property
     def description(self) -> str:
-        return "读取指定路径文件的内容。"
+        return "读取指定路径文件的内容。路径相对于项目根目录。"
+
+    @property
+    def parameters(self) -> dict[str, object]:
+        return {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "要读取的文件路径，相对于项目根目录",
+                },
+            },
+            "required": ["path"],
+        }
 
     async def execute(self, **kwargs: object) -> ToolResult:
         path = kwargs.get("path")
@@ -51,7 +64,24 @@ class WriteFileTool(Tool):
 
     @property
     def description(self) -> str:
-        return "将内容写入指定路径的文件。"
+        return "将内容写入指定路径的文件。路径相对于项目根目录，会自动创建不存在的目录。"
+
+    @property
+    def parameters(self) -> dict[str, object]:
+        return {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "要写入的文件路径，相对于项目根目录",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "要写入的文件内容",
+                },
+            },
+            "required": ["path", "content"],
+        }
 
     async def execute(self, **kwargs: object) -> ToolResult:
         path = kwargs.get("path")
