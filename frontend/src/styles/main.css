@@ -255,7 +255,6 @@ tr:hover td { background: rgba(99, 102, 241, 0.04); }
   padding: 48px 24px;
   color: var(--text-muted);
 }
-.empty-state svg { width: 48px; height: 48px; margin-bottom: 12px; opacity: 0.4; }
 .empty-state p { font-size: 14px; }
 
 /* ===== Modal ===== */
@@ -292,10 +291,31 @@ tr:hover td { background: rgba(99, 102, 241, 0.04); }
 .msg-bubble.result  { background: rgba(34, 197, 94, 0.1); border-left: 3px solid var(--success); }
 .msg-bubble.feedback { background: rgba(234, 179, 8, 0.1); border-left: 3px solid var(--warning); }
 .msg-bubble.error   { background: rgba(239, 68, 68, 0.1); border-left: 3px solid var(--danger); }
-.msg-bubble .msg-meta {
+.msg-meta {
   font-size: 11px;
   color: var(--text-muted);
   margin-top: 4px;
+}
+
+/* ===== Tool Calls ===== */
+.tool-calls {
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--bg-secondary, var(--bg-input));
+  border-radius: 4px;
+  font-size: 12px;
+}
+.tool-call-item {
+  margin-bottom: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--success);
+}
+.tool-call-item.failed {
+  border-left-color: var(--danger);
+}
+.tool-call-result {
+  white-space: pre-wrap;
+  margin: 2px 0 0;
 }
 
 /* ===== Grid helpers ===== */
@@ -311,3 +331,13 @@ tr:hover td { background: rgba(99, 102, 241, 0.04); }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ===== Transitions ===== */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
