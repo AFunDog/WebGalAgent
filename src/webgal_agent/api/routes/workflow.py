@@ -44,14 +44,14 @@ async def get_agents_status() -> list[AgentInfoResponse]:
     """获取所有智能体的当前状态。"""
     from webgal_agent.api.app import get_task_manager
 
-    agents = get_task_manager()._build_agents()
+    agents_info = get_task_manager().get_active_agents_info()
     return [
         AgentInfoResponse(
-            name=a.name,
-            description=a.description,
-            state=a.state.value,
-            provider=a._config.provider,
-            model=a._config.model,
+            name=a["name"],
+            description=a["description"],
+            state=a["state"],
+            provider=a.get("provider", ""),
+            model=a.get("model", ""),
         )
-        for a in agents.values()
+        for a in agents_info
     ]

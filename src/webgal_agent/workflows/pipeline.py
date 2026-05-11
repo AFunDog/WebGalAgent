@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+from typing import Callable
+
 from webgal_agent.core.agent import Agent
 from webgal_agent.core.message import Message, MessageType
 from webgal_agent.core.workflow import Workflow, WorkflowResult
@@ -35,6 +37,7 @@ class PipelineWorkflow(Workflow):
         user_input: str = "",
         knowledge_context: str = "",
         knowledge_contexts: dict[str, str] | None = None,
+        on_step_complete: Callable[[str, Message], None] | None = None,
     ) -> None:
         super().__init__(agents)
         self._order = order
@@ -42,6 +45,7 @@ class PipelineWorkflow(Workflow):
         # 各智能体独立的知识库上下文优先于全局上下文
         self._knowledge_contexts = knowledge_contexts or {}
         self._knowledge_context = knowledge_context
+        self._on_step_complete = on_step_complete
 
     @property
     def order(self) -> list[str]:
@@ -90,6 +94,10 @@ class PipelineWorkflow(Workflow):
                 result = await agent.handle(current_msg)
                 messages.append(result)
                 accumulated_outputs.append(result.content)
+
+                # 每步完成后回调，用于实时持久化
+                if self._on_step_complete:
+                    self._on_step_complete(agent_name, result)
             except Exception as exc:
                 errors.append(f"智能体 '{agent_name}' 执行失败: {exc}")
                 break

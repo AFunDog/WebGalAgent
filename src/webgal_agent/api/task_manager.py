@@ -246,6 +246,12 @@ class TaskManager:
         # 加载之前持久化的任务
         self._tasks: dict[str, TaskInfo] = _load_tasks_from_disk(self._task_dir)
 
+        # 保存后台 asyncio.Task 引用，防止被 GC 回收
+        self._background_tasks: set[asyncio.Task] = set()
+
+        # 当前正在运行的智能体实例（供状态查询使用）
+        self._active_agents: dict[str, Agent] = {}
+
     @property
     def workflow_types(self) -> list[str]:
         return ["pipeline"]
@@ -344,7 +350,10 @@ class TaskManager:
         task.status = "running"
 
         # 后台启动执行，不阻塞当前请求
-        asyncio.create_task(self._run_pipeline(task))
+        # 必须保存 asyncio.Task 引用，否则会被 GC 回收导致任务消失
+        bg_task = asyncio.create_task(self._run_pipeline(task))
+        self._background_tasks.add(bg_task)
+        bg_task.add_done_callback(self._background_tasks.discard)
 
         return task
 
@@ -355,13 +364,23 @@ class TaskManager:
 
         try:
             agents = self._build_agents()
+            # 记录当前活跃智能体，供状态查询使用
+            self._active_agents = agents
+
             knowledge_contexts = self._build_all_knowledge_contexts()
+
+            def on_step_complete(agent_name: str, result_msg: Message) -> None:
+                """每步完成后即时持久化，避免中途崩溃丢失已完成的步骤。"""
+                task.messages.append(result_msg)
+                logger.info("步骤 %s 完成: task_id=%s", agent_name, task.id)
+                _save_task_to_disk(task, self._task_dir)
 
             workflow = PipelineWorkflow(
                 agents=agents,
                 order=PIPELINE_ORDER,
                 user_input=task.content,
                 knowledge_contexts=knowledge_contexts,
+                on_step_complete=on_step_complete,
             )
 
             initial = Message(
@@ -372,16 +391,20 @@ class TaskManager:
             )
 
             task.status = "running"
+            logger.info("流水线开始执行: task_id=%s", task.id)
 
             result: WorkflowResult = await workflow.execute(initial)
-            task.messages = result.messages
+            # 最终同步（on_step_complete 已逐步添加 messages）
             task.errors = result.errors
             task.status = "completed" if result.success else "failed"
+            logger.info("流水线执行完成: task_id=%s, status=%s", task.id, task.status)
         except Exception as exc:
             logger.exception("流水线执行失败: task_id=%s", task.id)
             task.errors.append(str(exc))
             task.status = "failed"
         finally:
+            # 清除活跃智能体引用
+            self._active_agents = {}
             # 持久化到磁盘
             _save_task_to_disk(task, self._task_dir)
 
@@ -411,3 +434,29 @@ class TaskManager:
             "agents": agent_list,
             "order": PIPELINE_ORDER,
         }
+
+    def get_active_agents_info(self) -> list[AgentInfoDict]:
+        """返回当前正在运行的智能体信息（反映真实状态）。"""
+        if self._active_agents:
+            return [
+                {
+                    "name": a.name,
+                    "description": a.description,
+                    "state": a.state.value,
+                    "provider": a._config.provider,
+                    "model": a._config.model,
+                }
+                for a in self._active_agents.values()
+            ]
+        # 没有运行中的任务时，返回默认配置的智能体
+        agents = self._build_agents()
+        return [
+            {
+                "name": a.name,
+                "description": a.description,
+                "state": a.state.value,
+                "provider": a._config.provider,
+                "model": a._config.model,
+            }
+            for a in agents.values()
+        ]
