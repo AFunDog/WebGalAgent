@@ -5,7 +5,8 @@ from __future__ import annotations
 import abc
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from openai import AsyncOpenAI
+from pydantic import BaseModel
 
 from webgal_agent.core.memory import Memory, InMemoryMemory
 from webgal_agent.core.message import Message
@@ -66,6 +67,31 @@ class Agent(abc.ABC):
     @property
     def memory(self) -> Memory:
         return self._memory
+
+    def _get_client(self) -> AsyncOpenAI:
+        """创建基于当前配置的 AsyncOpenAI 客户端。"""
+        base_url = self._config.base_url
+        # 兼容用户在 base_url 中误带 /chat/completions 的情况
+        if base_url.endswith("/chat/completions"):
+            base_url = base_url[: -len("/chat/completions")]
+        return AsyncOpenAI(
+            api_key=self._config.api_key or "sk-placeholder",
+            base_url=base_url,
+        )
+
+    async def _call_llm(self, system_prompt: str, user_content: str) -> str:
+        """调用 LLM 并返回生成文本。"""
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=self._config.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            temperature=self._config.temperature,
+            max_tokens=self._config.max_tokens,
+        )
+        return response.choices[0].message.content or ""
 
     @abc.abstractmethod
     async def run(self, message: Message) -> Message:

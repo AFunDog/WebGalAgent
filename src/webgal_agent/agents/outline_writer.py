@@ -30,8 +30,8 @@ class OutlineWriterAgent(Agent):
         return "TODO: 请在 configs/prompts.yaml 中配置 outline_writer 的系统提示词"
 
     async def run(self, message: Message) -> Message:
-        # TODO: 对接 LLM
-        return message.reply(
-            content="[OutlineWriter] 已收到用户输入和知识库，开始编写剧本大纲...",
-            msg_type=MessageType.RESULT,
+        result = await self._call_llm(
+            system_prompt=self.system_prompt(),
+            user_content=message.content,
         )
+        return message.reply(content=result, msg_type=MessageType.RESULT)

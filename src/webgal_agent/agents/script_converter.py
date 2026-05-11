@@ -30,8 +30,8 @@ class ScriptConverterAgent(Agent):
         return "TODO: 请在 configs/prompts.yaml 中配置 script_converter 的系统提示词"
 
     async def run(self, message: Message) -> Message:
-        # TODO: 对接 LLM
-        return message.reply(
-            content="[ScriptConverter] 已收到剧本和知识库，开始转换为 WebGal 脚本...",
-            msg_type=MessageType.RESULT,
+        result = await self._call_llm(
+            system_prompt=self.system_prompt(),
+            user_content=message.content,
         )
+        return message.reply(content=result, msg_type=MessageType.RESULT)

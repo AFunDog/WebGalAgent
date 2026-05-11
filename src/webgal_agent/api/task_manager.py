@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from datetime import datetime
@@ -336,18 +337,25 @@ class TaskManager:
         return {name: self._build_knowledge_context(name) for name in PIPELINE_ORDER}
 
     async def start_task(self, content: str) -> TaskInfo:
-        """创建并启动新的流水线任务。"""
+        """创建并启动新的流水线任务（后台异步执行）。"""
         task_id = uuid.uuid4().hex[:12]
         task = TaskInfo(task_id=task_id, content=content)
         self._tasks[task_id] = task
 
+        # 后台启动执行，不阻塞当前请求
+        asyncio.create_task(self._run_pipeline(task))
+
+        return task
+
+    async def _run_pipeline(self, task: TaskInfo) -> None:
+        """在后台执行流水线工作流。"""
         agents = self._build_agents()
         knowledge_contexts = self._build_all_knowledge_contexts()
 
         workflow = PipelineWorkflow(
             agents=agents,
             order=PIPELINE_ORDER,
-            user_input=content,
+            user_input=task.content,
             knowledge_contexts=knowledge_contexts,
         )
 
@@ -355,7 +363,7 @@ class TaskManager:
             type=MessageType.TASK,
             sender="user",
             receiver="outline_writer",
-            content=content,
+            content=task.content,
         )
 
         task.status = "running"
@@ -371,8 +379,6 @@ class TaskManager:
 
         # 持久化到磁盘
         _save_task_to_disk(task, self._task_dir)
-
-        return task
 
     def get_task(self, task_id: str) -> TaskInfo | None:
         return self._tasks.get(task_id)

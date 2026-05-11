@@ -89,11 +89,38 @@ async function loadTasks() {
 
 async function createTask(content) {
   try {
-    await API.post("/api/tasks", { content });
+    const task = await API.post("/api/tasks", { content });
+    // 创建后立即切换到任务列表并开始轮询
     await loadTasks();
+    pollTaskStatus(task.id);
   } catch (e) {
     alert("创建任务失败: " + e.message);
   }
+}
+
+function pollTaskStatus(taskId) {
+  let attempts = 0;
+  const maxAttempts = 600; // 最多轮询 10 分钟（每秒一次）
+  const timer = setInterval(async () => {
+    attempts++;
+    try {
+      const task = await API.get("/api/tasks/" + taskId);
+      // 更新列表中对应任务的状态
+      const idx = tasks.findIndex(t => t.id === taskId);
+      if (idx !== -1) {
+        tasks[idx] = task;
+        render();
+      }
+      if (task.status !== "running" && task.status !== "pending") {
+        clearInterval(timer);
+      }
+    } catch (e) {
+      console.error("轮询任务状态失败:", e);
+    }
+    if (attempts >= maxAttempts) {
+      clearInterval(timer);
+    }
+  }, 1000);
 }
 
 // ===== Page: Providers =====

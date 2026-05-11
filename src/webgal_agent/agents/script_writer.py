@@ -30,8 +30,8 @@ class ScriptWriterAgent(Agent):
         return "TODO: 请在 configs/prompts.yaml 中配置 script_writer 的系统提示词"
 
     async def run(self, message: Message) -> Message:
-        # TODO: 对接 LLM
-        return message.reply(
-            content="[ScriptWriter] 已收到大纲和知识库，开始生成章节剧本...",
-            msg_type=MessageType.RESULT,
+        result = await self._call_llm(
+            system_prompt=self.system_prompt(),
+            user_content=message.content,
         )
+        return message.reply(content=result, msg_type=MessageType.RESULT)
