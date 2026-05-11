@@ -3,11 +3,11 @@
 
 defaults: &defaults
   provider: openai
-  model: gpt-4o
-  base_url: https://api.openai.com/v1
-  api_key: ""
+  model: deepseek-ai/DeepSeek-V4-Flash
+  base_url: https://api.siliconflow.cn/v1/chat/completions
+  api_key: "sk-vaqjcejstusliueianrexntuyqbbqhnclrcxztmbfrbfvhoe"
   temperature: 0.7
-  max_tokens: 4096
+  max_tokens: 409600
 
 outline_writer:
   <<: *defaults
