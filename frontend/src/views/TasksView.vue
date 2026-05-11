@@ -29,7 +29,17 @@
     <div v-for="task in reversedTasks" :key="task.id" class="card">
       <div class="card-header">
         <h3>{{ task.content.slice(0, 80) }}</h3>
-        <span class="badge" :class="statusBadgeClass(task.status)">{{ task.status }}</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button
+            v-if="task.status === 'running' || task.status === 'pending'"
+            class="btn btn-danger btn-sm"
+            :disabled="cancelling.has(task.id)"
+            @click="cancelTask(task.id)"
+          >
+            {{ cancelling.has(task.id) ? '终止中...' : '终止任务' }}
+          </button>
+          <span class="badge" :class="statusBadgeClass(task.status)">{{ task.status }}</span>
+        </div>
       </div>
       <p style="color:var(--text-muted);font-size:12px">
         ID: {{ task.id }} · 创建时间: {{ formatTime(task.created_at) }}
@@ -55,7 +65,7 @@ import { api } from '../api'
 import MessageBubble from '../components/MessageBubble.vue'
 import type { Task } from '../types'
 
-/** 带指数退避的任务轮询：2s → 3s → 5s → 8s（上限） */
+/** 固定 1 秒间隔的任务轮询 */
 class TaskPoll {
   taskId: string
   timerId = 0
@@ -63,15 +73,10 @@ class TaskPoll {
   onUpdate: ((task: Task) => void) | null = null
   onStop: (() => void) | null = null
 
-  private static readonly INTERVALS = [2000, 3000, 5000, 8000]
+  private static readonly INTERVAL = 1000
 
   constructor(taskId: string) {
     this.taskId = taskId
-  }
-
-  private get interval(): number {
-    const idx = Math.min(this.attempts, TaskPoll.INTERVALS.length - 1)
-    return TaskPoll.INTERVALS[idx]!
   }
 
   start(): void {
@@ -87,7 +92,7 @@ class TaskPoll {
   }
 
   private scheduleNext(): void {
-    this.timerId = window.setTimeout(() => void this.tick(), this.interval)
+    this.timerId = window.setTimeout(() => void this.tick(), TaskPoll.INTERVAL)
   }
 
   private async tick(): Promise<void> {
@@ -114,6 +119,7 @@ class TaskPoll {
 const tasks = ref<Task[]>([])
 const newTaskContent = ref('')
 const creating = ref(false)
+const cancelling = ref(new Set<string>())
 
 // 轮询管理
 const activePolls = new Map<string, TaskPoll>()
@@ -125,6 +131,7 @@ function statusBadgeClass(status: string): string {
     case 'completed': return 'badge-success'
     case 'running': return 'badge-warning'
     case 'failed': return 'badge-danger'
+    case 'cancelled': return 'badge-danger'
     default: return 'badge-muted'
   }
 }
@@ -170,6 +177,27 @@ async function loadTasks() {
     tasks.value = await api.getTasks()
   } catch (e) {
     console.error('Failed to load tasks:', e)
+  }
+}
+
+async function cancelTask(taskId: string) {
+  cancelling.value.add(taskId)
+  try {
+    const updated = await api.cancelTask(taskId)
+    const idx = tasks.value.findIndex(t => t.id === taskId)
+    if (idx !== -1) {
+      tasks.value[idx] = updated
+    }
+    // 停止轮询
+    const poll = activePolls.get(taskId)
+    if (poll) {
+      poll.stop()
+      activePolls.delete(taskId)
+    }
+  } catch (e) {
+    alert('终止任务失败: ' + (e instanceof Error ? e.message : String(e)))
+  } finally {
+    cancelling.value.delete(taskId)
   }
 }
 

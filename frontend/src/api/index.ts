@@ -58,6 +58,8 @@ export const api = {
       body: JSON.stringify({ content }),
     }),
   getTask: (id: string) => request<Task>(`/tasks/${id}`),
+  cancelTask: (id: string) =>
+    request<Task>(`/tasks/${id}/cancel`, { method: 'POST' }),
 
   // ----- 提供商 -----
   getProviders: () => request<ProviderData>('/providers'),

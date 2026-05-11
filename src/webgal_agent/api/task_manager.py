@@ -253,6 +253,9 @@ class TaskManager:
         # 保存后台 asyncio.Task 引用，防止被 GC 回收
         self._background_tasks: set[asyncio.Task] = set()
 
+        # 保存 task_id → asyncio.Task 映射，用于取消任务
+        self._running_tasks: dict[str, asyncio.Task] = {}
+
         # 当前正在运行的智能体实例（供状态查询使用）
         self._active_agents: dict[str, Agent] = {}
 
@@ -379,6 +382,9 @@ class TaskManager:
         bg_task = asyncio.create_task(self._run_pipeline(task))
         self._background_tasks.add(bg_task)
         bg_task.add_done_callback(self._background_tasks.discard)
+        # 记录 task_id → asyncio.Task 映射，用于取消
+        self._running_tasks[task_id] = bg_task
+        bg_task.add_done_callback(lambda _: self._running_tasks.pop(task_id, None))
 
         return task
 
@@ -423,6 +429,10 @@ class TaskManager:
             task.errors = result.errors
             task.status = "completed" if result.success else "failed"
             logger.info("流水线执行完成: task_id=%s, status=%s", task.id, task.status)
+        except asyncio.CancelledError:
+            logger.info("流水线被取消: task_id=%s", task.id)
+            task.errors.append("任务已被用户终止")
+            task.status = "cancelled"
         except Exception as exc:
             logger.exception("流水线执行失败: task_id=%s", task.id)
             task.errors.append(str(exc))
@@ -435,6 +445,23 @@ class TaskManager:
 
     def get_task(self, task_id: str) -> TaskInfo | None:
         return self._tasks.get(task_id)
+
+    async def cancel_task(self, task_id: str) -> bool:
+        """取消正在运行的任务。
+
+        返回 True 表示成功取消，False 表示任务不存在或已结束。
+        """
+        bg_task = self._running_tasks.get(task_id)
+        if bg_task is None or bg_task.done():
+            return False
+
+        bg_task.cancel()
+        # 等待任务真正停止（超时 5 秒）
+        try:
+            await asyncio.wait_for(asyncio.shield(bg_task), timeout=5.0)
+        except (asyncio.CancelledError, asyncio.TimeoutError):
+            pass
+        return True
 
     def list_tasks(self) -> list[TaskInfo]:
         return list(self._tasks.values())
