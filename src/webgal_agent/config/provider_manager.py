@@ -22,6 +22,8 @@ class ProviderConfig(BaseModel):
     api_key: str = ""
     temperature: float = 0.7
     max_tokens: int = 4096
+    reasoning_effort: str | None = None
+    extra_body: dict | None = None
 
 
 # 已知供应商预设
@@ -140,4 +142,6 @@ class ProviderConfigManager:
             api_key=pc.api_key,
             temperature=pc.temperature,
             max_tokens=pc.max_tokens,
+            reasoning_effort=pc.reasoning_effort,
+            extra_body=pc.extra_body,
         )

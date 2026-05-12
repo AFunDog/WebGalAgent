@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import pathlib
 from collections import defaultdict
@@ -77,7 +78,7 @@ class AssetQueryTool(Tool):
 
         # 每种素材类型对应的文件扩展名
         supported_ext: dict[str, set[str]] = {
-            "character": {".png", ".jpg", ".webp", ".gif", ".json"},
+            "character": {".json"},
             "background": {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"},
             "bgm": {".mp3", ".ogg", ".wav", ".m4a", ".flac"},
             "effect": {".png", ".webp", ".gif", ".json"},
@@ -86,6 +87,16 @@ class AssetQueryTool(Tool):
 
         subdirs = type_subdirs.get(str(asset_type), [])
         exts = supported_ext.get(str(asset_type), {".png", ".jpg", ".mp3"})
+
+        # 每种素材类型对应的文件名过滤模式（None 表示不过滤）
+        type_name_filters: dict[str, list[str] | None] = {
+            "character": ["model*.json"],
+            "background": None,
+            "bgm": None,
+            "effect": None,
+            "voice": None,
+        }
+        name_filters = type_name_filters.get(str(asset_type))
 
         if not subdirs:
             return ToolResult(
@@ -119,6 +130,10 @@ class AssetQueryTool(Tool):
             ref_root = base / type_ref_roots.get(str(asset_type), subdir)
             for f in sorted(type_dir.rglob("*")):
                 if f.is_file() and f.suffix.lower() in exts:
+                    if name_filters is not None and not any(
+                        fnmatch.fnmatch(f.name, pat) for pat in name_filters
+                    ):
+                        continue
                     rel_path = f.relative_to(ref_root).as_posix()
                     groups[subdir].append(rel_path)
                     total_count += 1

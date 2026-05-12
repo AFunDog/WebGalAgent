@@ -31,3 +31,4 @@ htmlcov/
 tasks/
 
 providers.yaml
+*.providers.yaml.bak

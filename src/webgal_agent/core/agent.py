@@ -42,6 +42,8 @@ class AgentConfig(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 4096
     max_retries: int = 3
+    reasoning_effort: str | None = None
+    extra_body: dict | None = None
 
 
 @dataclass
@@ -141,7 +143,7 @@ class Agent(abc.ABC):
         return AsyncOpenAI(
             api_key=self._config.api_key or "sk-placeholder",
             base_url=base_url,
-            timeout=120.0,
+            timeout=180.0,
         )
 
     async def _call_llm(self, system_prompt: str, user_content: str) -> LLMResponse:
@@ -156,6 +158,11 @@ class Agent(abc.ABC):
         )
         logger.debug("[%s] system_prompt:\n%s", self._config.name, system_prompt[:500])
         logger.debug("[%s] user_content:\n%s", self._config.name, user_content[:500])
+        extra_kwargs: dict[str, Any] = {}
+        if self._config.reasoning_effort:
+            extra_kwargs["reasoning_effort"] = self._config.reasoning_effort
+        if self._config.extra_body:
+            extra_kwargs["extra_body"] = self._config.extra_body
         response = await client.chat.completions.create(
             model=self._config.model,
             messages=[
@@ -164,6 +171,7 @@ class Agent(abc.ABC):
             ],
             temperature=self._config.temperature,
             max_tokens=self._config.max_tokens,
+            **extra_kwargs,
         )
         content = response.choices[0].message.content or ""
         prompt_tokens = response.usage.prompt_tokens if response.usage else 0
@@ -236,12 +244,18 @@ class Agent(abc.ABC):
                 logger.info("[%s] 在 round=%d 检测到终止信号", self._config.name, round_idx + 1)
                 raise asyncio.CancelledError("智能体已被终止")
 
+            extra_kwargs: dict[str, Any] = {}
+            if self._config.reasoning_effort:
+                extra_kwargs["reasoning_effort"] = self._config.reasoning_effort
+            if self._config.extra_body:
+                extra_kwargs["extra_body"] = self._config.extra_body
             response = await client.chat.completions.create(
                 model=self._config.model,
                 messages=messages,
                 tools=cast(Any, tool_schemas),
                 temperature=self._config.temperature,
                 max_tokens=self._config.max_tokens,
+                **extra_kwargs,
             )
 
             choice = response.choices[0]
