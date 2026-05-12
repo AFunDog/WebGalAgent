@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(ls -la \"D:/Program/WebGal_Terre/public/games/MyGO3.0.0/game/\" 2>/dev/null || echo \"Directory not accessible\")",
-      "Read(//d/Program/WebGal_Terre/public/games/MyGO3.0.0/game/**)"
+      "Read(//d/Program/WebGal_Terre/public/games/MyGO3.0.0/game/**)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }

@@ -118,11 +118,6 @@ changeFigure:x.png -next;
 :文本内容 -fontSize=large;   ; 大字，文本框显示2行
 ```
 
-### 注音
-
-```
-[要注音的词](注音)
-```
 
 ### 文本拓展语法
 
@@ -132,12 +127,6 @@ changeFigure:x.png -next;
 ```
 
 注意：文本拓展语法中的 `;` 需转义为 `\;`。
-
-### 变量插值
-
-```
-{name}:欢迎使用 {engine}！;
-```
 
 ## 背景切换
 
@@ -279,7 +268,31 @@ setTransition: -target=fig-center -enter=enter-from-bottom -exit=exit;
 
 ## 动画效果
 
-### 预制动画
+> **推荐**：优先使用 `setTempAnimation`，它更灵活且无需依赖外部动画文件。
+
+### 临时动画 setTempAnimation（推荐）
+
+直接在代码中定义多段动画，无需额外文件。格式为 JSON 数组，每段动画是一个对象：
+
+```
+setTempAnimation:[段1, 段2, ...] -target=作用目标;
+```
+
+每段支持的属性：`brightness`、`contrast`、`saturation`、`scale{"x","y"}`、`position{"x","y"}`、`alpha`、`rotation`、`blur` 等，均需带 `duration`（毫秒）和可选的 `ease`。
+
+示例 — 闪光弹效果：
+```
+setTempAnimation:[{"duration":0},{"brightness":2,"contrast":0,"duration":200,"ease":"circIn"},{"brightness":1,"contrast":1,"duration":200},{"brightness":2,"contrast":0,"duration":200,"ease":"circIn"},{"brightness":1,"contrast":1,"duration":2500}] -target=aaa;
+```
+
+参数：
+- `-target`：作用目标（`fig-left`、`fig-center`、`fig-right`、`bg-main`、或自定义 `id`）
+- `-writeDefault`：将动画写入默认值，后续不带 `-keep` 时会回到此状态
+- `-keep`：动画完成后保持最终状态，不自动还原。跨对话持续生效，直到该目标执行新的不带 `-keep` 的 `setTempAnimation`
+
+### 预制动画 setAnimation
+
+读取 `animation/` 目录下的预制动画文件：
 
 ```
 setAnimation:动画名 -target=作用目标 -next;
@@ -329,69 +342,6 @@ callScene:Chapter-2.txt;
 
 **注意**：跳转/调用后舞台不会清除，BGM、立绘、背景等会被继承。
 
-### 选项分支
-
-```
-choose:选项1:场景1.txt|选项2:场景2.txt;
-```
-
-条件展示/启用选项：
-```
-choose:(showVar>1)[enableVar>2]->选项1:场景1.txt|选项2:场景2.txt;
-```
-
-### 标签跳转
-
-在同一文件内跳转：
-```
-label:标签名;           ; 创建标签
-jumpLabel:标签名;       ; 跳转到标签
-```
-
-配合 `choose` 实现同文件分支：
-```
-choose:分支1:label_1|分支2:label_2;
-label:label_1;
-......
-jumpLabel:end;
-label:label_2;
-......
-jumpLabel:end;
-label:end;
-```
-
-## 变量与条件判断
-
-### 设置变量
-
-```
-setVar:a=1;             ; 数字
-setVar:a=true;          ; 布尔值
-setVar:a=字符串;         ; 字符串
-setVar:a=random();      ; 0~1随机浮点数
-setVar:a=random(5,10);  ; 5~10随机整数
-setVar:a=1 -global;     ; 全局变量（跨存档生效）
-```
-
-### 变量插值
-
-```
-{name}:欢迎使用 {engine}！;
-```
-
-### 条件执行
-
-```
-setVar:a=1;
-changeScene:1.txt -when=a>1;   ; a>1时才执行
-changeScene:2.txt -when=a==1;  ; a==1时才执行（注意用==而非=）
-```
-
-### 获取用户输入
-
-```
-getUserInput:name -title=如何称呼你 -buttonText=确认;
-```
 
 ## 视频播放
 
@@ -414,24 +364,4 @@ wait:1333;  ; 等待1333毫秒
 ```
 setTextbox:hide;  ; 关闭文本框
 setTextbox:on;    ; 重新显示（除hide外的任意值）
-```
-
-### 电影模式
-
-```
-filmMode:enable;  ; 开启
-filmMode:none;    ; 关闭
-```
-
-### 解锁CG/音频鉴赏
-
-```
-unlockCg:图片.jpg -name=CG名称 -series=1;
-unlockBgm:音乐.mp3 -name=音频名称;
-```
-
-### 结束游戏
-
-```
-end;  ; 返回标题界面
 ```

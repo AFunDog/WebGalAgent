@@ -279,7 +279,40 @@ setTransition: -target=fig-center -enter=enter-from-bottom -exit=exit;
 
 ## 动画效果
 
-### 预制动画
+> **推荐**：优先使用 `setTempAnimation`，它更灵活且无需依赖外部动画文件。
+
+### 临时动画 setTempAnimation（推荐）
+
+直接在代码中定义多段动画，无需额外文件。格式为 JSON 数组，每段动画是一个对象：
+
+```
+setTempAnimation:[段1, 段2, ...] -target=作用目标;
+```
+
+每段支持的属性：`brightness`、`contrast`、`saturation`、`scale{"x","y"}`、`position{"x","y"}`、`alpha`、`rotation`、`blur` 等，均需带 `duration`（毫秒）和可选的 `ease`。
+
+示例 — 闪光弹效果：
+```
+setTempAnimation:[{"duration":0},{"brightness":2,"contrast":0,"duration":200,"ease":"circIn"},{"brightness":1,"contrast":1,"duration":200},{"brightness":2,"contrast":0,"duration":200,"ease":"circIn"},{"brightness":1,"contrast":1,"duration":2500}] -target=aaa;
+```
+
+参数：
+- `-target`：作用目标（`fig-left`、`fig-center`、`fig-right`、`bg-main`、或自定义 `id`）
+- `-writeDefault`：将动画写入默认值，后续 `setTempAnimation` 不指定 `-keep` 时会回到此状态
+- `-keep`：动画完成后保持最终状态，不自动还原。跨对话持续生效，直到该目标执行新的 `setTempAnimation`（不带 `-keep`）
+
+```
+; -keep 示例：保持放大状态跨多句对话
+setTempAnimation:[{"duration":0},{"scale":{"x":2,"y":2},"duration":10000}] -target=aaa -keep -next;
+角色A: 第一句话;
+角色A: 第二句话;
+; 恢复
+setTempAnimation:[{"duration":0},{"scale":{"x":1,"y":1},"duration":10000}] -target=aaa -keep -next;
+```
+
+### 预制动画 setAnimation
+
+读取 `animation/` 目录下的预制动画文件：
 
 ```
 setAnimation:动画名 -target=作用目标 -next;
