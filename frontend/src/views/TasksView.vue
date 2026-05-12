@@ -1,34 +1,14 @@
 <template>
   <div>
-    <h2 class="page-title">任务执行</h2>
+    <h2 class="page-title">任务历史</h2>
 
-    <!-- 创建新任务 -->
-    <div class="card" style="margin-bottom:24px">
-      <div class="card-header"><h3>创建新任务</h3></div>
-      <div class="form-group">
-        <label>任务内容</label>
-        <textarea
-          v-model="newTaskContent"
-          class="form-textarea"
-          placeholder="请输入任务描述..."
-          @keyup.ctrl.enter="createTask"
-        />
-      </div>
-      <button class="btn btn-primary" :disabled="creating" @click="createTask">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
-          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-        </svg>
-        执行任务
-      </button>
-    </div>
-
-    <!-- 任务列表 -->
     <div v-if="tasks.length === 0" class="empty-state">
-      <p>暂无任务，在上方创建新任务</p>
+      <p>暂无任务，前往<router-link :to="{ name: 'pipeline' }">流水线</router-link>创建新任务</p>
     </div>
-    <div v-for="task in reversedTasks" :key="task.id" class="card">
+
+    <div v-for="task in reversedTasks" :key="task.id" class="card" style="margin-bottom:16px">
       <div class="card-header">
-        <h3>{{ task.content.slice(0, 80) }}</h3>
+        <h3>{{ task.title || task.content.slice(0, 60) }}</h3>
         <div style="display:flex;gap:8px;align-items:center">
           <button
             v-if="task.status === 'running' || task.status === 'pending'"
@@ -36,25 +16,38 @@
             :disabled="cancelling.has(task.id)"
             @click="cancelTask(task.id)"
           >
-            {{ cancelling.has(task.id) ? '终止中...' : '终止任务' }}
+            {{ cancelling.has(task.id) ? '终止中...' : '终止' }}
           </button>
-          <span class="badge" :class="statusBadgeClass(task.status)">{{ task.status }}</span>
+          <span class="badge" :class="statusBadgeClass(task.status)">{{ statusLabel(task.status) }}</span>
         </div>
       </div>
       <p style="color:var(--text-muted);font-size:12px">
-        ID: {{ task.id }} · 创建时间: {{ formatTime(task.created_at) }}
+        ID: {{ task.id }} · {{ formatTime(task.created_at) }}
       </p>
       <p
         v-if="task.errors.length"
         style="color:var(--danger);font-size:12px;margin-top:4px"
       >{{ task.errors.join('; ') }}</p>
-      <div style="margin-top:12px">
-        <MessageBubble
-          v-for="msg in task.messages"
-          :key="msg.id"
-          :message="msg"
-        />
-      </div>
+
+      <!-- 节点图 -->
+      <PipelineGraph
+        :agents="agentDefs"
+        :messages="task.messages"
+        :active-agent="task.status === 'running' ? currentAgent(task) : ''"
+        style="margin-top:16px"
+      />
+
+      <!-- 展开详情 -->
+      <details style="margin-top:12px">
+        <summary style="cursor:pointer;color:var(--text-muted);font-size:13px">查看详细消息</summary>
+        <div style="margin-top:8px">
+          <MessageBubble
+            v-for="msg in task.messages"
+            :key="msg.id"
+            :message="msg"
+          />
+        </div>
+      </details>
     </div>
   </div>
 </template>
@@ -63,7 +56,8 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api'
 import MessageBubble from '../components/MessageBubble.vue'
-import type { Task } from '../types'
+import PipelineGraph from '../components/PipelineGraph.vue'
+import type { Task, AgentInfo } from '../types'
 
 /** 固定 1 秒间隔的任务轮询 */
 class TaskPoll {
@@ -107,8 +101,7 @@ class TaskPoll {
     } catch (e) {
       console.error('轮询任务状态失败:', e)
     }
-    // 超过 10 分钟停止
-    if (this.attempts >= 100) {
+    if (this.attempts >= 600) {
       this.stop()
       return
     }
@@ -117,14 +110,14 @@ class TaskPoll {
 }
 
 const tasks = ref<Task[]>([])
-const newTaskContent = ref('')
-const creating = ref(false)
 const cancelling = ref(new Set<string>())
+const agentDefs = ref<AgentInfo[]>([])
 
-// 轮询管理
 const activePolls = new Map<string, TaskPoll>()
 
 const reversedTasks = computed(() => [...tasks.value].reverse())
+
+const AGENT_ORDER = ['outline_writer', 'script_writer', 'script_converter']
 
 function statusBadgeClass(status: string): string {
   switch (status) {
@@ -136,8 +129,28 @@ function statusBadgeClass(status: string): string {
   }
 }
 
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'completed': return '已完成'
+    case 'running': return '运行中'
+    case 'pending': return '等待中'
+    case 'failed': return '失败'
+    case 'cancelled': return '已取消'
+    default: return status
+  }
+}
+
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString()
+}
+
+function currentAgent(task: Task): string {
+  const resultMsgs = task.messages.filter(m => m.type === 'result')
+  if (resultMsgs.length === 0) return 'outline_writer'
+  const lastSender = resultMsgs[resultMsgs.length - 1]?.sender ?? ''
+  const idx = AGENT_ORDER.indexOf(lastSender)
+  if (idx >= 0 && idx < AGENT_ORDER.length - 1) return AGENT_ORDER[idx + 1]!
+  return lastSender
 }
 
 function startPolling(taskId: string) {
@@ -156,22 +169,6 @@ function startPolling(taskId: string) {
   activePolls.set(taskId, poll)
 }
 
-async function createTask() {
-  const content = newTaskContent.value.trim()
-  if (!content) return
-  creating.value = true
-  try {
-    const task = await api.createTask(content)
-    newTaskContent.value = ''
-    await loadTasks()
-    startPolling(task.id)
-  } catch (e) {
-    alert('创建任务失败: ' + (e instanceof Error ? e.message : String(e)))
-  } finally {
-    creating.value = false
-  }
-}
-
 async function loadTasks() {
   try {
     tasks.value = await api.getTasks()
@@ -188,7 +185,6 @@ async function cancelTask(taskId: string) {
     if (idx !== -1) {
       tasks.value[idx] = updated
     }
-    // 停止轮询
     const poll = activePolls.get(taskId)
     if (poll) {
       poll.stop()
@@ -203,11 +199,16 @@ async function cancelTask(taskId: string) {
 
 onMounted(async () => {
   await loadTasks()
-  // 对进行中的任务启动轮询
   for (const t of tasks.value) {
     if (t.status === 'running' || t.status === 'pending') {
       startPolling(t.id)
     }
+  }
+  try {
+    const info = await api.getPipeline()
+    agentDefs.value = info.agents
+  } catch (e) {
+    console.error('Failed to load pipeline info:', e)
   }
 })
 

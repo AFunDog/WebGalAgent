@@ -10,9 +10,9 @@ const router = createRouter({
       component: () => import('../views/KnowledgeView.vue'),
     },
     {
-      path: '/workflows',
-      name: 'workflows',
-      component: () => import('../views/WorkflowsView.vue'),
+      path: '/pipeline',
+      name: 'pipeline',
+      component: () => import('../views/PipelineView.vue'),
     },
     {
       path: '/tasks',

@@ -75,11 +75,14 @@
       <div v-if="entries.length === 0" class="empty-state">
         <p>暂无知识条目</p>
       </div>
-      <div v-for="entry in entries" :key="entry.id" class="card">
-        <div class="card-header">
-          <h3>{{ entry.title }}</h3>
-          <div>
-            <span class="tag tag-clickable" @click="filterByCategory(entry.category)">
+      <div v-for="entry in entries" :key="entry.id" class="knowledge-card" @click="toggle(entry.id)">
+        <div class="knowledge-card-header">
+          <div class="knowledge-card-title">
+            <span class="knowledge-expand-icon" :class="{ expanded: expandedIds.has(entry.id) }">▶</span>
+            <h3>{{ entry.title }}</h3>
+          </div>
+          <div class="knowledge-card-meta">
+            <span class="tag tag-clickable" @click.stop="filterByCategory(entry.category)">
               {{ entry.category }}
             </span>
             <span
@@ -87,11 +90,16 @@
               :key="tag"
               class="tag tag-clickable tag-accent"
               :class="{ 'tag-active': filterTags.includes(tag) }"
-              @click="filterByTag(tag)"
+              @click.stop="filterByTag(tag)"
             >{{ tag }}</span>
           </div>
         </div>
-        <pre style="color:var(--text-muted);font-size:13px;white-space:pre-wrap;font-family:inherit;margin:0">{{ entry.body }}</pre>
+        <div v-if="!expandedIds.has(entry.id)" class="knowledge-card-preview">
+          {{ getPreview(entry.body) }}
+        </div>
+        <div v-else class="knowledge-card-body">
+          <pre>{{ entry.body }}</pre>
+        </div>
       </div>
     </div>
   </div>
@@ -116,6 +124,23 @@ const requirements = ref<AgentKnowledgeRequirements[]>([])
 const filterCategory = ref('')
 const filterKeyword = ref('')
 const filterTags = ref<string[]>([])
+const expandedIds = ref<Set<string>>(new Set())
+
+function toggle(id: string) {
+  const next = new Set(expandedIds.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  expandedIds.value = next
+}
+
+function getPreview(body: string): string {
+  const firstLine = body.split('\n').find(l => l.trim()) ?? ''
+  const preview = firstLine.length > 80 ? firstLine.slice(0, 80) + '…' : firstLine
+  return preview
+}
 
 async function loadEntries() {
   try {

@@ -58,6 +58,7 @@ export interface Task {
   status: string
   workflow: string
   content: string
+  title: string
   messages: TaskMessage[]
   errors: string[]
   created_at: string
