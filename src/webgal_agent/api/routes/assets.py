@@ -57,10 +57,10 @@ def _resolve_game_dir() -> Path:
     if game_dir:
         return Path(game_dir)
 
-    # 尝试从 configs/default.yaml 加载
+    # 尝试从 src/configs/default.yaml 加载
     import yaml
 
-    config_path = Path("configs/default.yaml")
+    config_path = Path("src/configs/default.yaml")
     if config_path.exists():
         data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
         if data and isinstance(data, dict):

@@ -51,7 +51,7 @@ def create_app(
         knowledge_dir: 知识库目录路径。
             默认使用环境变量 ``WEBGAL_KNOWLEDGE_DIR`` 或 ``data/knowledge``。
         providers_path: 供应商配置 YAML 路径。
-            默认使用环境变量 ``WEBGAL_PROVIDERS_PATH`` 或 ``configs/providers.yaml``。
+            默认使用环境变量 ``WEBGAL_PROVIDERS_PATH`` 或 ``src/configs/providers.yaml``。
     """
     import os
 
@@ -65,7 +65,7 @@ def create_app(
         knowledge_dir or os.getenv("WEBGAL_KNOWLEDGE_DIR", "data/knowledge"),
     ).resolve())
     _resolved_providers_path = str(Path(
-        providers_path or os.getenv("WEBGAL_PROVIDERS_PATH", "configs/providers.yaml"),
+        providers_path or os.getenv("WEBGAL_PROVIDERS_PATH", "src/configs/providers.yaml"),
     ).resolve())
 
     app = FastAPI(

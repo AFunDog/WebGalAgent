@@ -15,14 +15,14 @@ def _resolve_assets_base_dir() -> pathlib.Path:
 
     查找优先级：
     1. 环境变量 WEBGAL_GAME_DIR
-    2. configs/default.yaml 中的 assets.game_dir
+    2. src/configs/default.yaml 中的 assets.game_dir
     3. 回退到 data/assets
     """
     game_dir = os.getenv("WEBGAL_GAME_DIR")
     if game_dir:
         return pathlib.Path(game_dir)
 
-    config_path = pathlib.Path("configs/default.yaml")
+    config_path = pathlib.Path("src/configs/default.yaml")
     if config_path.exists():
         import yaml
         data = yaml.safe_load(config_path.read_text(encoding="utf-8"))

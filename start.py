@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-FRONTEND_DIR = ROOT / "frontend"
+FRONTEND_DIR = ROOT / "src" / "frontend"
 
 # 当前管理的子进程
 _children: list[subprocess.Popen[bytes]] = []
@@ -75,7 +75,7 @@ def start_dev(backend_host: str, backend_port: int) -> None:
     backend_env = {
         **os.environ,
         "WEBGAL_KNOWLEDGE_DIR": "data/knowledge",
-        "WEBGAL_PROVIDERS_PATH": "configs/providers.yaml",
+        "WEBGAL_PROVIDERS_PATH": "src/configs/providers.yaml",
     }
 
     print("=== 启动开发模式 ===")
@@ -125,7 +125,7 @@ def start_backend(host: str, port: int, reload: bool) -> None:
     env = {
         **os.environ,
         "WEBGAL_KNOWLEDGE_DIR": "data/knowledge",
-        "WEBGAL_PROVIDERS_PATH": "configs/providers.yaml",
+        "WEBGAL_PROVIDERS_PATH": "src/configs/providers.yaml",
     }
     cmd = [
         sys.executable, "-m", "uvicorn",

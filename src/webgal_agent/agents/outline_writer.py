@@ -33,7 +33,7 @@ class OutlineWriterAgent(Agent):
     def system_prompt(self) -> str:
         if self._custom_prompt:
             return self._custom_prompt
-        return "TODO: 请在 configs/prompts.yaml 中配置 outline_writer 的系统提示词"
+        return "TODO: 请在 src/configs/prompts.yaml 中配置 outline_writer 的系统提示词"
 
     async def run(self, message: Message) -> Message:
         response = await self._call_llm_with_tools(

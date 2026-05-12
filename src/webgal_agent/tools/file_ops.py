@@ -19,7 +19,7 @@ def _resolve_allowed_dirs() -> list[pathlib.Path]:
     if game_dir:
         dirs.append(pathlib.Path(game_dir).resolve())
     else:
-        config_path = pathlib.Path("configs/default.yaml")
+        config_path = pathlib.Path("src/configs/default.yaml")
         if config_path.exists():
             import yaml
             data = yaml.safe_load(config_path.read_text(encoding="utf-8"))

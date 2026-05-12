@@ -18,8 +18,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--providers-path",
-        default="configs/providers.yaml",
-        help="供应商配置 YAML 路径 (默认: configs/providers.yaml)",
+        default="src/configs/providers.yaml",
+        help="供应商配置 YAML 路径 (默认: src/configs/providers.yaml)",
     )
     args = parser.parse_args()
 

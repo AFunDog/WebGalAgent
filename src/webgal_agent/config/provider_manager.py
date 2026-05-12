@@ -1,6 +1,6 @@
 """供应商配置管理器。
 
-从 configs/providers.yaml 读写各智能体的 LLM 供应商设置。
+从 src/configs/providers.yaml 读写各智能体的 LLM 供应商设置。
 """
 
 from __future__ import annotations
@@ -56,10 +56,10 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
 class ProviderConfigManager:
     """管理各智能体的 LLM 供应商配置。
 
-    配置持久化到 ``configs/providers.yaml``。
+    配置持久化到 ``src/configs/providers.yaml``。
     """
 
-    def __init__(self, config_path: str | Path = "configs/providers.yaml") -> None:
+    def __init__(self, config_path: str | Path = "src/configs/providers.yaml") -> None:
         self._path = Path(config_path)
         self._configs: dict[str, ProviderConfig] = {}
         self._default_config = ProviderConfig()

@@ -127,8 +127,8 @@ class TaskInfo:
 
 
 def _load_prompts() -> dict[str, str]:
-    """从 configs/prompts.yaml 加载智能体提示词。"""
-    prompts_path = Path("configs/prompts.yaml")
+    """从 src/configs/prompts.yaml 加载智能体提示词。"""
+    prompts_path = Path("src/configs/prompts.yaml")
     if not prompts_path.exists():
         return {}
 
@@ -144,7 +144,7 @@ def _load_prompts() -> dict[str, str]:
 
 
 def _load_knowledge_requirements() -> dict[str, dict[str, list[str]]]:
-    """从 configs/prompts.yaml 加载各智能体的知识库需求配置。
+    """从 src/configs/prompts.yaml 加载各智能体的知识库需求配置。
 
     返回智能体名称到知识筛选配置的映射::
 
@@ -153,7 +153,7 @@ def _load_knowledge_requirements() -> dict[str, dict[str, list[str]]]:
             "script_converter": {"categories": ["reference"], "tags": ["webgal"]},
         }
     """
-    prompts_path = Path("configs/prompts.yaml")
+    prompts_path = Path("src/configs/prompts.yaml")
     if not prompts_path.exists():
         return {}
 

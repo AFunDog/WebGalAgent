@@ -13,7 +13,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../src/webgal_agent/api/static',
+    outDir: '../webgal_agent/api/static',
     emptyOutDir: true,
   },
 })
