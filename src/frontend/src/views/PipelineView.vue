@@ -157,7 +157,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api'
 import PipelineGraph from '../components/PipelineGraph.vue'
 import type { AgentInfo, Task } from '../types'
@@ -333,7 +333,7 @@ async function runStep() {
     activeTask.value = updated
     // 如果正在运行，开始轮询
     if (updated.status === 'running') {
-      pollTask(updated.id)
+      startPolling(updated.id)
     }
   } catch (e) {
     alert('执行步骤失败: ' + (e instanceof Error ? e.message : String(e)))
@@ -352,20 +352,34 @@ async function cancelTask() {
   }
 }
 
-function pollTask(taskId: string) {
-  const poll = async () => {
+// 轮询逻辑
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+function startPolling(taskId: string) {
+  if (pollTimer !== null) return
+  pollTimer = setInterval(async () => {
     try {
       const task = await api.getTask(taskId)
       activeTask.value = task
-      if (task.status === 'running') {
-        setTimeout(poll, 1500)
+      if (task.status !== 'running') {
+        stopPolling()
       }
-    } catch (e) {
-      console.error('轮询失败:', e)
+    } catch {
+      stopPolling()
     }
-  }
-  setTimeout(poll, 1500)
+  }, 1500)
 }
+
+function stopPolling() {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+onUnmounted(() => {
+  stopPolling()
+})
 
 onMounted(async () => {
   try {
@@ -381,7 +395,7 @@ onMounted(async () => {
     if (lastTask && (lastTask.status === 'pending' || lastTask.status === 'paused' || lastTask.status === 'running')) {
       activeTask.value = lastTask
       if (lastTask.status === 'running') {
-        pollTask(lastTask.id)
+        startPolling(lastTask.id)
       }
     }
   } catch {

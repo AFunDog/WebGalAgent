@@ -31,11 +31,15 @@
 
 ### 🟡 中等（应尽快处理）
 
-#### 3. PipelineView 轮询不停止
+#### 3. ~~PipelineView 轮询不停止~~ `[已修复]` ✅
 
-- **位置**: `src/frontend/src/views/PipelineView.vue` 第 355-368 行
+- **位置**: `src/frontend/src/views/PipelineView.vue`
 - **问题**: `pollTask` 使用 `setTimeout` 递归调用但没有清理机制；离开页面再回来可能产生多个轮询链
-- **建议**: 添加 `onUnmounted` 钩子清除轮询定时器（参考 `TasksView` 的实现）
+- **修复措施**（2026-05-12）:
+  1. ✅ 将递归 `setTimeout` 改为 `setInterval` + `pollTimer` 变量
+  2. ✅ 添加 `startPolling()` / `stopPolling()` 函数，任务完成或出错时自动停止
+  3. ✅ 添加 `onUnmounted` 钩子，组件卸载时清除定时器
+  4. ✅ `startPolling` 增加防重复检查（`if pollTimer !== null return`）
 
 #### 4. `_call_llm` 无异常处理和重试
 
@@ -302,7 +306,7 @@
 |--------|------|----------|----------|
 | P1 | ~~Agent run() 重复~~ ✅ | 可维护性 | 低 |
 | P1 | ReadFileTool 路径过宽 | 安全 | 低 |
-| P1 | 轮询不停止 | 可靠性 | 低 |
+| P1 | ~~轮询不停止~~ ✅ | 可靠性 | 低 |
 | P1 | LLM 调用无重试 | 稳定性 | 低 |
 | P2 | 类型安全 | 代码质量 | 中 |
 | P2 | 统一异常处理 | 稳定性 | 低 |
