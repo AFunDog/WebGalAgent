@@ -331,11 +331,8 @@ class TaskManager:
         # 加载之前持久化的任务
         self._tasks: dict[str, TaskInfo] = _load_tasks_from_disk(self._task_dir)
 
-        # 保存后台 asyncio.Task 引用，防止被 GC 回收
-        self._background_tasks: set[asyncio.Task] = set()
-
-        # 保存 task_id → asyncio.Task 映射，用于取消任务
-        self._running_tasks: dict[str, asyncio.Task] = {}
+        # 保存后台 asyncio.Task 引用，用于取消任务
+        self._running_task: asyncio.Task | None = None
 
         # 当前正在运行的智能体实例（供状态查询和取消使用）
         self._active_agents: dict[str, Agent] = {}
@@ -494,10 +491,15 @@ class TaskManager:
         return task
 
     async def run_step(self, task_id: str) -> TaskInfo:
-        """启动任务的下一步执行（后台异步）。"""
+        """启动任务的下一步执行（后台异步）。
+
+        强制单任务执行模式：同一时间只能有一个任务在运行。
+        """
         task = self._tasks.get(task_id)
         if task is None:
             raise ValueError(f"任务 {task_id} 不存在")
+        if self._running_task is not None:
+            raise ValueError("已有任务正在执行中，请等待完成或取消后再试")
         if task.status == "running":
             raise ValueError("任务正在执行中，请等待完成")
         if task.current_step >= len(PIPELINE_ORDER):
@@ -507,11 +509,7 @@ class TaskManager:
         _save_task_to_disk(task, self._task_dir)
 
         # 后台启动执行，不阻塞当前请求
-        bg_task = asyncio.create_task(self._run_step_background(task))
-        self._background_tasks.add(bg_task)
-        bg_task.add_done_callback(self._background_tasks.discard)
-        self._running_tasks[task_id] = bg_task
-        bg_task.add_done_callback(lambda _: self._running_tasks.pop(task_id, None))
+        self._running_task = asyncio.create_task(self._run_step_background(task))
 
         return task
 
@@ -606,6 +604,7 @@ class TaskManager:
         finally:
             self._active_agents = {}
             self._running_task_id = None
+            self._running_task = None
             _save_task_to_disk(task, self._task_dir)
 
     def update_step_result(self, task_id: str, step_index: int, content: str) -> TaskInfo:
@@ -643,15 +642,13 @@ class TaskManager:
             return False
 
         # 如果有后台任务正在执行，取消它
-        bg_task = self._running_tasks.get(task_id)
-        if bg_task is not None and not bg_task.done():
-            # 先通知 agent 停止，以便在当前轮次快速响应
-            if self._running_task_id == task_id:
-                for agent in self._active_agents.values():
-                    agent.cancel()
-            bg_task.cancel()
+        if self._running_task is not None and not self._running_task.done():
+            # 通知 agent 停止
+            for agent in self._active_agents.values():
+                agent.cancel()
+            self._running_task.cancel()
             try:
-                await asyncio.wait_for(asyncio.shield(bg_task), timeout=5.0)
+                await asyncio.wait_for(asyncio.shield(self._running_task), timeout=5.0)
             except (asyncio.CancelledError, asyncio.TimeoutError):
                 pass
             return True
