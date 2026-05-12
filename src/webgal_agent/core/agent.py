@@ -85,12 +85,14 @@ class Agent(abc.ABC):
         config: AgentConfig,
         memory: Memory | None = None,
         tools: list[Tool] | None = None,
+        system_prompt: str = "",
     ) -> None:
         self._config = config
         self._state = AgentState.IDLE
         self._memory = memory or InMemoryMemory()
         self._tools: dict[str, Tool] = {}
         self._cancel_event = asyncio.Event()
+        self._custom_prompt = system_prompt
         if tools:
             for tool in tools:
                 self._tools[tool.name] = tool
@@ -373,16 +375,42 @@ class Agent(abc.ABC):
             total_tokens=accumulated_total_tokens,
         )
 
-    @abc.abstractmethod
     async def run(self, message: Message) -> Message:
         """处理传入消息并返回响应。
 
-        这是智能体执行的主入口。子类必须实现此方法以定义行为。
+        默认实现：调用 LLM（含工具循环），将结果包装为 RESULT 消息返回。
+        子类可覆盖此方法以实现自定义行为。
         """
+        from webgal_agent.core.message import MessageType
 
-    @abc.abstractmethod
+        response = await self._call_llm_with_tools(
+            system_prompt=self.system_prompt(),
+            user_content=message.content,
+        )
+        metadata = dict(message.metadata)
+        if response.tool_calls:
+            metadata["tool_calls"] = [
+                {"tool": tc.tool_name, "args": tc.arguments, "result": tc.result, "success": tc.success}
+                for tc in response.tool_calls
+            ]
+        metadata["token_usage"] = {
+            "prompt_tokens": response.prompt_tokens,
+            "completion_tokens": response.completion_tokens,
+            "total_tokens": response.total_tokens,
+        }
+        return message.reply(content=response.content, msg_type=MessageType.RESULT).model_copy(
+            update={"metadata": metadata}
+        )
+
     def system_prompt(self) -> str:
-        """返回该智能体的系统提示词。"""
+        """返回该智能体的系统提示词。
+
+        如果构造时传入了 system_prompt 则使用它，否则返回空字符串。
+        子类可覆盖此方法以提供动态提示词。
+        """
+        if self._custom_prompt:
+            return self._custom_prompt
+        return ""
 
     async def handle(self, message: Message) -> Message:
         """带状态管理的消息处理。
