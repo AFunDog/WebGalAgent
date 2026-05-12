@@ -23,6 +23,34 @@
           @keyup.ctrl.enter="createTask"
         />
       </div>
+      <div class="form-group">
+        <label>起始步骤</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button
+            v-for="(step, idx) in pipelineSteps"
+            :key="step.name"
+            class="btn btn-sm"
+            :class="startStep === idx ? 'btn-primary' : ''"
+            @click="setStartStep(idx)"
+          >
+            {{ String.fromCharCode(65 + idx) }}. {{ step.label }}
+          </button>
+        </div>
+        <div v-if="startStep > 0" style="margin-top:4px;font-size:12px;color:var(--text-muted)">
+          将跳过 {{ pipelineSteps.slice(0, startStep).map(s => s.label).join('、') }}，请为跳过的步骤提供输入内容
+        </div>
+      </div>
+      <!-- 跳过步骤的输入框 -->
+      <div v-for="idx in startStep" :key="'input-' + idx" class="form-group" style="margin-top:8px">
+        <label>{{ pipelineSteps[idx - 1].label }} 的输出内容</label>
+        <textarea
+          v-model="stepInputs[String(idx - 1)]"
+          class="form-textarea"
+          :placeholder="'请输入 ' + pipelineSteps[idx - 1].label + ' 的输出...'"
+          rows="6"
+          style="font-size:12px;font-family:monospace"
+        />
+      </div>
       <button class="btn btn-primary" :disabled="creating" @click="createTask">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -127,6 +155,8 @@ const runningStep = ref(false)
 const activeTask = ref<Task | null>(null)
 const editingStep = ref<number | null>(null)
 const editContent = ref('')
+const startStep = ref(0)
+const stepInputs = ref<Record<string, string>>({})
 
 const pipelineSteps = [
   { name: 'outline_writer', label: '大纲编写' },
@@ -208,16 +238,40 @@ async function saveEdit(idx: number) {
 async function createTask() {
   const content = newTaskContent.value.trim()
   if (!content) return
+  // 检查跳过步骤的输入是否都已填写
+  if (startStep.value > 0) {
+    for (let i = 0; i < startStep.value; i++) {
+      if (!stepInputs.value[String(i)]?.trim()) {
+        alert(`请填写「${pipelineSteps[i].label}」的输出内容`)
+        return
+      }
+    }
+  }
   creating.value = true
   try {
-    const task = await api.createTask(content)
+    const task = await api.createTask(content, {
+      startStep: startStep.value,
+      stepInputs: startStep.value > 0 ? stepInputs.value : undefined,
+    })
     newTaskContent.value = ''
+    startStep.value = 0
+    stepInputs.value = {}
     activeTask.value = task
   } catch (e) {
     alert('创建任务失败: ' + (e instanceof Error ? e.message : String(e)))
   } finally {
     creating.value = false
   }
+}
+
+function setStartStep(idx: number) {
+  startStep.value = idx
+  // 重置不再需要的输入
+  const newInputs: Record<string, string> = {}
+  for (let i = 0; i < idx; i++) {
+    newInputs[String(i)] = stepInputs.value[String(i)] || ''
+  }
+  stepInputs.value = newInputs
 }
 
 async function runStep() {

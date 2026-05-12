@@ -57,6 +57,14 @@ class CreateTaskRequest(BaseModel):
     """创建任务请求体。"""
 
     content: str
+    start_step: int = Field(
+        default=0,
+        description="从第几步开始执行（0-based），跳过前面的步骤",
+    )
+    step_inputs: dict[str, str] = Field(
+        default_factory=dict,
+        description="跳过步骤的输入内容，key 为步骤索引（如 '0', '1'），value 为该步骤的输出内容",
+    )
 
 
 class TaskMessageResponse(BaseModel):

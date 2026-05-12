@@ -18,7 +18,11 @@ async def create_task(req: CreateTaskRequest) -> TaskResponse:
     from webgal_agent.api.app import get_task_manager
 
     manager = get_task_manager()
-    task = await manager.start_task(content=req.content)
+    task = await manager.start_task(
+        content=req.content,
+        start_step=req.start_step,
+        step_inputs=req.step_inputs,
+    )
     return TaskResponse(**task.to_dict())
 
 

@@ -52,10 +52,14 @@ export const api = {
 
   // ----- 任务 -----
   getTasks: () => request<Task[]>('/tasks'),
-  createTask: (content: string) =>
+  createTask: (content: string, options?: { startStep?: number; stepInputs?: Record<string, string> }) =>
     request<Task>('/tasks', {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({
+        content,
+        start_step: options?.startStep ?? 0,
+        step_inputs: options?.stepInputs ?? {},
+      }),
     }),
   getTask: (id: string) => request<Task>(`/tasks/${id}`),
   runStep: (id: string) =>

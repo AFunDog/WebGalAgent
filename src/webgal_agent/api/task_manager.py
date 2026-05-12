@@ -406,12 +406,48 @@ class TaskManager:
         """为流水线中的每个智能体构建知识库上下文。"""
         return {name: self._build_knowledge_context(name) for name in PIPELINE_ORDER}
 
-    async def start_task(self, content: str) -> TaskInfo:
-        """创建新的流水线任务（不自动执行，等待用户手动触发每一步）。"""
+    async def start_task(
+        self,
+        content: str,
+        start_step: int = 0,
+        step_inputs: dict[str, str] | None = None,
+    ) -> TaskInfo:
+        """创建新的流水线任务。
+
+        Args:
+            content: 用户输入/任务描述。
+            start_step: 从第几步开始执行（0-based），跳过前面的步骤。
+            step_inputs: 跳过步骤的预填充输出，key 为步骤索引字符串（如 "0", "1"）。
+        """
+        start_step = max(0, min(start_step, len(PIPELINE_ORDER) - 1))
+
         task_id = uuid.uuid4().hex[:12]
         task = TaskInfo(task_id=task_id, content=content)
+
+        # 预填充跳过步骤的结果
+        if step_inputs:
+            for idx_str, output in step_inputs.items():
+                idx = int(idx_str)
+                if 0 <= idx < start_step:
+                    task.step_results[idx] = output
+                    # 添加对应的 RESULT 消息
+                    agent_name = PIPELINE_ORDER[idx]
+                    msg = Message(
+                        type=MessageType.RESULT,
+                        sender=agent_name,
+                        receiver="pipeline",
+                        content=output,
+                        metadata={"skipped": True},
+                    )
+                    task.messages.append(msg)
+
+        # 设置当前步骤和标题
+        task.current_step = start_step
+        if task.step_results.get(0):
+            task.title = _extract_title(task.step_results[0])
+        task.status = "pending" if start_step < len(PIPELINE_ORDER) else "completed"
+
         self._tasks[task_id] = task
-        task.status = "pending"
         _save_task_to_disk(task, self._task_dir)
         return task
 
