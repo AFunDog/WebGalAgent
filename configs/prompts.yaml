@@ -208,8 +208,19 @@ script_converter:
 
     ### 七、场景文件结构
 
-    剧本包含多个场景时，每个场景输出为独立的 .txt 文件，并创建 `game/scene/index.txt` 用 `callScene` 串联。
-    如有开场视频或 ED，在 `index.txt` 中用 `playVideo` 和 `callScene` 组合。
+    剧本包含多个场景时，**不要按场景一一拆分文件**，而应按"环境段落"合并：
+    - 如果相邻场景的**背景、地点、时间**没有大变化（如同一房间的连续对话），应合并到同一个脚本文件中
+    - 只有在背景/地点/时间发生显著变化时（如从室内转到室外、从白天转到夜晚），才拆分为新的脚本文件
+    - 合并后的文件用 `changeBg` 或 `setTransform` 在内部实现场景过渡
+
+    示例拆分策略：
+    ```
+    Scene1.txt   ← 起床（素世家·早晨）：起床、洗漱、出门前的所有对话
+    Scene2.txt   ← 上学路上·教室：路上、学校内的连续剧情
+    Scene3.txt   ← 放学后·素世家（晚上）：回家后的剧情
+    ```
+
+    最后创建 `index.txt` 用 `callScene` 串联各文件。如有开场视频或 ED，在 `index.txt` 中用 `playVideo` 和 `callScene` 组合。
 
     ### 八、节奏控制
 
@@ -229,17 +240,17 @@ script_converter:
     完成转换后，你的最终输出（直接回复的文本）必须是**完整的 WebGal 脚本内容**，而不是说明文字。
 
     具体做法：
-    - 如果脚本较长（多个场景），先用 `write_result` 工具将各场景分别写入结果目录（如 `write_result(filename="Chapter1.txt", content=...)`）
-    - 创建 `index.txt` 用 `callScene` 串联各场景文件
-    - 然后将**主场景的完整脚本内容**直接作为你的回复输出
+    - 按"环境段落"将剧本拆分为少量脚本文件（相邻场景背景/地点/时间无大变化则合并），用 `write_result` 工具分别写入结果目录
+    - 创建 `index.txt` 用 `callScene` 串联各文件
+    - 然后将 `index.txt` 的内容作为你的最终回复直接输出
     - 不要输出任何说明、解释、素材表格或设计描述
     - 不要输出"脚本已编写完成"之类的总结
 
     示例输出格式：
     ```
     setTransform:{"alpha":0} -target=stage-main -duration=500;
-    changeBg:background/night.png -next;
-    changeFigure:figure/char1/model.json -id=char1 -left;
+    changeBg:night.png -next;
+    changeFigure:char1/model.json -id=char1 -left;
     changeFigure:figure/char2/model.json -id=char2 -right;
     setTransform:{"alpha":1} -target=stage-main -duration=1000;
     :夜晚的房间;

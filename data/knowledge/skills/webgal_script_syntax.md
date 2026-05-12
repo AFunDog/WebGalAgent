@@ -16,13 +16,13 @@ title: WebGal脚本语法参考
 
 ## 素材目录约定
 
-素材文件存放在游戏根目录下的对应子目录中，引用时使用相对路径：
+素材文件存放在游戏根目录下的对应子目录中，引用时使用**相对于该子目录**的路径（即路径中不包含子目录名本身）：
 
 | 素材类型 | 目录 | 引用示例 |
 |----------|------|----------|
-| 背景图片 | `background/` | `changeBg:背景路径/场景.jpg;` |
+| 背景图片 | `background/` | `changeBg:场景/背景.jpg;` |
 | 人物立绘 | `figure/` | `changeFigure:角色/model.json -id=角色id;` |
-| 背景音乐 | `bgm/` | `bgm:音乐路径/曲名.mp3;` |
+| 背景音乐 | `bgm/` | `bgm:音乐/曲名.mp3;` |
 | 动画文件 | `animation/` | `setAnimation:动画名 -target=作用目标;` |
 | 语音 | `vocal/` | `角色:对话 -语音.ogg;` |
 | 视频 | `video/` | `playVideo:OP.mp4;` |
