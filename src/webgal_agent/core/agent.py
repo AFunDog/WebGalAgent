@@ -150,6 +150,8 @@ class Agent(abc.ABC):
             "[%s] LLM 响应 ◀ 长度=%d",
             self._config.name, len(content),
         )
+        preview = content[:300] + "…" if len(content) > 300 else content
+        logger.info("[%s] 响应内容: %s", self._config.name, preview.replace("\n", " "))
         logger.debug("[%s] response:\n%s", self._config.name, content[:500])
         return content
 
@@ -218,10 +220,21 @@ class Agent(abc.ABC):
                     "[%s] LLM 响应 ◀ 长度=%d, 工具调用=%d次",
                     self._config.name, len(content), len(tool_call_records),
                 )
+                preview = content[:300] + "…" if len(content) > 300 else content
+                logger.info("[%s] 响应内容: %s", self._config.name, preview.replace("\n", " "))
                 logger.debug("[%s] response:\n%s", self._config.name, content[:500])
                 return LLMResponse(
                     content=content,
                     tool_calls=tool_call_records,
+                )
+
+            # 有 tool_calls 时，也记录中间文本（如果有的话）
+            if assistant_msg.content:
+                preview = (assistant_msg.content[:300] + "…" 
+                           if len(assistant_msg.content) > 300 else assistant_msg.content)
+                logger.info(
+                    "[%s] 中间文本: %s [round=%d]",
+                    self._config.name, preview.replace("\n", " "), round_idx + 1,
                 )
 
             # 将 assistant 消息（含 tool_calls）加入历史
@@ -263,6 +276,14 @@ class Agent(abc.ABC):
                     )
                     result = await tool.execute(**args)
                     content = result.output if result.success else f"错误: {result.error}"
+                    # 输出工具结果摘要（截断过长内容）
+                    result_preview = content[:300] + "…" if len(content) > 300 else content
+                    logger.info(
+                        "工具结果: %s → %s [round=%d]",
+                        tool_name,
+                        result_preview.replace("\n", " "),
+                        round_idx + 1,
+                    )
                     tool_call_records.append(ToolCallRecord(
                         tool_name=tool_name,
                         arguments=args,
