@@ -20,6 +20,16 @@
 - **问题**: `AsyncOpenAI(timeout=180.0)` 对所有智能体使用同一硬编码超时，无法按智能体或模型调整。`script_converter` 等重型任务频繁超时
 - **建议**: 将 timeout 提升为 `ProviderConfig` / `AgentConfig` 可配置字段
 
+#### 3. ~~outline_writer 提示词自我矛盾~~ ✅ 已修复
+
+- **位置**: `src/configs/prompts.yaml` outline_writer 章节
+- **修复**: "仅输出场景列表" → "仅输出标题和场景列表"，消除与"第一行输出标题"的冲突
+
+#### 4. ~~script_converter 提示词引用名称与上下文标签不匹配~~ ✅ 已修复
+
+- **位置**: `src/configs/prompts.yaml` 第 108 行
+- **修复**: "剧本编写者（智能体B）" → "script_writer（剧本编写者）"，与上下文中 `【script_writer 的输出】` 标签一致
+
 ---
 
 ### 🟡 中等（应尽快处理）
@@ -77,6 +87,30 @@
 - **位置**: `src/webgal_agent/tools/read_model.py` → `resolve_game_dir()`，`src/webgal_agent/tools/asset_query.py` → `_resolve_assets_base_dir()`
 - **问题**: 两个工具各自调用 `resolve_game_dir()` 并设置各自的回退默认值，逻辑重复且默认值不一致（`data/assets` vs 直接使用 figure 路径）
 - **建议**: 提取共享的 `_resolve_assets_dir()` 到 `_paths.py`，统一回退逻辑
+
+#### 12. `_build_all_knowledge_contexts` 多余查询
+
+- **位置**: `src/webgal_agent/api/task_manager.py` 第 536 行
+- **问题**: 每次 `run_step` 都为所有智能体构建知识上下文，但实际只用当前智能体的那份。3 个智能体的流水线每一步浪费 2 次查询。
+- **建议**: 用 `_build_knowledge_context(agent_name)` 按需构建，替代 `_build_all_knowledge_contexts()`
+
+#### 13. script_converter 知识库收到不必要的世界观背景
+
+- **位置**: `src/configs/prompts.yaml` script_converter 的 knowledge 配置
+- **问题**: `categories: [setting]` 使 script_converter 收到 `BanG_Dream_MyGO世界观.md`，但该智能体只做语法转换，世界观内容不必要，浪费 token。
+- **建议**: 移除 `categories: [setting]`，仅保留 `tags: [compact]`；或改为 `categories: [character]` 以获取角色名与立绘路径的对应关系
+
+#### 14. `expression_motion_guide.md` 缺少 `webgal` 标签
+
+- **位置**: `data/knowledge/skills/expression_motion_guide.md` frontmatter
+- **问题**: 标签仅有 `[compact]` 而无 `webgal`。如果将来过滤条件改为 `tags: [webgal]`，该文件会遗漏。与其他 WebGal 参考文件不一致。
+- **建议**: 补充 `webgal` 标签：`tags: [webgal, compact]`
+
+#### 15. script_writer 提示词中 `<空>` 占位符可能被误解
+
+- **位置**: `src/configs/prompts.yaml` script_writer 章节
+- **问题**: 格式说明写为 `<空>:<描写内容>;`，其中 `<空>` 可能被模型理解为字面输出 "空" 字而非留空。
+- **建议**: 直接写为 `:<描写内容>;`，消除歧义
 
 ---
 
@@ -155,11 +189,16 @@
 | `ReadModelTool` 新建 | 专用工具，读取 model.json 仅返回 `motions` 和 `expressions` 列表，供智能体在 `changeFigure` 中准确引用合法的表情/动作参数 |
 | 提示词优化 | `script_converter` 新增 `read_model` 工具说明、表情/动作来源工作流、切换频率规则（每 1~2 句对话切换一次）、`-next` 参数使用技巧 |
 | `webgal_script_syntax.md` 技巧补充 | Live2D 章节新增 `-next` 参数使用技巧：切换动作/表情时加 `-next` 可不阻塞后续对话 |
+| 知识库精简 | 创建 `webgal_script_syntax_compact.md` 精简语法参考（437→418 行），新增 `expression_motion_guide.md` 表情动作对照表；script_converter 通过 `tags: [compact]` 过滤只获取精简版 |
+| `setTempAnimation` 语法补充 | 完整版和精简版新增 `setTempAnimation` 指令说明，推荐优先使用替代 `setAnimation` |
+| 全面审计 | 对智能体信息流、知识库过滤、提示词质量进行完整审计，发现 15 个新问题并录入本文档 |
 
 ### 🔄 待跟进
 
-- **LLM 重试与超时**：`max_retries` 仍未生效，timeout 仍硬编码，需要优先跟进（问题 #2, #3）
+- **LLM 重试与超时**：`max_retries` 仍未生效，timeout 仍硬编码（问题 #2, #3）
 - **路径解析统一**：`AssetQueryTool` 和 `ReadModelTool` 的 `resolve_game_dir()` 调用可合并到 `_paths.py`（问题 #11）
+- **提示词修复**：outline_writer 矛盾（#4）、名称不匹配（#5）、占位符歧义（#15）等提示词层面的问题待修复
+- **知识库配置优化**：`_build_all_knowledge_contexts` 冗余（#12）、世界观背景多余（#13）、标签不一致（#14）
 
 ---
 
@@ -310,9 +349,15 @@
 | P1 | ReadFileTool 路径过宽 | 安全 | 低 |
 | P1 | API 调用超时硬编码 | 稳定性 | 低 |
 | P1 | LLM 调用无重试 | 稳定性 | 低 |
+| P1 | outline_writer 提示词矛盾 | 输出质量 | 低 |
+| P1 | 提示词名称与上下文标签不匹配 | 输出质量 | 低 |
 | P2 | 类型安全 | 代码质量 | 中 |
 | P2 | 统一异常处理 | 稳定性 | 低 |
 | P2 | 测试覆盖率 | 质量 | 高 |
+| P2 | _build_all_knowledge_contexts 多余查询 | 性能 | 低 |
+| P2 | script_converter 收到不必要知识 | token 浪费 | 低 |
+| P2 | expression_motion_guide 标签不完整 | 健壮性 | 低 |
+| P2 | script_writer `<空>` 占位符歧义 | 输出质量 | 低 |
 | P3 | 路径解析逻辑重复 | 可维护性 | 低 |
 | P3 | 未使用代码清理 | 整洁度 | 低 |
 | P3 | CSS 重复 | 可维护性 | 低 |
@@ -320,4 +365,4 @@
 
 ---
 
-*最后更新: 2026-05-12*
+*最后更新: 2026-05-13*
