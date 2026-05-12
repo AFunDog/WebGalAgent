@@ -7,6 +7,7 @@
       :agents="agentDefs"
       :messages="[]"
       active-agent=""
+      :token-usage-by-step="activeTask?.token_usage_by_step"
       style="margin-bottom:24px"
     />
 
@@ -84,6 +85,9 @@
             <span class="step-status" :class="'step-status-' + getStepStatus(idx)">
               {{ getStepStatusText(idx) }}
             </span>
+            <span v-if="getStepTokenUsage(idx)" class="step-token-badge">
+              {{ formatTokenCount(getStepTokenUsage(idx)!.total_tokens) }} tokens
+            </span>
           </div>
 
           <!-- 执行按钮 -->
@@ -131,6 +135,16 @@
       </div>
 
       <div style="margin-top:12px">
+        <!-- Token 消耗汇总 -->
+        <div v-if="activeTask.total_tokens > 0" class="token-summary-bar">
+          <span class="token-summary-label">Token 消耗</span>
+          <span class="token-summary-value">
+            {{ formatTokenCount(activeTask.total_tokens) }}
+            <span style="color:var(--text-muted);font-size:11px;margin-left:4px">
+              (输入 {{ formatTokenCount(activeTask.total_prompt_tokens) }} / 输出 {{ formatTokenCount(activeTask.total_completion_tokens) }})
+            </span>
+          </span>
+        </div>
         <router-link :to="{ name: 'tasks' }">查看所有任务历史</router-link>
       </div>
     </div>
@@ -229,6 +243,17 @@ function getStepStatusText(idx: number): string {
 function getStepResult(idx: number): string {
   if (!activeTask.value) return ''
   return activeTask.value.step_results[String(idx)] || ''
+}
+
+function getStepTokenUsage(idx: number): { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null {
+  if (!activeTask.value) return null
+  return activeTask.value.token_usage_by_step?.[String(idx)] ?? null
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
 }
 
 function startEdit(idx: number) {
@@ -455,5 +480,34 @@ onMounted(async () => {
 .badge-info {
   background: rgba(99,102,241,0.12);
   color: var(--primary-hover);
+}
+.step-token-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(245,158,11,0.12);
+  color: #d97706;
+}
+.token-summary-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(245,158,11,0.06);
+  border: 1px solid rgba(245,158,11,0.2);
+  border-radius: var(--radius);
+  margin-bottom: 12px;
+}
+.token-summary-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #d97706;
+}
+.token-summary-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
 }
 </style>

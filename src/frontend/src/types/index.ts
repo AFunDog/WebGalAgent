@@ -64,6 +64,20 @@ export interface Task {
   messages: TaskMessage[]
   errors: string[]
   created_at: string
+  token_usage_by_step: Record<string, { prompt_tokens: number; completion_tokens: number; total_tokens: number }>
+  total_prompt_tokens: number
+  total_completion_tokens: number
+  total_tokens: number
+}
+
+// ===== Token 统计 =====
+
+export interface TokenSummary {
+  total_tasks: number
+  total_prompt_tokens: number
+  total_completion_tokens: number
+  total_tokens: number
+  by_step: Record<string, { prompt_tokens: number; completion_tokens: number; total_tokens: number }>
 }
 
 // ===== 提供商 =====

@@ -82,6 +82,14 @@
           :x="12" :y="86"
           fill="var(--text-muted)" font-size="10"
         >📤 {{ node.outputPreview }}</text>
+
+        <!-- Token 消耗 -->
+        <text
+          v-if="node.tokenUsage > 0"
+          :x="nodeW - 12" :y="56"
+          text-anchor="end"
+          fill="#d97706" font-size="10" font-weight="500"
+        >⚡{{ formatTokenCount(node.tokenUsage) }}</text>
       </g>
     </svg>
   </div>
@@ -95,6 +103,7 @@ const props = defineProps<{
   agents: AgentInfo[]
   messages: TaskMessage[]
   activeAgent: string
+  tokenUsageByStep?: Record<string, { prompt_tokens: number; completion_tokens: number; total_tokens: number }>
 }>()
 
 const AGENT_LABELS: Record<string, string> = {
@@ -122,6 +131,7 @@ interface PipelineNode {
   status: 'idle' | 'running' | 'done' | 'error'
   inputPreview: string
   outputPreview: string
+  tokenUsage: number
 }
 
 interface PipelineEdge {
@@ -192,6 +202,7 @@ const nodes = computed<PipelineNode[]>(() => {
       status: getNodeStatus(name),
       inputPreview: getInputPreview(name),
       outputPreview: getOutputPreview(name),
+      tokenUsage: props.tokenUsageByStep?.[String(i)]?.total_tokens ?? 0,
     }
   })
 })
@@ -266,6 +277,12 @@ function statusText(status: PipelineNode['status']): string {
     case 'error': return '出错'
     default: return '等待中'
   }
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
 }
 </script>
 

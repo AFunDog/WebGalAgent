@@ -28,6 +28,10 @@
 
     <div class="msg-meta">
       {{ message.type }} · {{ formatTime(message.created_at) }}
+      <span v-if="tokenUsage" class="msg-token-info">
+        · {{ formatTokenCount(tokenUsage.total_tokens) }} tokens
+        <span style="color:var(--text-muted)">(↑{{ formatTokenCount(tokenUsage.prompt_tokens) }} ↓{{ formatTokenCount(tokenUsage.completion_tokens) }})</span>
+      </span>
     </div>
   </div>
 </template>
@@ -45,6 +49,18 @@ const toolCalls = computed<ToolCallRecord[]>(() => {
   return Array.isArray(tc) ? tc : []
 })
 
+const tokenUsage = computed<{ prompt_tokens: number; completion_tokens: number; total_tokens: number } | null>(() => {
+  const tu = props.message.metadata?.token_usage
+  if (tu && typeof tu === 'object' && 'total_tokens' in tu) return tu as { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+  return null
+})
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
+}
+
 function formatArgs(args: Record<string, unknown>): string {
   return Object.entries(args)
     .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
@@ -60,3 +76,10 @@ function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString()
 }
 </script>
+
+<style scoped>
+.msg-token-info {
+  color: #d97706;
+  font-size: 11px;
+}
+</style>

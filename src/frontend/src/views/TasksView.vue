@@ -2,6 +2,34 @@
   <div>
     <h2 class="page-title">任务历史</h2>
 
+    <!-- 全局 Token 统计卡片 -->
+    <div v-if="tokenSummary && tokenSummary.total_tokens > 0" class="card" style="margin-bottom:16px">
+      <div class="card-header"><h3>Token 消耗统计</h3></div>
+      <div class="token-stats-grid">
+        <div class="token-stat-item">
+          <div class="token-stat-value">{{ formatTokenCount(tokenSummary.total_tokens) }}</div>
+          <div class="token-stat-label">总消耗</div>
+        </div>
+        <div class="token-stat-item">
+          <div class="token-stat-value">{{ formatTokenCount(tokenSummary.total_prompt_tokens) }}</div>
+          <div class="token-stat-label">输入</div>
+        </div>
+        <div class="token-stat-item">
+          <div class="token-stat-value">{{ formatTokenCount(tokenSummary.total_completion_tokens) }}</div>
+          <div class="token-stat-label">输出</div>
+        </div>
+        <div class="token-stat-item">
+          <div class="token-stat-value">{{ tokenSummary.total_tasks }}</div>
+          <div class="token-stat-label">任务数</div>
+        </div>
+      </div>
+      <div v-if="Object.keys(tokenSummary.by_step).length > 0" class="token-by-step">
+        <span v-for="(usage, name) in tokenSummary.by_step" :key="name" class="token-step-badge">
+          {{ agentLabel(name) }}: {{ formatTokenCount(usage.total_tokens) }}
+        </span>
+      </div>
+    </div>
+
     <div v-if="tasks.length === 0" class="empty-state">
       <p>暂无任务，前往<router-link :to="{ name: 'pipeline' }">流水线</router-link>创建新任务</p>
     </div>
@@ -15,6 +43,9 @@
       </div>
       <p style="color:var(--text-muted);font-size:12px">
         ID: {{ task.id }} · {{ formatTime(task.created_at) }} · 步骤: {{ task.current_step }}/{{ pipelineSteps.length }}
+        <span v-if="task.total_tokens > 0" style="margin-left:8px;color:#d97706">
+          · {{ formatTokenCount(task.total_tokens) }} tokens
+        </span>
       </p>
       <p
         v-if="task.errors.length"
@@ -38,6 +69,9 @@
             <span class="step-name">{{ step.label }}</span>
             <span class="step-status" :class="'step-status-' + getStepStatus(task, idx)">
               {{ getStepStatusText(task, idx) }}
+            </span>
+            <span v-if="task.token_usage_by_step?.[String(idx)]" class="step-token-badge">
+              {{ formatTokenCount(task.token_usage_by_step[String(idx)].total_tokens) }} tokens
             </span>
           </div>
 
@@ -106,12 +140,13 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api'
 import MessageBubble from '../components/MessageBubble.vue'
-import type { Task } from '../types'
+import type { Task, TokenSummary } from '../types'
 
 const tasks = ref<Task[]>([])
 const runningTasks = ref(new Set<string>())
 const editingKey = ref<string | null>(null)
 const editContent = ref('')
+const tokenSummary = ref<TokenSummary | null>(null)
 
 const pipelineSteps = [
   { name: 'outline_writer', label: '大纲编写' },
@@ -202,6 +237,29 @@ async function loadTasks() {
   }
 }
 
+async function loadTokenSummary() {
+  try {
+    tokenSummary.value = await api.getTokenSummary()
+  } catch (e) {
+    console.error('Failed to load token summary:', e)
+  }
+}
+
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+  return String(n)
+}
+
+function agentLabel(name: string): string {
+  const labels: Record<string, string> = {
+    outline_writer: '大纲编写',
+    script_writer: '剧本生成',
+    script_converter: '脚本转换',
+  }
+  return labels[name] ?? name
+}
+
 async function runStep(taskId: string) {
   runningTasks.value.add(taskId)
   try {
@@ -251,7 +309,7 @@ function startPolling(taskId: string) {
 }
 
 onMounted(async () => {
-  await loadTasks()
+  await Promise.all([loadTasks(), loadTokenSummary()])
   for (const t of tasks.value) {
     if (t.status === 'running') {
       startPolling(t.id)
@@ -355,5 +413,51 @@ onUnmounted(() => {
 .badge-info {
   background: rgba(99,102,241,0.12);
   color: var(--primary-hover);
+}
+.step-token-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  background: rgba(245,158,11,0.12);
+  color: #d97706;
+}
+.token-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-top: 8px;
+}
+.token-stat-item {
+  text-align: center;
+  padding: 8px;
+  background: var(--bg-input);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.token-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+.token-stat-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.token-by-step {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.token-step-badge {
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  background: rgba(245,158,11,0.08);
+  color: #d97706;
+  border: 1px solid rgba(245,158,11,0.2);
 }
 </style>

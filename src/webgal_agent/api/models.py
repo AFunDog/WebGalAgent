@@ -92,6 +92,10 @@ class TaskResponse(BaseModel):
     messages: list[TaskMessageResponse]
     errors: list[str]
     created_at: datetime
+    token_usage_by_step: dict[str, dict[str, int]] = Field(default_factory=dict)
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    total_tokens: int = 0
 
 
 class UpdateStepRequest(BaseModel):

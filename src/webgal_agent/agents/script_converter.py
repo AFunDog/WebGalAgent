@@ -46,6 +46,11 @@ class ScriptConverterAgent(Agent):
                 {"tool": tc.tool_name, "args": tc.arguments, "result": tc.result, "success": tc.success}
                 for tc in response.tool_calls
             ]
+        metadata["token_usage"] = {
+            "prompt_tokens": response.prompt_tokens,
+            "completion_tokens": response.completion_tokens,
+            "total_tokens": response.total_tokens,
+        }
         return message.reply(content=response.content, msg_type=MessageType.RESULT).model_copy(
             update={"metadata": metadata}
         )

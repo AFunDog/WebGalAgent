@@ -99,6 +99,17 @@ class TaskInfo:
         self.messages: list[Message] = []
         self.errors: list[str] = []
         self.created_at = datetime.utcnow()
+        # Token 统计
+        self.token_usage_by_step: dict[int, dict[str, int]] = {}  # step_index → {prompt, completion, total}
+        self.total_prompt_tokens: int = 0
+        self.total_completion_tokens: int = 0
+        self.total_tokens: int = 0
+
+    def _recalc_token_totals(self) -> None:
+        """从 token_usage_by_step 重新计算汇总值。"""
+        self.total_prompt_tokens = sum(u.get("prompt_tokens", 0) for u in self.token_usage_by_step.values())
+        self.total_completion_tokens = sum(u.get("completion_tokens", 0) for u in self.token_usage_by_step.values())
+        self.total_tokens = sum(u.get("total_tokens", 0) for u in self.token_usage_by_step.values())
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -123,6 +134,10 @@ class TaskInfo:
             ],
             "errors": self.errors,
             "created_at": self.created_at.isoformat(),
+            "token_usage_by_step": {str(k): v for k, v in self.token_usage_by_step.items()},
+            "total_prompt_tokens": self.total_prompt_tokens,
+            "total_completion_tokens": self.total_completion_tokens,
+            "total_tokens": self.total_tokens,
         }
 
 
@@ -195,6 +210,10 @@ def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) 
         "step_results": {str(k): v for k, v in task.step_results.items()},
         "created_at": task.created_at.isoformat(),
         "errors": task.errors,
+        "token_usage_by_step": {str(k): v for k, v in task.token_usage_by_step.items()},
+        "total_prompt_tokens": task.total_prompt_tokens,
+        "total_completion_tokens": task.total_completion_tokens,
+        "total_tokens": task.total_tokens,
         "steps": [
             {
                 "step": i + 1,
@@ -259,6 +278,22 @@ def _load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, 
             task.step_results = {int(k): v for k, v in raw_results.items()}
             task.errors = data.get("errors", [])
             task.created_at = datetime.fromisoformat(data["created_at"])
+
+            # 恢复 Token 统计
+            raw_token_usage = data.get("token_usage_by_step", {})
+            task.token_usage_by_step = {int(k): v for k, v in raw_token_usage.items()}
+            task.total_prompt_tokens = data.get("total_prompt_tokens", 0)
+            task.total_completion_tokens = data.get("total_completion_tokens", 0)
+            task.total_tokens = data.get("total_tokens", 0)
+
+            # 如果 process.json 中没有汇总但 messages 中有 token_usage，从 messages 重建
+            if not task.token_usage_by_step:
+                for i, step in enumerate(data.get("steps", [])):
+                    token_usage = step.get("metadata", {}).get("token_usage", {})
+                    if token_usage and token_usage.get("total_tokens", 0) > 0:
+                        task.token_usage_by_step[i] = token_usage
+                if task.token_usage_by_step:
+                    task._recalc_token_totals()
 
             # 从步骤重建消息
             for step in data.get("steps", []):
@@ -537,6 +572,16 @@ class TaskManager:
             task.messages.append(result)
             task.step_results[step_index] = result.content
             task.current_step = step_index + 1
+
+            # 累加 Token 用量
+            token_usage_raw = result.metadata.get("token_usage", {})
+            if isinstance(token_usage_raw, dict) and token_usage_raw.get("total_tokens", 0) > 0:
+                task.token_usage_by_step[step_index] = {
+                    "prompt_tokens": int(token_usage_raw.get("prompt_tokens", 0)),
+                    "completion_tokens": int(token_usage_raw.get("completion_tokens", 0)),
+                    "total_tokens": int(token_usage_raw.get("total_tokens", 0)),
+                }
+                task._recalc_token_totals()
 
             # outline_writer 完成后提取标题
             if agent_name == "outline_writer" and not task.title:

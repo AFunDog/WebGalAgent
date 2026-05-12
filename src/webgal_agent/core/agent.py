@@ -57,10 +57,13 @@ class ToolCallRecord:
 
 @dataclass
 class LLMResponse:
-    """LLM 响应结果（含工具调用记录）。"""
+    """LLM 响应结果（含工具调用记录和 Token 用量）。"""
 
     content: str
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
 
 
 class Agent(abc.ABC):
@@ -139,7 +142,7 @@ class Agent(abc.ABC):
             timeout=120.0,
         )
 
-    async def _call_llm(self, system_prompt: str, user_content: str) -> str:
+    async def _call_llm(self, system_prompt: str, user_content: str) -> LLMResponse:
         """调用 LLM 并返回生成文本（不含工具调用）。"""
         if self._cancel_event.is_set():
             raise asyncio.CancelledError("智能体已被终止")
@@ -161,14 +164,22 @@ class Agent(abc.ABC):
             max_tokens=self._config.max_tokens,
         )
         content = response.choices[0].message.content or ""
+        prompt_tokens = response.usage.prompt_tokens if response.usage else 0
+        completion_tokens = response.usage.completion_tokens if response.usage else 0
+        total_tokens = response.usage.total_tokens if response.usage else 0
         logger.info(
-            "[%s] LLM 响应 ◀ 长度=%d",
-            self._config.name, len(content),
+            "[%s] LLM 响应 ◀ 长度=%d, tokens=%d(p=%d+c=%d)",
+            self._config.name, len(content), total_tokens, prompt_tokens, completion_tokens,
         )
         preview = content[:300] + "…" if len(content) > 300 else content
         logger.info("[%s] 响应内容: %s", self._config.name, preview.replace("\n", " "))
         logger.debug("[%s] response:\n%s", self._config.name, content[:500])
-        return content
+        return LLMResponse(
+            content=content,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+        )
 
     async def _call_llm_with_tools(
         self,
@@ -193,8 +204,7 @@ class Agent(abc.ABC):
         """
         if not self._tools:
             # 没有工具则走简单路径
-            text = await self._call_llm(system_prompt, user_content)
-            return LLMResponse(content=text)
+            return await self._call_llm(system_prompt, user_content)
 
         client = self._get_client()
         tool_schemas = [tool.schema() for tool in self._tools.values()]
@@ -206,6 +216,9 @@ class Agent(abc.ABC):
         ]
 
         tool_call_records: list[ToolCallRecord] = []
+        accumulated_prompt_tokens = 0
+        accumulated_completion_tokens = 0
+        accumulated_total_tokens = 0
 
         logger.info(
             "[%s] LLM 请求 ▶ model=%s, tools=%s",
@@ -232,12 +245,18 @@ class Agent(abc.ABC):
             choice = response.choices[0]
             assistant_msg = choice.message
 
+            # 累加 Token 用量
+            if response.usage:
+                accumulated_prompt_tokens += response.usage.prompt_tokens
+                accumulated_completion_tokens += response.usage.completion_tokens
+                accumulated_total_tokens += response.usage.total_tokens
+
             # 没有 tool_calls → LLM 给出了最终文本回复
             if not assistant_msg.tool_calls:
                 content = assistant_msg.content or ""
                 logger.info(
-                    "[%s] LLM 响应 ◀ 长度=%d, 工具调用=%d次",
-                    self._config.name, len(content), len(tool_call_records),
+                    "[%s] LLM 响应 ◀ 长度=%d, 工具调用=%d次, tokens=%d",
+                    self._config.name, len(content), len(tool_call_records), accumulated_total_tokens,
                 )
                 preview = content[:300] + "…" if len(content) > 300 else content
                 logger.info("[%s] 响应内容: %s", self._config.name, preview.replace("\n", " "))
@@ -245,6 +264,9 @@ class Agent(abc.ABC):
                 return LLMResponse(
                     content=content,
                     tool_calls=tool_call_records,
+                    prompt_tokens=accumulated_prompt_tokens,
+                    completion_tokens=accumulated_completion_tokens,
+                    total_tokens=accumulated_total_tokens,
                 )
 
             # 有 tool_calls 时，也记录中间文本（如果有的话）
@@ -346,6 +368,9 @@ class Agent(abc.ABC):
         return LLMResponse(
             content=assistant_msg.content or "",
             tool_calls=tool_call_records,
+            prompt_tokens=accumulated_prompt_tokens,
+            completion_tokens=accumulated_completion_tokens,
+            total_tokens=accumulated_total_tokens,
         )
 
     @abc.abstractmethod

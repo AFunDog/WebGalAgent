@@ -6,10 +6,50 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 
 from webgal_agent.api.models import CreateTaskRequest, TaskResponse, UpdateStepRequest
+from webgal_agent.api.task_manager import PIPELINE_ORDER
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+
+class TokenSummaryResponse(BaseModel):
+    """全局 Token 消耗汇总。"""
+
+    total_tasks: int = 0
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
+    total_tokens: int = 0
+    by_step: dict[str, dict[str, int]] = Field(default_factory=dict)
+
+
+@router.get("/token-summary", response_model=TokenSummaryResponse)
+async def get_token_summary() -> TokenSummaryResponse:
+    """获取全局 Token 消耗汇总。"""
+    from webgal_agent.api.app import get_task_manager
+
+    manager = get_task_manager()
+    tasks = manager.list_tasks()
+
+    summary = TokenSummaryResponse(total_tasks=len(tasks))
+    by_step: dict[str, dict[str, int]] = {}
+
+    for task in tasks:
+        summary.total_prompt_tokens += task.total_prompt_tokens
+        summary.total_completion_tokens += task.total_completion_tokens
+        summary.total_tokens += task.total_tokens
+
+        for step_idx, usage in task.token_usage_by_step.items():
+            step_name = PIPELINE_ORDER[step_idx] if step_idx < len(PIPELINE_ORDER) else str(step_idx)
+            if step_name not in by_step:
+                by_step[step_name] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            by_step[step_name]["prompt_tokens"] += usage.get("prompt_tokens", 0)
+            by_step[step_name]["completion_tokens"] += usage.get("completion_tokens", 0)
+            by_step[step_name]["total_tokens"] += usage.get("total_tokens", 0)
+
+    summary.by_step = by_step
+    return summary
 
 
 @router.post("", response_model=TaskResponse, status_code=201)

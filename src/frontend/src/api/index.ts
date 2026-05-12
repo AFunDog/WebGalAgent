@@ -4,6 +4,7 @@ import type {
   WorkflowInfo,
   AgentInfo,
   Task,
+  TokenSummary,
   ProviderData,
   ProviderPresets,
   ProviderConfig,
@@ -71,6 +72,7 @@ export const api = {
     }),
   cancelTask: (id: string) =>
     request<Task>(`/tasks/${id}/cancel`, { method: 'POST' }),
+  getTokenSummary: () => request<TokenSummary>('/tasks/token-summary'),
 
   // ----- 提供商 -----
   getProviders: () => request<ProviderData>('/providers'),
