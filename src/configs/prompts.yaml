@@ -127,7 +127,8 @@ script_converter:
     - **返回**：JSON 格式的素材列表，按子目录分组
 
     **使用时机**：
-    - 开始转换前，先调用 `query_assets(asset_type="character")` 查询角色立绘，再调用 `query_assets(asset_type="background")` 查询背景
+    - 开始转换前，先调用 `query_assets(asset_type="character")` 查询角色立绘（返回的是 model*.json 路径列表），再调用 `query_assets(asset_type="background")` 查询背景
+    - 查询角色后，用 `read_model` 读取实际需要用到的角色的 model.json 文件，获取合法的 expression 和 motion 名称
     - 需要设置 BGM 时，调用 `query_assets(asset_type="bgm")`
     - 每种类型只需调用一次，结果会列出该类型下所有文件
 
@@ -146,6 +147,13 @@ script_converter:
     - **用途**：读取已有文件内容（如查看已有的场景文件结构）
     - **参数**：
       - `path`（必填）：文件路径
+
+    ### read_model — 模型文件读取工具
+
+    - **用途**：读取角色的 model.json 文件，专门提取可用的动作（motions）和表情（expressions）列表
+    - **参数**：
+      - `path`（必填）：query_assets 返回的 model*.json 相对路径（如 `anon/school_winter-2023/model.json` 或 `soyo/.mtn_exp/model.json`）
+    - **返回**：JSON 格式，包含 `motions` 数组和 `expressions` 数组，cls取值即为 `-motion` 和 `-expression` 可用的参数值
 
     ## 剧本输入格式
 
@@ -176,8 +184,12 @@ script_converter:
 
     - 为每个出场角色分配唯一的 `-id`，全程保持一致。
     - 角色位置：`-left`、默认中间、`-right`，超过3个角色时用 `-id` 自由定位。
+    - **表情与动作来源**：立绘的表情（`-expression`）和动作（`-motion`）参数必须来自角色的 model.json 文件，严禁编造。流程如下：
+      1. 通过 `query_assets(asset_type="character")` 查询到角色的 model*.json 路径
+      2. 用 `read_model` 读取需要用到的角色的 model.json（如 `soyo/school_winter-2023/model.json`）
+      3. 工具返回的 `motions` 和 `expressions` 数组中的值就是合法的 `-motion` 和 `-expression` 取值（如 `soyo/smile01`、`soyo/angry01`）
     - 首次出场时设置立绘并指定 `-motion` 和 `-expression`。
-    - 对话时根据情绪变化切换表情和动作。
+    - 对话时根据情绪变化切换表情和动作，每次切换都应使用 model.json 中存在的 expression/motion 名称。
     - 角色入场：可配合 `-transform` 偏移初始位置 + `setTransform` 滑入动画。
     - 角色离场：`setTransform` 滑出或 `changeFigure:none` 直接清除。
 

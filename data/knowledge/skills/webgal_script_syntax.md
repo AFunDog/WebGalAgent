@@ -191,6 +191,12 @@ Live2D模型使用 `model.json`，可指定动作和表情：
 changeFigure:anon/model.json -id=anon -motion=anon/smile01 -expression=anon/default;
 ```
 
+> **技巧**：切换立绘的动作（`-motion`）和表情（`-expression`）通常在对话之前执行，在 `changeFigure` 指令末尾添加 `-next` 参数可以让动作/表情切换与后续对话同时进行，不被切换动画阻塞：
+> ```
+> changeFigure:anon/model.json -id=anon -motion=anon/angry01 -expression=anon/angry01 -next;
+> 千早爱音:你在说什么！;
+> ```
+
 ### 设置立绘时的效果
 
 ```

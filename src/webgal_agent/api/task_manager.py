@@ -346,6 +346,7 @@ class TaskManager:
     def _build_agents(self, task_id: str = "") -> dict[str, Agent]:
         from webgal_agent.tools.asset_query import AssetQueryTool
         from webgal_agent.tools.file_ops import ReadFileTool, WriteResultTool
+        from webgal_agent.tools.read_model import ReadModelTool
 
         # 通用工具（只读，所有智能体都可以使用）
         result_dir = str(Path(self._task_dir) / task_id / "result") if task_id else None
@@ -356,6 +357,9 @@ class TaskManager:
         # 素材查询工具（script_converter 专用）
         asset_tool = AssetQueryTool()
 
+        # 模型读取工具（script_converter 专用）
+        read_model_tool = ReadModelTool()
+
         # 结果写入工具（仅 script_converter 使用）
         write_result_tool = WriteResultTool(task_id=task_id, task_dir=self._task_dir) if task_id else None
 
@@ -363,7 +367,7 @@ class TaskManager:
         agent_tools: dict[str, list[Tool]] = {
             "outline_writer": [],
             "script_writer": [],
-            "script_converter": [asset_tool] + ([write_result_tool] if write_result_tool else []),
+            "script_converter": [asset_tool, read_model_tool] + ([write_result_tool] if write_result_tool else []),
         }
 
         agents: dict[str, Agent] = {}
