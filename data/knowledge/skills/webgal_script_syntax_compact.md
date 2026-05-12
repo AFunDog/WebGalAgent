@@ -1,6 +1,6 @@
 ---
 category: reference
-tags: [webgal, skill]
+tags: [webgal, compact]
 title: WebGal脚本语法参考
 ---
 
