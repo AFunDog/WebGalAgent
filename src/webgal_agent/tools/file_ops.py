@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
 import pathlib
 
 from webgal_agent.tools.base import Tool, ToolResult
+from webgal_agent.tools._paths import resolve_game_dir
 
 
 def _resolve_allowed_dirs() -> list[pathlib.Path]:
@@ -15,19 +15,9 @@ def _resolve_allowed_dirs() -> list[pathlib.Path]:
     """
     dirs: list[pathlib.Path] = [pathlib.Path(".").resolve()]
 
-    game_dir = os.getenv("WEBGAL_GAME_DIR")
+    game_dir = resolve_game_dir()
     if game_dir:
-        dirs.append(pathlib.Path(game_dir).resolve())
-    else:
-        config_path = pathlib.Path("src/configs/default.yaml")
-        if config_path.exists():
-            import yaml
-            data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-            if data and isinstance(data, dict):
-                assets_cfg = data.get("assets", {})
-                dir_str = assets_cfg.get("game_dir", "")
-                if dir_str:
-                    dirs.append(pathlib.Path(dir_str).resolve())
+        dirs.append(game_dir.resolve())
 
     return dirs
 

@@ -8,20 +8,7 @@
 
 ### 🔴 严重（需尽快修复）
 
-#### 1. ~~Agent `run()` 方法完全重复~~ `[已修复]` ✅
-
-- **位置**:
-  - `src/webgal_agent/agents/outline_writer.py`
-  - `src/webgal_agent/agents/script_writer.py`
-  - `src/webgal_agent/agents/script_converter.py`
-- **修复措施**（2026-05-12）:
-  1. ✅ 将 `run()` 和 `system_prompt()` 从抽象方法改为基类 `Agent` 的具体方法
-  2. ✅ `Agent.__init__` 新增 `system_prompt` 参数，存储为 `_custom_prompt`
-  3. ✅ 基类 `run()` 提供默认实现：调用 `_call_llm_with_tools` → 提取 token_usage/tool_calls → 返回 RESULT 消息
-  4. ✅ 基类 `system_prompt()` 提供默认实现：返回 `_custom_prompt` 或空字符串
-  5. ✅ 三个子类简化为仅定义 `__init__`（传入默认 config 和 system_prompt），移除重复的 `run()` 和 `system_prompt()`
-
-#### 2. ReadFileTool 路径检查范围过大
+#### 1. ReadFileTool 路径检查范围过大
 
 - **位置**: `src/webgal_agent/tools/file_ops.py` 第 70-87 行
 - **问题**: `_allowed_dirs` 包含 `pathlib.Path(".").resolve()` 即当前工作目录，LLM 理论上可读取项目任意文件（包括含 API Key 的 `providers.yaml`）
@@ -31,59 +18,49 @@
 
 ### 🟡 中等（应尽快处理）
 
-#### 3. ~~PipelineView 轮询不停止~~ `[已修复]` ✅
-
-- **位置**: `src/frontend/src/views/PipelineView.vue`
-- **问题**: `pollTask` 使用 `setTimeout` 递归调用但没有清理机制；离开页面再回来可能产生多个轮询链
-- **修复措施**（2026-05-12）:
-  1. ✅ 将递归 `setTimeout` 改为 `setInterval` + `pollTimer` 变量
-  2. ✅ 添加 `startPolling()` / `stopPolling()` 函数，任务完成或出错时自动停止
-  3. ✅ 添加 `onUnmounted` 钩子，组件卸载时清除定时器
-  4. ✅ `startPolling` 增加防重复检查（`if pollTimer !== null return`）
-
-#### 4. `_call_llm` 无异常处理和重试
+#### 2. `_call_llm` 无异常处理和重试
 
 - **位置**: `src/webgal_agent/core/agent.py` 第 145-182 行
 - **问题**: OpenAI API 调用无 try/except，网络错误、认证错误、限流等直接抛出；`AgentConfig.max_retries` 字段已定义但从未使用
 - **建议**: 添加指数退避重试逻辑，利用已有的 `max_retries` 配置
 
-#### 5. `_call_llm_with_tools` 最大轮次边界问题
+#### 3. `_call_llm_with_tools` 最大轮次边界问题
 
 - **位置**: `src/webgal_agent/core/agent.py` 第 366-374 行
 - **问题**: 如果 `max_tool_rounds=0`，for 循环不执行，`assistant_msg` 未定义，第 369 行会抛出 `NameError`
 - **建议**: 在循环前初始化 `assistant_msg = None` 并添加边界检查
 
-#### 6. API 层缺少统一异常处理
+#### 4. API 层缺少统一异常处理
 
 - **位置**: `src/webgal_agent/api/app.py`
 - **问题**: 未注册全局 exception handler，未捕获异常直接返回 500，可能泄露堆栈信息
 - **建议**: 添加 FastAPI `@app.exception_handler` 统一处理，返回结构化错误响应
 
-#### 7. 前端 API 请求无超时
+#### 5. 前端 API 请求无超时
 
 - **位置**: `src/frontend/src/api/index.ts`
 - **问题**: fetch 请求没有设置超时，LLM 调用可能持续数分钟
 - **建议**: 使用 `AbortController` 设置请求超时（如 5 分钟）
 
-#### 8. 模块级全局变量管理单例
+#### 6. 模块级全局变量管理单例
 
 - **位置**: `src/webgal_agent/api/app.py` 第 19-21 行
 - **问题**: 使用模块级全局变量 + 已过时的 `@app.on_event("startup")` 管理单例
 - **建议**: 改用 FastAPI 的 `lifespan` 上下文管理器和依赖注入
 
-#### 9. `update_step_result` 只更新第一条匹配消息
+#### 7. `update_step_result` 只更新第一条匹配消息
 
 - **位置**: `src/webgal_agent/api/task_manager.py` 第 624-628 行
 - **问题**: 如果同一智能体有多条 RESULT 消息（如重跑），只更新第一条；且直接修改 Pydantic 模型字段绕过验证
 - **建议**: 更新最后一条匹配消息，或使用 `model_copy(update=...)` 替代直接赋值
 
-#### 10. AgentState 缺少 CANCELLED 状态
+#### 8. AgentState 缺少 CANCELLED 状态
 
 - **位置**: `src/webgal_agent/core/agent.py` 第 22-30 行
 - **问题**: AgentState 枚举没有 CANCELLED 状态，但 TaskManager 将任务状态设为 `"cancelled"`，语义不一致
 - **建议**: 在 AgentState 枚举中添加 CANCELLED 状态
 
-#### 11. `KnowledgeEntry.category` 类型不一致
+#### 9. `KnowledgeEntry.category` 类型不一致
 
 - **位置**: `src/webgal_agent/knowledge/models.py` 第 33 行、`store.py` 第 179 行
 - **问题**: 字段类型声明为 `str`，默认值混用枚举和字符串，导致比较行为不一致
@@ -93,12 +70,7 @@
 
 ### 🟢 轻微（可择时处理）
 
-#### 12. `_resolve_game_dir` 逻辑重复 3 次
-
-- **位置**: `tools/file_ops.py`、`tools/asset_query.py`、`api/routes/assets.py`
-- **建议**: 提取为共享工具函数
-
-#### 13. 前端工具函数和常量重复
+#### 10. 前端工具函数和常量重复
 
 - `formatTokenCount` 在 `MessageBubble.vue`、`PipelineGraph.vue`、`PipelineView.vue`、`TasksView.vue` 中各定义一次
 - `AGENT_LABELS` 在 4 个组件中重复定义
@@ -106,40 +78,40 @@
 - `PipelineView.vue` 和 `TasksView.vue` 有约 80 行完全相同的 CSS
 - **建议**: 提取到 `utils/` 和 `composables/` 目录，CSS 使用共享样式文件
 
-#### 14. `_load_prompts` 和 `_load_knowledge_requirements` 重复读取同一文件
+#### 11. `_load_prompts` 和 `_load_knowledge_requirements` 重复读取同一文件
 
 - **位置**: `src/webgal_agent/api/task_manager.py` 第 144-187 行
 - **建议**: 合并为一次读取，缓存结果
 
-#### 15. 每次 `run_step` 都重建所有 Agent
+#### 12. 每次 `run_step` 都重建所有 Agent
 
 - **位置**: `src/webgal_agent/api/task_manager.py` 第 527 行
 - **建议**: 缓存或复用 Agent 实例
 
-#### 16. `get_workflow_info` 每次调用都构建 Agent
+#### 13. `get_workflow_info` 每次调用都构建 Agent
 
 - **位置**: `src/webgal_agent/api/task_manager.py` 第 671-690 行
 - **问题**: 仅用于返回配置信息，却实例化了所有 Agent
 - **建议**: 直接从配置中读取信息，无需实例化 Agent
 
-#### 17. 路由直接访问私有属性
+#### 14. 路由直接访问私有属性
 
 - `knowledge.py` 第 83 行访问 `tm._knowledge_requirements`
 - `task.py` 第 126 行访问 `Path(manager._task_dir)`
 - **建议**: 在 TaskManager 上暴露公共属性或方法
 
-#### 18. `InMemoryMemory.get_recent(0)` 返回全部消息
+#### 15. `InMemoryMemory.get_recent(0)` 返回全部消息
 
 - **位置**: `src/webgal_agent/core/memory.py` 第 51 行
 - **问题**: `self._messages[-0:]` 返回全部消息而非空列表
 - **建议**: 添加 `if n <= 0: return []` 边界检查
 
-#### 19. knowledge reload 返回 count 为字符串
+#### 16. knowledge reload 返回 count 为字符串
 
 - **位置**: `src/webgal_agent/api/routes/knowledge.py` 第 108 行
 - **建议**: 返回整数而非 `str(store.count())`
 
-#### 20. 类型安全不足
+#### 17. 类型安全不足
 
 - `_call_llm_with_tools` 使用 `list[Any]` 和 `cast(Any, ...)` 绕过类型检查
 - `tool_calls` 属性使用 `type: ignore`
@@ -216,10 +188,8 @@
 
 #### 6. 代码去重与重构
 
-- 提取 Agent 基类通用 `run()` 方法
 - 前端工具函数提取到 `utils/` 和 `composables/`
 - 共享 CSS 提取到全局样式
-- `_resolve_game_dir` 提取为公共工具
 - **收益**: 可维护性、一致性
 
 #### 7. 国际化（i18n）
@@ -304,13 +274,10 @@
 
 | 优先级 | 问题 | 影响范围 | 修复难度 |
 |--------|------|----------|----------|
-| P1 | ~~Agent run() 重复~~ ✅ | 可维护性 | 低 |
 | P1 | ReadFileTool 路径过宽 | 安全 | 低 |
-| P1 | ~~轮询不停止~~ ✅ | 可靠性 | 低 |
 | P1 | LLM 调用无重试 | 稳定性 | 低 |
 | P2 | 类型安全 | 代码质量 | 中 |
 | P2 | 统一异常处理 | 稳定性 | 低 |
-| P2 | 代码去重 | 可维护性 | 中 |
 | P2 | 测试覆盖率 | 质量 | 高 |
 | P3 | 未使用代码清理 | 整洁度 | 低 |
 | P3 | CSS 重复 | 可维护性 | 低 |

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
+
+from webgal_agent.tools._paths import resolve_game_dir
 
 router = APIRouter(prefix="/api/assets", tags=["assets"])
 
@@ -53,23 +54,8 @@ class AssetsScanResponse(BaseModel):
 
 def _resolve_game_dir() -> Path:
     """从配置或环境变量解析游戏目录路径。"""
-    game_dir = os.getenv("WEBGAL_GAME_DIR")
-    if game_dir:
-        return Path(game_dir)
-
-    # 尝试从 src/configs/default.yaml 加载
-    import yaml
-
-    config_path = Path("src/configs/default.yaml")
-    if config_path.exists():
-        data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        if data and isinstance(data, dict):
-            assets_cfg = data.get("assets", {})
-            dir_str = assets_cfg.get("game_dir", "")
-            if dir_str:
-                return Path(dir_str)
-
-    return Path()
+    game_dir = resolve_game_dir()
+    return game_dir if game_dir is not None else Path()
 
 
 def _scan_directory(directory: Path, extensions: set[str]) -> list[AssetEntry]:

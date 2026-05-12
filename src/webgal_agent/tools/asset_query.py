@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
 import pathlib
 from collections import defaultdict
 
 from webgal_agent.tools.base import Tool, ToolResult
+from webgal_agent.tools._paths import resolve_game_dir
 
 
 def _resolve_assets_base_dir() -> pathlib.Path:
@@ -18,21 +18,7 @@ def _resolve_assets_base_dir() -> pathlib.Path:
     2. src/configs/default.yaml 中的 assets.game_dir
     3. 回退到 data/assets
     """
-    game_dir = os.getenv("WEBGAL_GAME_DIR")
-    if game_dir:
-        return pathlib.Path(game_dir)
-
-    config_path = pathlib.Path("src/configs/default.yaml")
-    if config_path.exists():
-        import yaml
-        data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        if data and isinstance(data, dict):
-            assets_cfg = data.get("assets", {})
-            dir_str = assets_cfg.get("game_dir", "")
-            if dir_str:
-                return pathlib.Path(dir_str)
-
-    return pathlib.Path("data/assets")
+    return resolve_game_dir() or pathlib.Path("data/assets")
 
 
 class AssetQueryTool(Tool):
