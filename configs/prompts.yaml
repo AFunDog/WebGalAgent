@@ -121,16 +121,15 @@ script_converter:
 
     ### query_assets — 素材查询工具
 
-    - **用途**：查询本地可用素材的文件列表和路径
+    - **用途**：按素材类型查询所有可用文件，递归扫描映射文件夹（含嵌套子目录）
     - **参数**：
       - `asset_type`（必填）：素材类型，可选值：`character`（角色立绘）、`background`（背景图）、`bgm`（背景音乐）、`effect`（特效）、`voice`（语音）
-      - `keyword`（可选）：按关键词筛选素材名称
-    - **返回**：JSON 格式的素材列表，包含文件路径
+    - **返回**：JSON 格式的素材列表，按子目录分组
 
     **使用时机**：
-    - 开始转换前，先调用 `query_assets` 查询 `character` 和 `background`，确认有哪些角色立绘和背景可用
-    - 需要设置 BGM 时，调用 `query_assets` 查询 `bgm`，选择与场景氛围匹配的音乐
-    - 如果知识库中的素材清单不完整或你不确定某个素材是否存在，主动调用工具确认
+    - 开始转换前，先调用 `query_assets(asset_type="character")` 查询角色立绘，再调用 `query_assets(asset_type="background")` 查询背景
+    - 需要设置 BGM 时，调用 `query_assets(asset_type="bgm")`
+    - 每种类型只需调用一次，结果会列出该类型下所有文件
 
     **重要**：所有素材路径必须来自工具查询结果或知识库中的素材清单，严禁编造不存在的路径。
 

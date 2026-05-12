@@ -1,10 +1,11 @@
-"""素材查询工具：让智能体主动查询可用素材信息。"""
+"""素材查询工具：按素材类型列出所有可用文件。"""
 
 from __future__ import annotations
 
 import json
 import os
 import pathlib
+from collections import defaultdict
 
 from webgal_agent.tools.base import Tool, ToolResult
 
@@ -35,10 +36,10 @@ def _resolve_assets_base_dir() -> pathlib.Path:
 
 
 class AssetQueryTool(Tool):
-    """查询本地可用素材的工具。
+    """按素材类型列出所有可用文件（递归扫描子目录）。
 
-    智能体可以通过此工具主动查询角色立绘、背景图、BGM 等素材，
-    以便在生成 WebGal 脚本时引用正确的素材文件名。
+    智能体只需传入素材类型，工具会递归扫描该类型映射的所有文件夹，
+    返回按子目录分组的文件列表。
     """
 
     def __init__(self, assets_dir: str | pathlib.Path | None = None) -> None:
@@ -54,8 +55,8 @@ class AssetQueryTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "查询可用的素材资源列表。可按素材类型筛选："
-            "character（角色立绘）、background（背景图）、"
+            "按素材类型查询所有可用文件。传入类型即可递归列出映射文件夹下的所有文件。"
+            "可用类型：character（角色立绘）、background（背景图）、"
             "bgm（背景音乐）、effect（特效）、voice（语音）。"
         )
 
@@ -69,17 +70,12 @@ class AssetQueryTool(Tool):
                     "description": "素材类型：character / background / bgm / effect / voice",
                     "enum": ["character", "background", "bgm", "effect", "voice"],
                 },
-                "keyword": {
-                    "type": "string",
-                    "description": "按关键词筛选素材名称（可选）",
-                },
             },
             "required": ["asset_type"],
         }
 
     async def execute(self, **kwargs: object) -> ToolResult:
         asset_type = kwargs.get("asset_type", "")
-        keyword = str(kwargs.get("keyword", "")).lower()
 
         if not asset_type:
             return ToolResult(success=False, error="缺少 'asset_type' 参数")
@@ -114,28 +110,41 @@ class AssetQueryTool(Tool):
                 ),
             )
 
-        files: list[str] = []
+        # 按子目录分组收集文件
+        groups: dict[str, list[str]] = defaultdict(list)
+        total_count = 0
         base = self._assets_dir
+
         for subdir in subdirs:
             type_dir = base / subdir
             if not type_dir.exists():
                 continue
             for f in sorted(type_dir.rglob("*")):
                 if f.is_file() and f.suffix.lower() in exts:
-                    # 返回相对于 base 的路径，如 figure/anon/model.json
-                    rel_path = f.relative_to(base).as_posix()
-                    if not keyword or keyword in rel_path.lower():
-                        files.append(rel_path)
+                    rel_path = f.relative_to(type_dir).as_posix()
+                    # 用映射的子目录名作为分组 key
+                    groups[subdir].append(rel_path)
+                    total_count += 1
 
-        if not files and not any((base / s).exists() for s in subdirs):
-            note = f"素材目录不存在: {', '.join(subdirs)}"
+        if not groups:
+            note = f"素材目录不存在或为空: {', '.join(subdirs)}"
         else:
-            note = f"在 {'/'.join(subdirs)} 目录下找到 {len(files)} 个文件"
+            note = f"共找到 {total_count} 个文件"
+
+        # 构建分组输出
+        grouped_files: dict[str, list[str]] = {}
+        for key in sorted(groups.keys()):
+            grouped_files[key] = groups[key]
 
         return ToolResult(
             success=True,
             output=json.dumps(
-                {"asset_type": asset_type, "count": len(files), "files": files, "note": note},
+                {
+                    "asset_type": asset_type,
+                    "total_count": total_count,
+                    "groups": grouped_files,
+                    "note": note,
+                },
                 ensure_ascii=False,
             ),
         )
