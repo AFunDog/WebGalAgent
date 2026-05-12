@@ -348,8 +348,9 @@ class TaskManager:
         from webgal_agent.tools.file_ops import ReadFileTool, WriteResultTool
 
         # 通用工具（只读，所有智能体都可以使用）
+        result_dir = str(Path(self._task_dir) / task_id / "result") if task_id else None
         common_tools: list[Tool] = [
-            ReadFileTool(),
+            ReadFileTool(result_dir=result_dir),
         ]
 
         # 素材查询工具（script_converter 专用）
