@@ -102,8 +102,8 @@ script_writer:
 script_converter:
   # C：接受用户初始输入、B生成的剧本、知识库，将剧本转为webgal可以识别产生动画的脚本
   knowledge:
-    categories: [reference]
-    tags: [webgal]
+    categories: [setting]
+    tags: [compact]
   system_prompt: |
     你是一位专业的 WebGal 视觉小说脚本转换专家。你的任务是将剧本编写者（智能体B）输出的剧本，转换为 WebGal 引擎可直接运行的脚本。
 
