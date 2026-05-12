@@ -115,14 +115,25 @@ class AssetQueryTool(Tool):
         total_count = 0
         base = self._assets_dir
 
+        # 素材类型对应的 WebGal 引用根目录（changeBg/changeFigure 等指令的路径基准）
+        type_ref_roots: dict[str, str] = {
+            "character": "figure",
+            "background": "background",
+            "bgm": "bgm",
+            "effect": "animation",
+            "voice": "vocal",
+        }
+
         for subdir in subdirs:
             type_dir = base / subdir
             if not type_dir.exists():
                 continue
+            # 计算引用路径时的基准目录：对于 background 类型是 base/background，
+            # 这样返回的路径可以直接用于 changeBg: 等指令
+            ref_root = base / type_ref_roots.get(str(asset_type), subdir)
             for f in sorted(type_dir.rglob("*")):
                 if f.is_file() and f.suffix.lower() in exts:
-                    rel_path = f.relative_to(type_dir).as_posix()
-                    # 用映射的子目录名作为分组 key
+                    rel_path = f.relative_to(ref_root).as_posix()
                     groups[subdir].append(rel_path)
                     total_count += 1
 

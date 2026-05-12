@@ -181,52 +181,7 @@ script_converter:
     - 角色入场：可配合 `-transform` 偏移初始位置 + `setTransform` 滑入动画。
     - 角色离场：`setTransform` 滑出或 `changeFigure:none` 直接清除。
 
-    ### 三、`-next` 使用规则（极其重要）
-
-    `-next` 表示"执行完本条后立刻跳到下一条，不等待用户点击"。它的使用有以下固定模式：
-
-    #### 1. 场景开场批量操作必须全部加 `-next`
-
-    场景切换时，淡出→清立绘→换背景→淡入是一个整体过程，中间不能停顿等待用户：
-    ```
-    setTransform:{"alpha":0} -next -duration=1000 -target=stage-main;
-    changeFigure:none -next -id=char1;
-    changeFigure:none -next -id=char2;
-    changeBg:bg/room.png -next;
-    changeFigure:char1/model.json -next -id=char1 -motion=idle;
-    setTransform:{"alpha":1} -next -duration=1000 -target=stage-main;
-    ```
-
-    #### 2. 切换角色表情/动作时加 `-next`
-
-    角色说话前切换表情和动作，应该立即执行不等待：
-    ```
-    changeFigure:char1/model.json -next -id=char1 -motion=sad01 -expression=sad;
-    角色A:好难过……;
-    ```
-
-    #### 3. 角色入场/离场的动画序列加 `-next`
-
-    多步动画（设初始位置→滑入→设最终位置）需连续执行：
-    ```
-    changeFigure:char1/model.json -next -id=char1 -transform={"position":{"x":-1000}} -motion=walk;
-    setTransform:{"position":{"x":0}} -next -duration=1000 -target=char1;
-    ```
-
-    #### 4. 背景切换加 `-next`
-
-    在场景中途只换背景不换台词时，用 `-next` 让背景即时切换：
-    ```
-    changeBg:bg/night.png -next;
-    ```
-
-    #### 5. 不加 `-next` 的情况
-
-    - **对话/描写文本**（`:内容;`、`角色:对话;`）：不加 `-next`，等待用户点击
-    - **wait 指令**：不加 `-next`
-    - **最后一条演出指令**：如果下一条是对话/描写，也不加 `-next`
-
-    ### 四、对话与描写转换
+    ### 三、对话与描写转换
 
     - 旁白/描写：`:` 开头，直接保留。
     - 角色对话：`角色名:` 开头，直接保留。
@@ -235,7 +190,7 @@ script_converter:
     - 心理活动（括号内容）：加 `-fontSize=small`。
     - 强调语气：加 `-fontSize=medium`。
 
-    ### 五、演出效果运用时机
+    ### 四、演出效果运用时机
 
     - **聚焦**：说话角色聚焦，其他角色适当偏移；说话结束后回中。
     - **特写/推镜头**：情感高潮或需要突出细节时，缩放 stage-main；结束后恢复。
@@ -243,20 +198,20 @@ script_converter:
     - **角色靠近/远离**：情感拉近或疏远时，对两个角色分别 setTransform 位移，用 `-continue=true` 在已有位置上叠加。
     - **物品叠加**：用额外的 `-id` 添加物品立绘，通过 `-transform` 定位和缩放。
 
-    ### 六、特效与动画
+    ### 五、特效与动画
 
     根据剧本描写选用：雨天用 rain、雪天用 snow、樱花用 cherryBlossoms。角色情绪激动时用 shake，入场用 enter 系列动画。使用前先 `pixiInit` 初始化。
 
-    ### 七、音乐
+    ### 六、音乐
 
     每个场景开始时根据氛围设置 BGM，从工具查询结果或素材清单的 bgm 目录中选择。场景结束或氛围转变时淡出。用 `-enter` 控制淡入淡出时长。
 
-    ### 八、场景文件结构
+    ### 七、场景文件结构
 
     剧本包含多个场景时，每个场景输出为独立的 .txt 文件，并创建 `game/scene/index.txt` 用 `callScene` 串联。
     如有开场视频或 ED，在 `index.txt` 中用 `playVideo` 和 `callScene` 组合。
 
-    ### 九、节奏控制
+    ### 八、节奏控制
 
     在情绪转折、场景过渡或需要停顿处加入 `wait`。空描写 `:;` 可营造留白感。
 
