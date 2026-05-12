@@ -69,10 +69,14 @@ pip install -e ".[dev]"
 defaults: &defaults
   provider: openai
   model: deepseek-ai/DeepSeek-V4-Flash
-  base_url: https://api.siliconflow.cn/v1/chat/completions
+  base_url: https://api.siliconflow.cn/v1
   api_key: "sk-your-api-key-here"
   temperature: 0.7
   max_tokens: 409600
+  # reasoning_effort: high       # 可选：推理深度（low/medium/high），适用于 o1/o3 等推理模型
+  # extra_body:                   # 可选：透传额外请求体（如 DeepSeek thinking 模式）
+  #   thinking:
+  #     type: enabled
 
 outline_writer:
   <<: *defaults
@@ -136,9 +140,20 @@ defaults: &defaults
   api_key: "sk-..."
   temperature: 0.7
   max_tokens: 4096
+  # 可选参数：
+  # reasoning_effort: high     # 推理深度，适用 o1/o3/o4-mini 等推理模型
+  # extra_body:                # 透传额外请求体（如 DeepSeek thinking）
+  #   thinking:
+  #     type: enabled
 
 outline_writer:
   <<: *defaults       # 继承 defaults，可按需覆盖
+
+script_converter:
+  <<: *defaults
+  extra_body:         # 可按智能体覆盖，如为脚本转换开启 thinking
+    thinking:
+      type: enabled
 ```
 
 ### 命令行参数
@@ -275,7 +290,10 @@ WebGalAgent/
 │   │   └── static/                 #   前端静态文件（HTML/CSS/JS）
 │   ├── tools/                      # 工具扩展
 │   │   ├── base.py                 #   Tool 基类
-│   │   └── file_ops.py             #   文件读写工具
+│   │   ├── file_ops.py             #   文件读写工具（ReadFile / WriteResult）
+│   │   ├── asset_query.py          #   素材查询工具（按类型列出可用文件）
+│   │   ├── read_model.py           #   Live2D 模型读取（提取 motions / expressions）
+│   │   └── _paths.py               #   路径解析辅助
 │   ├── config/                     # 配置管理
 │   │   ├── settings.py             #   pydantic-settings 配置
 │   │   └── provider_manager.py     #   提供商配置管理器
