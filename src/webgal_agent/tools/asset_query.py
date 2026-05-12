@@ -87,9 +87,9 @@ class AssetQueryTool(Tool):
         # WebGal 游戏目录下的素材子目录映射
         type_subdirs: dict[str, list[str]] = {
             "character": ["figure"],
-            "background": ["background"],
+            "background": ["background/BandDream背景与BGM/背景整理合集"],
             "bgm": ["bgm"],
-            "effect": ["animation", "tex"],
+            "effect": ["animation"],
             "voice": ["vocal"],
         }
 

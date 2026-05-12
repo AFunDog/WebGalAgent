@@ -124,6 +124,7 @@ class Agent(abc.ABC):
         return AsyncOpenAI(
             api_key=self._config.api_key or "sk-placeholder",
             base_url=base_url,
+            timeout=120.0,
         )
 
     async def _call_llm(self, system_prompt: str, user_content: str) -> str:

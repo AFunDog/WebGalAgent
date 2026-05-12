@@ -78,6 +78,7 @@ class TaskResponse(BaseModel):
     status: str
     workflow: str
     content: str
+    title: str = ""
     messages: list[TaskMessageResponse]
     errors: list[str]
     created_at: datetime

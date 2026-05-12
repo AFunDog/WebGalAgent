@@ -35,6 +35,29 @@ AGENT_DESCRIPTIONS: dict[str, str] = {
 DEFAULT_TASK_DIR = "data/tasks"
 
 
+def _extract_title(outline_content: str) -> str:
+    """从 outline_writer 的输出中提取标题。
+
+    期望格式：第一行为 # 标题 或 【标题】 或纯文本标题行，
+    下一空行之前的内容作为标题。
+    """
+    for line in outline_content.strip().splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # # 标题 格式
+        if stripped.startswith("#"):
+            return stripped.lstrip("#").strip()
+        # 【标题】 格式
+        if stripped.startswith("【") and stripped.endswith("】"):
+            return stripped[1:-1]
+        # 其他：取第一个非空行作为标题（截断过长的）
+        if len(stripped) > 50:
+            return stripped[:50] + "…"
+        return stripped
+    return ""
+
+
 class AgentInfoDict(TypedDict):
     """工作流 API 响应中的智能体信息。"""
 
@@ -62,6 +85,7 @@ class TaskInfo:
         self.id = task_id
         self.workflow_name = "pipeline"
         self.content = content
+        self.title: str = ""
         self.status: str = "pending"
         self.messages: list[Message] = []
         self.errors: list[str] = []
@@ -73,6 +97,7 @@ class TaskInfo:
             "status": self.status,
             "workflow": self.workflow_name,
             "content": self.content,
+            "title": self.title,
             "messages": [
                 {
                     "id": m.id,
@@ -154,6 +179,7 @@ def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) 
         "status": task.status,
         "workflow": task.workflow_name,
         "user_input": task.content,
+        "title": task.title,
         "created_at": task.created_at.isoformat(),
         "errors": task.errors,
         "steps": [
@@ -212,6 +238,7 @@ def _load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, 
             data = json.loads(process_file.read_text(encoding="utf-8"))
             task = TaskInfo(task_id=data["task_id"], content=data["user_input"])
             task.workflow_name = data.get("workflow", "pipeline")
+            task.title = data.get("title", "")
             task.status = data.get("status", "unknown")
             task.errors = data.get("errors", [])
             task.created_at = datetime.fromisoformat(data["created_at"])
@@ -269,23 +296,22 @@ class TaskManager:
         from webgal_agent.tools.asset_query import AssetQueryTool
         from webgal_agent.tools.file_ops import ReadFileTool, WriteResultTool
 
-        # 通用工具（所有智能体都可以使用）
+        # 通用工具（只读，所有智能体都可以使用）
         common_tools: list[Tool] = [
             ReadFileTool(),
         ]
 
-        # 结果写入工具（需要 task_id）
-        if task_id:
-            common_tools.append(WriteResultTool(task_id=task_id, task_dir=self._task_dir))
-
         # 素材查询工具（script_converter 专用）
         asset_tool = AssetQueryTool()
+
+        # 结果写入工具（仅 script_converter 使用）
+        write_result_tool = WriteResultTool(task_id=task_id, task_dir=self._task_dir) if task_id else None
 
         # 每个智能体可用的工具配置
         agent_tools: dict[str, list[Tool]] = {
             "outline_writer": [],
             "script_writer": [],
-            "script_converter": [asset_tool],
+            "script_converter": [asset_tool] + ([write_result_tool] if write_result_tool else []),
         }
 
         agents: dict[str, Agent] = {}
@@ -408,6 +434,9 @@ class TaskManager:
             def on_step_complete(agent_name: str, result_msg: Message) -> None:
                 """每步完成后即时持久化，避免中途崩溃丢失已完成的步骤。"""
                 task.messages.append(result_msg)
+                # outline_writer 完成后提取标题
+                if agent_name == "outline_writer" and not task.title:
+                    task.title = _extract_title(result_msg.content)
                 logger.info("步骤 %s 完成: task_id=%s", agent_name, task.id)
                 _save_task_to_disk(task, self._task_dir)
 
