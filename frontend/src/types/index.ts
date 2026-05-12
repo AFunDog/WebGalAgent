@@ -59,6 +59,8 @@ export interface Task {
   workflow: string
   content: string
   title: string
+  current_step: number
+  step_results: Record<string, string>
   messages: TaskMessage[]
   errors: string[]
   created_at: string

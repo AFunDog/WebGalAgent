@@ -7,14 +7,14 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
 
-from webgal_agent.api.models import CreateTaskRequest, TaskResponse
+from webgal_agent.api.models import CreateTaskRequest, TaskResponse, UpdateStepRequest
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
 
 @router.post("", response_model=TaskResponse, status_code=201)
 async def create_task(req: CreateTaskRequest) -> TaskResponse:
-    """启动新的流水线任务。"""
+    """创建新的流水线任务（不自动执行）。"""
     from webgal_agent.api.app import get_task_manager
 
     manager = get_task_manager()
@@ -40,6 +40,32 @@ async def get_task(task_id: str) -> TaskResponse:
     task = manager.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="任务未找到")
+    return TaskResponse(**task.to_dict())
+
+
+@router.post("/{task_id}/run-step", response_model=TaskResponse)
+async def run_step(task_id: str) -> TaskResponse:
+    """执行任务的下一步智能体。"""
+    from webgal_agent.api.app import get_task_manager
+
+    manager = get_task_manager()
+    try:
+        task = await manager.run_step(task_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return TaskResponse(**task.to_dict())
+
+
+@router.put("/{task_id}/steps/{step_index}", response_model=TaskResponse)
+async def update_step_result(task_id: str, step_index: int, req: UpdateStepRequest) -> TaskResponse:
+    """更新某一步的结果内容。"""
+    from webgal_agent.api.app import get_task_manager
+
+    manager = get_task_manager()
+    try:
+        task = manager.update_step_result(task_id, step_index, req.content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return TaskResponse(**task.to_dict())
 
 
@@ -94,7 +120,7 @@ async def cancel_task(task_id: str) -> TaskResponse:
     task = manager.get_task(task_id)
     if task is None:
         raise HTTPException(status_code=404, detail="任务未找到")
-    if task.status not in ("running", "pending"):
+    if task.status not in ("running", "pending", "paused"):
         raise HTTPException(status_code=400, detail="任务已结束，无法终止")
 
     await manager.cancel_task(task_id)

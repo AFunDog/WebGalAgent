@@ -87,6 +87,8 @@ class TaskInfo:
         self.content = content
         self.title: str = ""
         self.status: str = "pending"
+        self.current_step: int = 0  # 下一步要执行的步骤索引 (0-based)
+        self.step_results: dict[int, str] = {}  # step_index → 结果内容（可编辑）
         self.messages: list[Message] = []
         self.errors: list[str] = []
         self.created_at = datetime.utcnow()
@@ -98,6 +100,8 @@ class TaskInfo:
             "workflow": self.workflow_name,
             "content": self.content,
             "title": self.title,
+            "current_step": self.current_step,
+            "step_results": {str(k): v for k, v in self.step_results.items()},
             "messages": [
                 {
                     "id": m.id,
@@ -180,6 +184,8 @@ def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) 
         "workflow": task.workflow_name,
         "user_input": task.content,
         "title": task.title,
+        "current_step": task.current_step,
+        "step_results": {str(k): v for k, v in task.step_results.items()},
         "created_at": task.created_at.isoformat(),
         "errors": task.errors,
         "steps": [
@@ -240,6 +246,10 @@ def _load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, 
             task.workflow_name = data.get("workflow", "pipeline")
             task.title = data.get("title", "")
             task.status = data.get("status", "unknown")
+            task.current_step = data.get("current_step", 0)
+            # 恢复 step_results（键从字符串转回整数）
+            raw_results = data.get("step_results", {})
+            task.step_results = {int(k): v for k, v in raw_results.items()}
             task.errors = data.get("errors", [])
             task.created_at = datetime.fromisoformat(data["created_at"])
 
@@ -402,80 +412,134 @@ class TaskManager:
         return {name: self._build_knowledge_context(name) for name in PIPELINE_ORDER}
 
     async def start_task(self, content: str) -> TaskInfo:
-        """创建并启动新的流水线任务（后台异步执行）。"""
+        """创建新的流水线任务（不自动执行，等待用户手动触发每一步）。"""
         task_id = uuid.uuid4().hex[:12]
         task = TaskInfo(task_id=task_id, content=content)
         self._tasks[task_id] = task
+        task.status = "pending"
+        _save_task_to_disk(task, self._task_dir)
+        return task
+
+    async def run_step(self, task_id: str) -> TaskInfo:
+        """启动任务的下一步执行（后台异步）。"""
+        task = self._tasks.get(task_id)
+        if task is None:
+            raise ValueError(f"任务 {task_id} 不存在")
+        if task.status == "running":
+            raise ValueError("任务正在执行中，请等待完成")
+        if task.current_step >= len(PIPELINE_ORDER):
+            raise ValueError("所有步骤已执行完毕")
+
         task.status = "running"
+        _save_task_to_disk(task, self._task_dir)
 
         # 后台启动执行，不阻塞当前请求
-        # 必须保存 asyncio.Task 引用，否则会被 GC 回收导致任务消失
-        bg_task = asyncio.create_task(self._run_pipeline(task))
+        bg_task = asyncio.create_task(self._run_step_background(task))
         self._background_tasks.add(bg_task)
         bg_task.add_done_callback(self._background_tasks.discard)
-        # 记录 task_id → asyncio.Task 映射，用于取消
         self._running_tasks[task_id] = bg_task
         bg_task.add_done_callback(lambda _: self._running_tasks.pop(task_id, None))
 
         return task
 
-    async def _run_pipeline(self, task: TaskInfo) -> None:
-        """在后台执行流水线工作流。"""
+    async def _run_step_background(self, task: TaskInfo) -> None:
+        """在后台执行单步智能体。"""
         import logging
         logger = logging.getLogger("webgal_agent.task_manager")
 
+        step_index = task.current_step
+        agent_name = PIPELINE_ORDER[step_index]
+
         try:
             agents = self._build_agents(task_id=task.id)
-            # 记录当前活跃智能体，供状态查询使用
             self._active_agents = agents
+            agent = agents[agent_name]
 
+            # 构建累积上下文
             knowledge_contexts = self._build_all_knowledge_contexts()
+            context_parts: list[str] = []
 
-            def on_step_complete(agent_name: str, result_msg: Message) -> None:
-                """每步完成后即时持久化，避免中途崩溃丢失已完成的步骤。"""
-                task.messages.append(result_msg)
-                # outline_writer 完成后提取标题
-                if agent_name == "outline_writer" and not task.title:
-                    task.title = _extract_title(result_msg.content)
-                logger.info("步骤 %s 完成: task_id=%s", agent_name, task.id)
-                _save_task_to_disk(task, self._task_dir)
+            if task.content:
+                context_parts.append(f"【用户输入】\n{task.content}")
 
-            workflow = PipelineWorkflow(
-                agents=agents,
-                order=PIPELINE_ORDER,
-                user_input=task.content,
-                knowledge_contexts=knowledge_contexts,
-                on_step_complete=on_step_complete,
-            )
+            # 知识库上下文
+            agent_knowledge = knowledge_contexts.get(agent_name, "")
+            if agent_knowledge:
+                context_parts.append(f"【知识库】\n{agent_knowledge}")
 
-            initial = Message(
+            # 前序步骤的输出（使用可编辑的 step_results）
+            for idx in range(step_index):
+                prev_name = PIPELINE_ORDER[idx]
+                prev_output = task.step_results.get(idx, "")
+                if prev_output:
+                    context_parts.append(f"【{prev_name} 的输出】\n{prev_output}")
+
+            context_content = "\n\n".join(context_parts) if context_parts else task.content
+
+            current_msg = Message(
                 type=MessageType.TASK,
-                sender="user",
-                receiver="outline_writer",
-                content=task.content,
+                sender="pipeline",
+                receiver=agent_name,
+                content=context_content,
+                metadata={
+                    "user_input": task.content,
+                    "step": agent_name,
+                },
             )
 
-            task.status = "running"
-            logger.info("流水线开始执行: task_id=%s", task.id)
+            logger.info("步骤 %s 开始执行: task_id=%s", agent_name, task.id)
+            result = await agent.handle(current_msg)
 
-            result: WorkflowResult = await workflow.execute(initial)
-            # 最终同步（on_step_complete 已逐步添加 messages）
-            task.errors = result.errors
-            task.status = "completed" if result.success else "failed"
-            logger.info("流水线执行完成: task_id=%s, status=%s", task.id, task.status)
+            # 保存结果
+            task.messages.append(result)
+            task.step_results[step_index] = result.content
+            task.current_step = step_index + 1
+
+            # outline_writer 完成后提取标题
+            if agent_name == "outline_writer" and not task.title:
+                task.title = _extract_title(result.content)
+
+            # 判断是否全部完成
+            if task.current_step >= len(PIPELINE_ORDER):
+                task.status = "completed"
+            else:
+                task.status = "paused"
+
+            logger.info("步骤 %s 完成: task_id=%s, status=%s", agent_name, task.id, task.status)
+
         except asyncio.CancelledError:
-            logger.info("流水线被取消: task_id=%s", task.id)
-            task.errors.append("任务已被用户终止")
+            logger.info("步骤被取消: task_id=%s", task.id)
+            task.errors.append("步骤被用户终止")
             task.status = "cancelled"
         except Exception as exc:
-            logger.exception("流水线执行失败: task_id=%s", task.id)
+            logger.exception("步骤执行失败: task_id=%s", task.id)
             task.errors.append(str(exc))
             task.status = "failed"
         finally:
-            # 清除活跃智能体引用
             self._active_agents = {}
-            # 持久化到磁盘
             _save_task_to_disk(task, self._task_dir)
+
+    def update_step_result(self, task_id: str, step_index: int, content: str) -> TaskInfo:
+        """更新某一步的结果内容（用于手动修改中间结果）。"""
+        task = self._tasks.get(task_id)
+        if task is None:
+            raise ValueError(f"任务 {task_id} 不存在")
+        if step_index < 0 or step_index >= task.current_step:
+            raise ValueError(f"步骤索引 {step_index} 无效（已完成步骤: 0~{task.current_step - 1}）")
+        if task.status == "running":
+            raise ValueError("任务正在执行中，无法修改")
+
+        task.step_results[step_index] = content
+
+        # 同步更新 messages 中对应的 RESULT 消息
+        agent_name = PIPELINE_ORDER[step_index]
+        for m in task.messages:
+            if m.type == MessageType.RESULT and m.sender == agent_name:
+                m.content = content
+                break
+
+        _save_task_to_disk(task, self._task_dir)
+        return task
 
     def get_task(self, task_id: str) -> TaskInfo | None:
         return self._tasks.get(task_id)
@@ -485,17 +549,28 @@ class TaskManager:
 
         返回 True 表示成功取消，False 表示任务不存在或已结束。
         """
-        bg_task = self._running_tasks.get(task_id)
-        if bg_task is None or bg_task.done():
+        task = self._tasks.get(task_id)
+        if task is None:
             return False
 
-        bg_task.cancel()
-        # 等待任务真正停止（超时 5 秒）
-        try:
-            await asyncio.wait_for(asyncio.shield(bg_task), timeout=5.0)
-        except (asyncio.CancelledError, asyncio.TimeoutError):
-            pass
-        return True
+        # 如果有后台任务正在执行，取消它
+        bg_task = self._running_tasks.get(task_id)
+        if bg_task is not None and not bg_task.done():
+            bg_task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.shield(bg_task), timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                pass
+            return True
+
+        # 如果任务处于 pending/paused 状态，直接标记为 cancelled
+        if task.status in ("pending", "paused"):
+            task.status = "cancelled"
+            task.errors.append("任务已被用户终止")
+            _save_task_to_disk(task, self._task_dir)
+            return True
+
+        return False
 
     def list_tasks(self) -> list[TaskInfo]:
         return list(self._tasks.values())

@@ -58,6 +58,13 @@ export const api = {
       body: JSON.stringify({ content }),
     }),
   getTask: (id: string) => request<Task>(`/tasks/${id}`),
+  runStep: (id: string) =>
+    request<Task>(`/tasks/${id}/run-step`, { method: 'POST' }),
+  updateStepResult: (id: string, stepIndex: number, content: string) =>
+    request<Task>(`/tasks/${id}/steps/${stepIndex}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    }),
   cancelTask: (id: string) =>
     request<Task>(`/tasks/${id}/cancel`, { method: 'POST' }),
 
