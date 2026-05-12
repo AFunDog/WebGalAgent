@@ -1,0 +1,20 @@
+# 智能体提供商配置
+# 每个智能体可以独立配置 LLM 提供商
+# 请复制此文件为 providers.yaml 并填入你的 API Key
+
+defaults: &defaults
+  provider: openai
+  model: deepseek-ai/DeepSeek-V4-Flash
+  base_url: https://api.siliconflow.cn/v1
+  api_key: "your-api-key-here"
+  temperature: 0.7
+  max_tokens: 409600
+
+outline_writer:
+  <<: *defaults
+
+script_writer:
+  <<: *defaults
+
+script_converter:
+  <<: *defaults

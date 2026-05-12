@@ -29,3 +29,5 @@ htmlcov/
 .coverage
 
 tasks/
+
+providers.yaml
