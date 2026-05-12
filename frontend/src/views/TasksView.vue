@@ -82,6 +82,7 @@
           <!-- 运行中动画 -->
           <div v-if="idx === task.current_step && task.status === 'running'" class="step-running">
             <span class="pulse-dot"></span> 正在执行...
+            <button class="btn btn-danger btn-sm" style="margin-left:8px" @click="cancelTask(task.id)">终止</button>
           </div>
         </div>
       </div>
@@ -214,6 +215,16 @@ async function runStep(taskId: string) {
     alert('执行步骤失败: ' + (e instanceof Error ? e.message : String(e)))
   } finally {
     runningTasks.value.delete(taskId)
+  }
+}
+
+async function cancelTask(taskId: string) {
+  try {
+    const updated = await api.cancelTask(taskId)
+    const i = tasks.value.findIndex(t => t.id === taskId)
+    if (i !== -1) tasks.value[i] = updated
+  } catch (e) {
+    alert('终止任务失败: ' + (e instanceof Error ? e.message : String(e)))
   }
 }
 

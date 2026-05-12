@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import abc
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -86,6 +87,7 @@ class Agent(abc.ABC):
         self._state = AgentState.IDLE
         self._memory = memory or InMemoryMemory()
         self._tools: dict[str, Tool] = {}
+        self._cancel_event = asyncio.Event()
         if tools:
             for tool in tools:
                 self._tools[tool.name] = tool
@@ -115,6 +117,16 @@ class Agent(abc.ABC):
         """为智能体添加一个工具。"""
         self._tools[tool.name] = tool
 
+    def cancel(self) -> None:
+        """请求终止当前正在运行的智能体。"""
+        self._cancel_event.set()
+        logger.info("[%s] 收到终止请求", self._config.name)
+
+    @property
+    def is_cancelled(self) -> bool:
+        """是否已被请求终止。"""
+        return self._cancel_event.is_set()
+
     def _get_client(self) -> AsyncOpenAI:
         """创建基于当前配置的 AsyncOpenAI 客户端。"""
         base_url = self._config.base_url
@@ -129,6 +141,9 @@ class Agent(abc.ABC):
 
     async def _call_llm(self, system_prompt: str, user_content: str) -> str:
         """调用 LLM 并返回生成文本（不含工具调用）。"""
+        if self._cancel_event.is_set():
+            raise asyncio.CancelledError("智能体已被终止")
+
         client = self._get_client()
         logger.info(
             "[%s] LLM 请求 ▶ model=%s",
@@ -202,6 +217,10 @@ class Agent(abc.ABC):
         logger.debug("[%s] user_content:\n%s", self._config.name, user_content[:500])
 
         for round_idx in range(max_tool_rounds):
+            if self._cancel_event.is_set():
+                logger.info("[%s] 在 round=%d 检测到终止信号", self._config.name, round_idx + 1)
+                raise asyncio.CancelledError("智能体已被终止")
+
             response = await client.chat.completions.create(
                 model=self._config.model,
                 messages=messages,
@@ -346,12 +365,17 @@ class Agent(abc.ABC):
         在 ``run`` 方法外包装状态转换和错误处理。
         """
         self._state = AgentState.RUNNING
+        self._cancel_event.clear()
         try:
             self._memory.add(message)
             result = await self.run(message)
             self._memory.add(result)
             self._state = AgentState.DONE
             return result
+        except asyncio.CancelledError:
+            self._state = AgentState.IDLE
+            logger.info("[%s] 执行已被终止", self._config.name)
+            raise
         except Exception:
             self._state = AgentState.ERROR
             raise
@@ -360,3 +384,4 @@ class Agent(abc.ABC):
         """重置智能体到空闲状态并清空记忆。"""
         self._state = AgentState.IDLE
         self._memory.clear()
+        self._cancel_event.clear()

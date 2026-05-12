@@ -295,8 +295,10 @@ class TaskManager:
         # 保存 task_id → asyncio.Task 映射，用于取消任务
         self._running_tasks: dict[str, asyncio.Task] = {}
 
-        # 当前正在运行的智能体实例（供状态查询使用）
+        # 当前正在运行的智能体实例（供状态查询和取消使用）
         self._active_agents: dict[str, Agent] = {}
+        # 运行中任务对应的 task_id，用于取消时定位 agent
+        self._running_task_id: str | None = None
 
     @property
     def workflow_types(self) -> list[str]:
@@ -398,13 +400,6 @@ class TaskManager:
                 header += f" [{entry.category}]"
             parts.append(f"{header}\n{entry.body}")
 
-        # 对于 script_converter，追加可用素材上下文
-        if agent_name == "script_converter":
-            from webgal_agent.api.routes.assets import build_assets_context
-            assets_context = build_assets_context()
-            if assets_context:
-                parts.append(assets_context)
-
         return "\n\n".join(parts)
 
     def _build_all_knowledge_contexts(self) -> dict[str, str]:
@@ -453,6 +448,7 @@ class TaskManager:
         try:
             agents = self._build_agents(task_id=task.id)
             self._active_agents = agents
+            self._running_task_id = task.id
             agent = agents[agent_name]
 
             # 构建累积上下文
@@ -517,6 +513,7 @@ class TaskManager:
             task.status = "failed"
         finally:
             self._active_agents = {}
+            self._running_task_id = None
             _save_task_to_disk(task, self._task_dir)
 
     def update_step_result(self, task_id: str, step_index: int, content: str) -> TaskInfo:
@@ -556,6 +553,10 @@ class TaskManager:
         # 如果有后台任务正在执行，取消它
         bg_task = self._running_tasks.get(task_id)
         if bg_task is not None and not bg_task.done():
+            # 先通知 agent 停止，以便在当前轮次快速响应
+            if self._running_task_id == task_id:
+                for agent in self._active_agents.values():
+                    agent.cancel()
             bg_task.cancel()
             try:
                 await asyncio.wait_for(asyncio.shield(bg_task), timeout=5.0)
