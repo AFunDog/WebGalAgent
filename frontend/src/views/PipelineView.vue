@@ -37,16 +37,16 @@
           </button>
         </div>
         <div v-if="startStep > 0" style="margin-top:4px;font-size:12px;color:var(--text-muted)">
-          将跳过 {{ pipelineSteps.slice(0, startStep).map(s => s.label).join('、') }}，请为跳过的步骤提供输入内容
+          将跳过 {{ pipelineSteps.slice(0, startStep).map(s => s.label).join('、') }}，请提供 {{ requiredStepLabels }} 的内容
         </div>
       </div>
-      <!-- 跳过步骤的输入框 -->
-      <div v-for="idx in startStep" :key="'input-' + idx" class="form-group" style="margin-top:8px">
-        <label>{{ pipelineSteps[idx - 1].label }} 的输出内容</label>
+      <!-- 跳过步骤的输入框（只显示当前步骤依赖的前序步骤） -->
+      <div v-for="depIdx in requiredPrevStepIndices" :key="'input-' + depIdx" class="form-group" style="margin-top:8px">
+        <label>{{ pipelineSteps[depIdx]?.label }} 的输出内容</label>
         <textarea
-          v-model="stepInputs[String(idx - 1)]"
+          v-model="stepInputs[String(depIdx)]"
           class="form-textarea"
-          :placeholder="'请输入 ' + pipelineSteps[idx - 1].label + ' 的输出...'"
+          :placeholder="'请输入 ' + pipelineSteps[depIdx]?.label + ' 的输出...'"
           rows="6"
           style="font-size:12px;font-family:monospace"
         />
@@ -143,7 +143,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { api } from '../api'
 import PipelineGraph from '../components/PipelineGraph.vue'
 import type { AgentInfo, Task } from '../types'
@@ -159,10 +159,28 @@ const startStep = ref(0)
 const stepInputs = ref<Record<string, string>>({})
 
 const pipelineSteps = [
-  { name: 'outline_writer', label: '大纲编写' },
-  { name: 'script_writer', label: '剧本生成' },
-  { name: 'script_converter', label: '脚本转换' },
+  { name: 'outline_writer', label: '大纲编写', deps: [] as string[] },
+  { name: 'script_writer', label: '剧本生成', deps: ['outline_writer'] },
+  { name: 'script_converter', label: '脚本转换', deps: ['script_writer'] },
 ]
+
+// 当前选择起始步骤时，需要填写输入的前序步骤索引列表
+const requiredPrevStepIndices = computed(() => {
+  if (startStep.value === 0) return []
+  const step = pipelineSteps[startStep.value]
+  if (!step) return []
+  return step.deps
+    .map(name => pipelineSteps.findIndex(s => s.name === name))
+    .filter(idx => idx >= 0)
+})
+
+// 需要填写的步骤标签（用于提示文字）
+const requiredStepLabels = computed(() =>
+  requiredPrevStepIndices.value
+    .map(idx => pipelineSteps[idx]?.label)
+    .filter(Boolean)
+    .join('、')
+)
 
 function statusBadgeClass(status: string): string {
   switch (status) {
@@ -238,11 +256,11 @@ async function saveEdit(idx: number) {
 async function createTask() {
   const content = newTaskContent.value.trim()
   if (!content) return
-  // 检查跳过步骤的输入是否都已填写
+  // 检查依赖步骤的输入是否都已填写
   if (startStep.value > 0) {
-    for (let i = 0; i < startStep.value; i++) {
-      if (!stepInputs.value[String(i)]?.trim()) {
-        alert(`请填写「${pipelineSteps[i].label}」的输出内容`)
+    for (const idx of requiredPrevStepIndices.value) {
+      if (!stepInputs.value[String(idx)]?.trim()) {
+        alert(`请填写「${pipelineSteps[idx]?.label}」的输出内容`)
         return
       }
     }
@@ -266,10 +284,18 @@ async function createTask() {
 
 function setStartStep(idx: number) {
   startStep.value = idx
-  // 重置不再需要的输入
+  // 只保留依赖步骤的输入
   const newInputs: Record<string, string> = {}
-  for (let i = 0; i < idx; i++) {
-    newInputs[String(i)] = stepInputs.value[String(i)] || ''
+  if (idx > 0) {
+    const step = pipelineSteps[idx]
+    if (step) {
+      for (const depName of step.deps) {
+        const depIdx = pipelineSteps.findIndex(s => s.name === depName)
+        if (depIdx >= 0) {
+          newInputs[String(depIdx)] = stepInputs.value[String(depIdx)] || ''
+        }
+      }
+    }
   }
   stepInputs.value = newInputs
 }

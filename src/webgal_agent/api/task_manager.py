@@ -31,6 +31,13 @@ AGENT_DESCRIPTIONS: dict[str, str] = {
     "script_converter": "接受用户输入、剧本和知识库，转换为 WebGal 引擎脚本",
 }
 
+# 每个智能体需要的前序步骤输出（None 表示需要所有前序步骤）
+AGENT_PREV_DEPS: dict[str, list[str] | None] = {
+    "outline_writer": None,       # 第一步，无前序
+    "script_writer": None,        # 需要大纲
+    "script_converter": ["script_writer"],  # 只需要剧本，不需要大纲
+}
+
 # 持久化任务数据的输出目录
 DEFAULT_TASK_DIR = "data/tasks"
 
@@ -500,8 +507,12 @@ class TaskManager:
                 context_parts.append(f"【知识库】\n{agent_knowledge}")
 
             # 前序步骤的输出（使用可编辑的 step_results）
+            prev_deps = AGENT_PREV_DEPS.get(agent_name)
             for idx in range(step_index):
                 prev_name = PIPELINE_ORDER[idx]
+                # 如果配置了依赖列表，只注入指定的前序步骤
+                if prev_deps is not None and prev_name not in prev_deps:
+                    continue
                 prev_output = task.step_results.get(idx, "")
                 if prev_output:
                     context_parts.append(f"【{prev_name} 的输出】\n{prev_output}")
