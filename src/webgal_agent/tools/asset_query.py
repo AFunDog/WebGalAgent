@@ -98,6 +98,16 @@ class AssetQueryTool(Tool):
         }
         name_filters = type_name_filters.get(str(asset_type))
 
+        # 每种素材类型对应的路径排除关键字（None 表示不排除）
+        type_path_excludes: dict[str, list[str] | None] = {
+            "character": [".mtn_exp"],
+            "background": None,
+            "bgm": None,
+            "effect": None,
+            "voice": None,
+        }
+        path_excludes = type_path_excludes.get(str(asset_type))
+
         if not subdirs:
             return ToolResult(
                 success=True,
@@ -132,6 +142,10 @@ class AssetQueryTool(Tool):
                 if f.is_file() and f.suffix.lower() in exts:
                     if name_filters is not None and not any(
                         fnmatch.fnmatch(f.name, pat) for pat in name_filters
+                    ):
+                        continue
+                    if path_excludes is not None and any(
+                        pat in f.as_posix() for pat in path_excludes
                     ):
                         continue
                     rel_path = f.relative_to(ref_root).as_posix()
