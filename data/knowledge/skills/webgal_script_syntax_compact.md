@@ -185,6 +185,8 @@ changeFigure:anon/model.json -id=anon -motion=anon/smile01 -expression=anon/defa
 > changeFigure:anon/model.json -id=anon -motion=anon/angry01 -expression=anon/angry01 -next;
 > 千早爱音:你在说什么！;
 > ```
+>
+> **最佳实践**：在角色对话前使用 `changeFigure` 将表情和动作切换为**匹配该句情绪**的状态，做到"一句一表情"。切换间隔建议每 1~2 句一次，持续对话时从低情绪强度递进到高强度（如 `smile01` → `smile02` → `smile03`）。
 
 ### 设置立绘时的效果
 

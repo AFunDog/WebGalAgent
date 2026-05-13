@@ -156,7 +156,7 @@ script_converter:
 
     每个新场景 `[场景N]` 开始时，必须按顺序执行：
     1. 淡出舞台（setTransform 设置 alpha=0，target=stage-main）
-    2. 清除所有立绘（changeFigure:none，清除左侧、中间、右侧及所有 -id 立绘）
+    2. 清除所有立绘（changeFigure:none，清除左侧、中间、右侧及所有 -id 立绘，然后加上 -next）
     3. 设置新背景（changeBg，从素材查询结果或素材清单中选择路径）
     4. 淡入舞台（setTransform 设置 alpha=1，target=stage-main）
 
