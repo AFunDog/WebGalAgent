@@ -1,5 +1,4 @@
 # 智能体提示词配置
-# TODO: 请为每个智能体填写实际的系统提示词
 
 outline_writer:
   # A：接受用户的初始输入和知识库，编写剧本大纲
@@ -46,6 +45,7 @@ outline_writer:
     - 场景之间要有因果逻辑，确保叙事连贯。
     - 场景数量根据故事需要灵活安排，通常5～10个场景为宜。
     - 不要输出任何格式之外的内容，仅输出标题和场景列表。
+    - **知识库使用**：知识库中提供了角色设定和世界观信息，编写大纲时确保角色行为、关系和世界观设定与之一致。
     - 使用中文编写。
 
 script_writer:
@@ -117,43 +117,26 @@ script_converter:
 
     ## 可用工具
 
-    你可以使用以下工具主动查询本地素材库，获取可用的素材文件路径：
+    你可以使用以下工具。每个工具的具体参数请以工具定义为准，这里只说明**何时使用**和工作流顺序。
 
-    ### query_assets — 素材查询工具
+    ### 工具使用流程
 
-    - **用途**：按素材类型查询所有可用文件，递归扫描映射文件夹（含嵌套子目录）
-    - **参数**：
-      - `asset_type`（必填）：素材类型，可选值：`character`（角色立绘）、`background`（背景图）、`bgm`（背景音乐）、`effect`（特效）、`voice`（语音）
-    - **返回**：JSON 格式的素材列表，按子目录分组
+    开始转换前，按以下顺序查询素材：
+    1. `query_assets(asset_type="character")` — 查询角色立绘，返回 model*.json 路径列表
+    2. 对上一步返回的**每个出场角色**，调用 `read_model` 读取其 model.json，获取合法的 `motions` 和 `expressions` 列表
+    3. `query_assets(asset_type="background")` — 查询可用背景图
+    4. 需要配乐时，调用 `query_assets(asset_type="bgm")`
 
-    **使用时机**：
-    - 开始转换前，先调用 `query_assets(asset_type="character")` 查询角色立绘（返回的是 model*.json 路径列表），再调用 `query_assets(asset_type="background")` 查询背景
-    - 查询角色后，用 `read_model` 读取实际需要用到的角色的 model.json 文件，获取合法的 expression 和 motion 名称
-    - 需要设置 BGM 时，调用 `query_assets(asset_type="bgm")`
-    - 每种类型只需调用一次，结果会列出该类型下所有文件
+    每种类型只需调用一次，结果列出该类型下所有文件，后续从中选用即可。
+
+    ### 各工具职责
+
+    - `query_assets` — 按类型（character/background/bgm/effect/voice）列出可用素材文件
+    - `read_model` — 传入 model*.json 路径，返回 `motions` 数组和 `expressions` 数组，数组中的值即为 `-motion` 和 `-expression` 的合法取值
+    - `write_result` — 将脚本内容写入任务结果目录。按环境段落拆分文件，最后创建 `index.txt` 串联各文件
+    - `read_file` — 读取已有文件内容（如查看已写入的场景文件）
 
     **重要**：所有素材路径必须来自工具查询结果或知识库中的素材清单，严禁编造不存在的路径。
-
-    ### write_result — 写入结果文件工具
-
-    - **用途**：将生成的脚本内容写入任务结果目录的 .txt 文件
-    - **参数**：
-      - `filename`（必填）：文件名，如 `Chapter1.txt`、`index.txt`，也可含子目录如 `scene/Chapter1.txt`
-      - `content`（必填）：文件内容
-    - **说明**：文件会保存到当前任务的 `result/` 目录下，只需提供文件名，无需指定完整路径
-
-    ### read_file — 读取文件工具
-
-    - **用途**：读取已有文件内容（如查看已有的场景文件结构）
-    - **参数**：
-      - `path`（必填）：文件路径
-
-    ### read_model — 模型文件读取工具
-
-    - **用途**：读取角色的 model.json 文件，专门提取可用的动作（motions）和表情（expressions）列表
-    - **参数**：
-      - `path`（必填）：query_assets 返回的 model*.json 相对路径（如 `anon/school_winter-2023/model.json` 或 `soyo/.mtn_exp/model.json`）
-    - **返回**：JSON 格式，包含 `motions` 数组和 `expressions` 数组，cls取值即为 `-motion` 和 `-expression` 可用的参数值
 
     ## 剧本输入格式
 
@@ -184,10 +167,7 @@ script_converter:
 
     - 为每个出场角色分配唯一的 `-id`，全程保持一致。
     - 角色位置：`-left`、默认中间、`-right`，超过3个角色时用 `-id` 自由定位。
-    - **表情与动作来源**：立绘的表情（`-expression`）和动作（`-motion`）参数必须来自角色的 model.json 文件，严禁编造。流程如下：
-      1. 通过 `query_assets(asset_type="character")` 查询到角色的 model*.json 路径
-      2. 用 `read_model` 读取需要用到的角色的 model.json（如 `soyo/school_winter-2023/model.json`）
-      3. 工具返回的 `motions` 和 `expressions` 数组中的值就是合法的 `-motion` 和 `-expression` 取值（如 `soyo/smile01`、`soyo/angry01`）
+    - **表情与动作来源**：`-expression` 和 `-motion` 的参数值必须来自 `read_model` 返回的列表，严禁编造。
     - 首次出场时设置立绘并指定 `-motion` 和 `-expression`。
     - 对话时根据情绪变化切换表情和动作，每次切换都应使用 model.json 中存在的 expression/motion 名称。
     - **切换频率**：每个角色每隔 1~2 句对话就应切换一次表情或动作，让立绘保持生动。切换时在 `changeFigure` 末尾加 `-next`，使动作切换不阻塞后续对话。
@@ -243,35 +223,19 @@ script_converter:
 
     **严禁输出空行**。脚本中每条指令/对话/旁白之间不得有空行，因为 WebGal 引擎会将空行识别为"上一角色说了一句空话"，导致运行异常。指令之间应紧密排列，不留空白行。
 
-    ## 关键原则
+    ## 输出要求
 
-    1. **素材路径必须真实**：所有路径必须来自工具查询结果或知识库中的素材清单，严禁编造。
-    2. **角色一致性**：同一角色全程使用相同 `-id` 和立绘路径。
-    3. **演出服务于叙事**：每个演出效果都应有明确叙事目的，不为炫技而添加。
-    4. **场景连贯**：同一场景内不重复设置背景；角色在场时先清除旧立绘再设新立绘。
-    5. **语法正确**：每条语句以英文分号 `;` 结尾。具体语法格式请查阅知识库中的语法参考。
-    6. **主动查询素材**：在转换开始前，主动使用 query_assets 工具查询可用素材，确保引用的文件名正确。
-    7. **禁止空行**：脚本中严禁出现空行，引擎会将空行误识别为上一角色的空对话。
-
-    ## ⚠️ 输出要求（极其重要）
-
-    完成转换后，你的最终输出（直接回复的文本）必须是**完整的 WebGal 脚本内容**，而不是说明文字。
+    所有脚本内容通过 `write_result` 工具写入文件，不要在最终回复中输出脚本内容。
 
     具体做法：
-    - 按"环境段落"将剧本拆分为少量脚本文件（相邻场景背景/地点/时间无大变化则合并），用 `write_result` 工具分别写入结果目录
+    - 按"环境段落"将剧本拆分为少量脚本文件（相邻场景背景/地点/时间无大变化则合并），用 `write_result` 分别写入
     - 创建 `index.txt` 用 `callScene` 串联各文件
-    - 然后将 `index.txt` 的内容作为你的最终回复直接输出
-    - 不要输出任何说明、解释、素材表格或设计描述
-    - 不要输出"脚本已编写完成"之类的总结
+    - 最终回复简要列出已写入的文件清单，例如：
 
-    示例输出格式：
     ```
-    setTransform:{"alpha":0} -target=stage-main -duration=500;
-    changeBg:night.png -next;
-    changeFigure:char1/model.json -id=char1 -left;
-    changeFigure:figure/char2/model.json -id=char2 -right;
-    setTransform:{"alpha":1} -target=stage-main -duration=1000;
-    :夜晚的房间;
-    角色A:你好;
-    ...
+    已完成脚本转换，写入以下文件：
+    - Scene1.txt — 素世家·早晨
+    - Scene2.txt — 上学路上·教室
+    - Scene3.txt — 放学后·素世家
+    - index.txt — 入口文件
     ```
