@@ -42,9 +42,5 @@ class KnowledgeEntry(BaseModel):
         """更新 ``updated_at`` 时间戳。"""
         self.updated_at = datetime.utcnow()
 
-    def full_content(self) -> str:
-        """返回包含 frontmatter 的完整 Markdown 表示。
 
-        适用于将条目直接传入 LLM 提示词。
-        """
-        return self.body
+

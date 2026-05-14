@@ -41,7 +41,6 @@ class AgentConfig(BaseModel):
     api_key: str = ""
     temperature: float = 0.7
     max_tokens: int = 4096
-    max_retries: int = 3
     reasoning_effort: str | None = None
     extra_body: dict | None = None
 

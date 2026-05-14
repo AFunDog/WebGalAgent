@@ -11,9 +11,9 @@ from webgal_agent.tools._paths import resolve_game_dir
 def _resolve_allowed_dirs() -> list[pathlib.Path]:
     """解析允许读取的目录列表。
 
-    包括项目根目录和配置的 WebGal 游戏目录。
+    仅包括游戏目录（用于素材路径查询），实际文件读取由 result_dir 单独控制。
     """
-    dirs: list[pathlib.Path] = [pathlib.Path(".").resolve()]
+    dirs: list[pathlib.Path] = []
 
     game_dir = resolve_game_dir()
     if game_dir:
@@ -23,14 +23,16 @@ def _resolve_allowed_dirs() -> list[pathlib.Path]:
 
 
 class ReadFileTool(Tool):
-    """读取文件内容的工具。"""
+    """读取文件内容的工具。
+
+    仅允许读取任务结果目录（与 write_result 输出位置一致），
+    禁止读取游戏素材目录或项目其他文件。
+    """
 
     def __init__(
         self,
-        base_dir: str | pathlib.Path = ".",
         result_dir: str | pathlib.Path | None = None,
     ) -> None:
-        self._base_dir = pathlib.Path(base_dir).resolve()
         self._allowed_dirs = _resolve_allowed_dirs()
         if result_dir is not None:
             self._result_dir = pathlib.Path(result_dir).resolve()
@@ -44,7 +46,7 @@ class ReadFileTool(Tool):
 
     @property
     def description(self) -> str:
-        return "读取指定路径文件的内容。路径相对于项目根目录、游戏素材目录或任务结果目录（result/）。"
+        return "读取指定路径文件的内容。路径相对于任务结果目录（result/）。"
 
     @property
     def parameters(self) -> dict[str, object]:
@@ -53,7 +55,7 @@ class ReadFileTool(Tool):
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "要读取的文件路径，相对于项目根目录、游戏素材目录或任务结果目录",
+                    "description": "要读取的文件路径，相对于任务结果目录",
                 },
             },
             "required": ["path"],
@@ -73,26 +75,13 @@ class ReadFileTool(Tool):
             if not allowed:
                 return ToolResult(success=False, error=f"路径不在允许的目录内: {path}")
         else:
-            # 相对路径：优先尝试 result_dir（匹配 write_result 的输出位置）
-            target = None
+            # 相对路径：仅允许读取 result_dir（与 write_result 输出位置一致）
             if self._result_dir is not None and self._result_dir.exists():
-                candidate = (self._result_dir / path_str).resolve()
-                if candidate.is_relative_to(self._result_dir) and candidate.exists():
-                    target = candidate
-
-            if target is None:
-                # 再尝试 base_dir
-                target = (self._base_dir / path_str).resolve()
-                if not target.is_relative_to(self._base_dir):
-                    # 尝试其他允许的目录
-                    for allowed_dir in self._allowed_dirs:
-                        if allowed_dir.exists():
-                            candidate = (allowed_dir / path_str).resolve()
-                            if candidate.is_relative_to(allowed_dir):
-                                target = candidate
-                                break
-                    else:
-                        return ToolResult(success=False, error="不允许路径穿越")
+                target = (self._result_dir / path_str).resolve()
+                if not target.is_relative_to(self._result_dir):
+                    return ToolResult(success=False, error="不允许路径穿越")
+            else:
+                return ToolResult(success=False, error="路径不在允许的目录内，仅限任务结果目录")
 
         try:
             content = target.read_text(encoding="utf-8")

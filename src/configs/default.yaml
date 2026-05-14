@@ -16,24 +16,6 @@ llm:
   temperature: 0.7
   max_tokens: 4096
 
-agents:
-  director:
-    enabled: true
-    model: gpt-4o
-  writer:
-    enabled: true
-    model: gpt-4o
-  artist:
-    enabled: true
-    model: gpt-4o
-  reviewer:
-    enabled: true
-    model: gpt-4o
-
-workflow:
-  max_iterations: 5
-  review_threshold: 0.8
-
 memory:
   backend: in_memory
   max_messages: 100

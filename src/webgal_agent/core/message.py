@@ -33,10 +33,6 @@ class Message(BaseModel):
     metadata: dict[str, object] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    def with_type(self, msg_type: MessageType) -> Message:
-        """返回更改了消息类型的副本。"""
-        return self.model_copy(update={"type": msg_type})
-
     def reply(self, content: str, msg_type: MessageType = MessageType.RESULT) -> Message:
         """创建从接收方回复发送方的消息。"""
         return Message(

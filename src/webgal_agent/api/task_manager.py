@@ -15,11 +15,9 @@ from webgal_agent.agents import OutlineWriterAgent, ScriptConverterAgent, Script
 from webgal_agent.config.provider_manager import ProviderConfigManager
 from webgal_agent.core.agent import Agent
 from webgal_agent.core.message import Message, MessageType
-from webgal_agent.core.workflow import WorkflowResult
 from webgal_agent.knowledge import KnowledgeStore
 from webgal_agent.knowledge.models import KnowledgeEntry
 from webgal_agent.tools.base import Tool
-from webgal_agent.workflows.pipeline import PipelineWorkflow
 
 # 流水线步骤顺序：A → B → C
 PIPELINE_ORDER = ["outline_writer", "script_writer", "script_converter"]
@@ -685,7 +683,7 @@ class TaskManager:
         ]
         return {
             "name": "pipeline",
-            "type": "PipelineWorkflow",
+            "type": "TaskManagerPipeline",
             "description": "三阶段流水线：A(大纲) → B(剧本) → C(WebGal脚本)",
             "agents": agent_list,
             "order": PIPELINE_ORDER,

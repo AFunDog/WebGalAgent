@@ -52,11 +52,84 @@ class KnowledgeStore(abc.ABC):
         """返回条目总数。"""
 
 
-class InMemoryKnowledgeStore(KnowledgeStore):
-    """基于字典的简单内存知识存储。"""
+class FileKnowledgeStore(KnowledgeStore):
+    """从带 YAML frontmatter 的 Markdown 文件加载知识条目的存储。
 
-    def __init__(self) -> None:
+    每个 ``.md`` 文件代表一条知识条目。YAML frontmatter
+    提供结构化元数据（类别、标签、标题），Markdown 正文
+    保存自由格式内容。
+
+    文件结构示例::
+
+        data/knowledge/
+        ├── characters/
+        │   ├── alice.md
+        │   └── bob.md
+        └── settings/
+            ├── world.md
+            └── main-scene.md
+
+    ``alice.md`` 示例::
+
+        ---
+        category: character
+        tags: [protagonist, human]
+        title: Alice
+        ---
+
+        # Alice
+
+        ## 基本信息
+        - 年龄：18
+        - 性别：女
+
+        ## 性格
+        勇敢、善良、略带倔强
+    """
+
+    _FRONTMATTER_RE = re.compile(
+        r"\A---\s*\n(.*?)\n---\s*\n?(.*)", re.DOTALL
+    )
+
+    def __init__(self, data_dir: str | Path) -> None:
         self._entries: dict[str, KnowledgeEntry] = {}
+        self._data_dir = Path(data_dir)
+        self._load_all()
+
+    def _load_all(self) -> None:
+        """递归加载数据目录中的所有 Markdown 文件。"""
+        if not self._data_dir.exists():
+            return
+
+        for path in sorted(self._data_dir.rglob("*.md")):
+            self._load_file(path)
+
+    def _load_file(self, path: Path) -> None:
+        """加载单个带 YAML frontmatter 的 Markdown 文件。"""
+        text = path.read_text(encoding="utf-8")
+        match = self._FRONTMATTER_RE.match(text)
+
+        if match:
+            meta = yaml.safe_load(match.group(1)) or {}
+            body = match.group(2)
+        else:
+            meta = {}
+            body = text
+
+        # 从 frontmatter 或首个标题推导标题
+        title = meta.get("title", "")
+        if not title:
+            heading_match = re.search(r"^#\s+(.+)", body, re.MULTILINE)
+            title = heading_match.group(1).strip() if heading_match else path.stem
+
+        entry = KnowledgeEntry(
+            category=meta.get("category", KnowledgeCategory.CUSTOM if not meta else "custom"),
+            title=title,
+            tags=meta.get("tags", []),
+            body=body.strip(),
+            source=str(path.relative_to(self._data_dir)),
+        )
+        self.add(entry)
 
     def add(self, entry: KnowledgeEntry) -> KnowledgeEntry:
         self._entries[entry.id] = entry
@@ -103,86 +176,6 @@ class InMemoryKnowledgeStore(KnowledgeStore):
 
     def count(self) -> int:
         return len(self._entries)
-
-
-class FileKnowledgeStore(InMemoryKnowledgeStore):
-    """从带 YAML frontmatter 的 Markdown 文件加载知识条目的存储。
-
-    每个 ``.md`` 文件代表一条知识条目。YAML frontmatter
-    提供结构化元数据（类别、标签、标题），Markdown 正文
-    保存自由格式内容。
-
-    文件结构示例::
-
-        data/knowledge/
-        ├── characters/
-        │   ├── alice.md
-        │   └── bob.md
-        └── settings/
-            ├── world.md
-            └── main-scene.md
-
-    ``alice.md`` 示例::
-
-        ---
-        category: character
-        tags: [protagonist, human]
-        title: Alice
-        ---
-
-        # Alice
-
-        ## 基本信息
-        - 年龄：18
-        - 性别：女
-
-        ## 性格
-        勇敢、善良、略带倔强
-    """
-
-    _FRONTMATTER_RE = re.compile(
-        r"\A---\s*\n(.*?)\n---\s*\n?(.*)", re.DOTALL
-    )
-
-    def __init__(self, data_dir: str | Path) -> None:
-        super().__init__()
-        self._data_dir = Path(data_dir)
-        self._load_all()
-
-    def _load_all(self) -> None:
-        """递归加载数据目录中的所有 Markdown 文件。"""
-        if not self._data_dir.exists():
-            return
-
-        for path in sorted(self._data_dir.rglob("*.md")):
-            self._load_file(path)
-
-    def _load_file(self, path: Path) -> None:
-        """加载单个带 YAML frontmatter 的 Markdown 文件。"""
-        text = path.read_text(encoding="utf-8")
-        match = self._FRONTMATTER_RE.match(text)
-
-        if match:
-            meta = yaml.safe_load(match.group(1)) or {}
-            body = match.group(2)
-        else:
-            meta = {}
-            body = text
-
-        # 从 frontmatter 或首个标题推导标题
-        title = meta.get("title", "")
-        if not title:
-            heading_match = re.search(r"^#\s+(.+)", body, re.MULTILINE)
-            title = heading_match.group(1).strip() if heading_match else path.stem
-
-        entry = KnowledgeEntry(
-            category=meta.get("category", KnowledgeCategory.CUSTOM if not meta else "custom"),
-            title=title,
-            tags=meta.get("tags", []),
-            body=body.strip(),
-            source=str(path.relative_to(self._data_dir)),
-        )
-        self.add(entry)
 
     def reload(self) -> None:
         """清空并从磁盘重新加载所有文件。"""

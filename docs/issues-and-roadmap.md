@@ -8,11 +8,14 @@
 
 ### 🔴 严重（需尽快修复）
 
-#### 1. ReadFileTool 路径检查范围过大
+#### 1. ~~ReadFileTool 路径检查范围过大~~ ✅ 已修复
 
-- **位置**: `src/webgal_agent/tools/file_ops.py` 第 70-87 行
-- **问题**: `_allowed_dirs` 包含 `pathlib.Path(".").resolve()` 即当前工作目录，LLM 理论上可读取项目任意文件（包括含 API Key 的 `providers.yaml`）
-- **建议**: 收紧允许目录至 `data/` 和游戏输出目录，移除项目根目录
+- **位置**: `src/webgal_agent/tools/file_ops.py`
+- **修复**:
+  - 移除 `_allowed_dirs` 中的项目根目录 `pathlib.Path(".").resolve()`
+  - 移除 `base_dir` 回退逻辑，相对路径只允许读取 `result_dir`（与 `write_result` 输出位置一致）
+  - 移除游戏素材目录回退，仅允许读取任务结果目录
+  - 更新文档描述，移除"项目根目录"和"游戏素材目录"的说明
 
 #### 2. API 调用超时硬编码
 
@@ -106,13 +109,9 @@
 - **问题**: 标签仅有 `[compact]` 而无 `webgal`。如果将来过滤条件改为 `tags: [webgal]`，该文件会遗漏。与其他 WebGal 参考文件不一致。
 - **建议**: 补充 `webgal` 标签：`tags: [webgal, compact]`
 
-#### 15. script_writer 提示词中 `<空>` 占位符可能被误解
-
-- **位置**: `src/configs/prompts.yaml` script_writer 章节
-- **问题**: 格式说明写为 `<空>:<描写内容>;`，其中 `<空>` 可能被模型理解为字面输出 "空" 字而非留空。
-- **建议**: 直接写为 `:<描写内容>;`，消除歧义
 
 ---
+
 
 ### 🟢 轻微（可择时处理）
 
@@ -168,13 +167,19 @@
 
 ## 二、未使用/冗余代码
 
-| 代码 | 位置 | 说明 |
-|------|------|------|
-| `AppSettings` / `LLMSettings` / `AgentSettings` | `config/settings.py` | 已定义但项目中完全未使用，配置通过 `ProviderConfigManager` 管理 |
-| `SharedContext` | `core/context.py` | 已定义但项目中没有任何地方使用 |
-| `PipelineWorkflow.execute` | `workflows/pipeline.py` | 生产代码绕过它，由 TaskManager 独立实现步骤执行；仅在测试中使用 |
-| `AgentConfig.max_retries` | `core/agent.py` | 已定义但从未使用 |
-| `default.yaml` 中旧 agent 名称 | `configs/default.yaml` | 包含 director/writer/artist/reviewer，与实际 outline_writer/script_writer/script_converter 不匹配 |
+| 代码                                                  | 位置                      | 说明                                                                                              | 状态 |
+| ----------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------- | ---- |
+| `AppSettings` / `LLMSettings` / `AgentSettings` | `config/settings.py`    | 已定义但项目中完全未使用，配置通过 `ProviderConfigManager` 管理                                 | ✅ 已删除 |
+| `SharedContext`                                     | `core/context.py`       | 已定义但项目中没有任何地方使用                                                                    | ✅ 已删除 |
+| `PipelineWorkflow.execute`                          | `workflows/pipeline.py` | 生产代码绕过它，由 TaskManager 独立实现步骤执行；仅在测试中使用                                   | ✅ 已删除 |
+| `AgentConfig.max_retries`                           | `core/agent.py`         | 已定义但从未使用                                                                                  | ✅ 已删除 |
+| `default.yaml` 中旧 agent 名称                      | `configs/default.yaml`  | 包含 director/writer/artist/reviewer，与实际 outline_writer/script_writer/script_converter 不匹配 | ✅ 已清理 |
+| `InMemoryKnowledgeStore`                            | `knowledge/store.py`    | 已定义但实际使用 `FileKnowledgeStore`                                                             | ✅ 已删除 |
+| `Message.with_type`                                | `core/message.py`       | 已定义但从未调用                                                                                  | ✅ 已删除 |
+| `KnowledgeEntry.full_content`                       | `knowledge/models.py`   | 已定义但从未调用                                                                                  | ✅ 已删除 |
+| `WorkflowResult` 冗余导入                           | `api/task_manager.py`   | 仅导入但未使用                                                                                    | ✅ 已删除 |
+| `Workflow` / `WorkflowResult`                       | `core/workflow.py`      | 抽象基类和结果类，生产代码由 TaskManager 直接实现；整个文件已无引用                                | ✅ 已删除 |
+| `PipelineWorkflow` 冗余导入                        | `api/task_manager.py`   | 仅导入但未使用（`type` 字符串字面量除外）                                                        | ✅ 已删除 |
 
 ---
 
@@ -182,23 +187,31 @@
 
 ### ✅ 已完成 (2026-05)
 
-| 变更 | 说明 |
-|------|------|
-| `AgentConfig` 新增 `reasoning_effort` 和 `extra_body` | 支持推理模型深度控制和 DeepSeek thinking 模式等非标参数，可通过 `providers.yaml` 按智能体独立配置 |
-| `AssetQueryTool` character 查询优化 | character 类型只返回 `model*.json`（立绘模型定义），不再返回纹理 PNG / physics.json / 表情 JSON 等无关文件，大幅减少 token 消耗 |
-| `ReadModelTool` 新建 | 专用工具，读取 model.json 仅返回 `motions` 和 `expressions` 列表，供智能体在 `changeFigure` 中准确引用合法的表情/动作参数 |
-| 提示词优化 | `script_converter` 新增 `read_model` 工具说明、表情/动作来源工作流、切换频率规则（每 1~2 句对话切换一次）、`-next` 参数使用技巧 |
-| `webgal_script_syntax.md` 技巧补充 | Live2D 章节新增 `-next` 参数使用技巧：切换动作/表情时加 `-next` 可不阻塞后续对话 |
-| 知识库精简 | 创建 `webgal_script_syntax_compact.md` 精简语法参考（437→418 行），新增 `expression_motion_guide.md` 表情动作对照表；script_converter 通过 `tags: [compact]` 过滤只获取精简版 |
-| `setTempAnimation` 语法补充 | 完整版和精简版新增 `setTempAnimation` 指令说明，推荐优先使用替代 `setAnimation` |
-| 全面审计 | 对智能体信息流、知识库过滤、提示词质量进行完整审计，发现 15 个新问题并录入本文档 |
+| 变更                                                        | 说明                                                                                                                                                                                 |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AgentConfig` 新增 `reasoning_effort` 和 `extra_body` | 支持推理模型深度控制和 DeepSeek thinking 模式等非标参数，可通过 `providers.yaml` 按智能体独立配置                                                                                  |
+| `AssetQueryTool` character 查询优化                       | character 类型只返回 `model*.json`（立绘模型定义），不再返回纹理 PNG / physics.json / 表情 JSON 等无关文件，大幅减少 token 消耗                                                    |
+| `ReadModelTool` 新建                                      | 专用工具，读取 model.json 仅返回 `motions` 和 `expressions` 列表，供智能体在 `changeFigure` 中准确引用合法的表情/动作参数                                                      |
+| 提示词优化                                                  | `script_converter` 新增 `read_model` 工具说明、表情/动作来源工作流、切换频率规则（每 1~2 句对话切换一次）、`-next` 参数使用技巧                                                |
+| `webgal_script_syntax.md` 技巧补充                        | Live2D 章节新增 `-next` 参数使用技巧：切换动作/表情时加 `-next` 可不阻塞后续对话                                                                                                 |
+| 知识库精简                                                  | 创建 `webgal_script_syntax_compact.md` 精简语法参考（437→418 行），新增 `expression_motion_guide.md` 表情动作对照表；script_converter 通过 `tags: [compact]` 过滤只获取精简版 |
+| `setTempAnimation` 语法补充                               | 完整版和精简版新增 `setTempAnimation` 指令说明，推荐优先使用替代 `setAnimation`                                                                                                  |
+| 全面审计                                                    | 对智能体信息流、知识库过滤、提示词质量进行完整审计，发现 15 个新问题并录入本文档                                                                                                     |
+| 未使用代码清理                                              | 删除 5 个冗余文件（settings.py/context.py/pipeline.py 等），清理 3 个未使用的方法/导入，移除 default.yaml 中旧 agent 配置                                                   |
 
 ### 🔄 待跟进
 
 - **LLM 重试与超时**：`max_retries` 仍未生效，timeout 仍硬编码（问题 #2, #3）
 - **路径解析统一**：`AssetQueryTool` 和 `ReadModelTool` 的 `resolve_game_dir()` 调用可合并到 `_paths.py`（问题 #11）
-- **提示词修复**：outline_writer 矛盾（#4）、名称不匹配（#5）、占位符歧义（#15）等提示词层面的问题待修复
 - **知识库配置优化**：`_build_all_knowledge_contexts` 冗余（#12）、世界观背景多余（#13）、标签不一致（#14）
+
+### ✅ 已完成（补充）
+
+| 变更                        | 说明                                                                                                      |
+| --------------------------- | --------------------------------------------------------------------------------------------------------- |
+| ReadFileTool 路径收紧       | 移除项目根目录和游戏素材目录回退，只允许读取任务结果目录，与 write_result 保持一致                        |
+| 动画演出效果配方扩充        | 从助手词提取 18 个电影感滤镜模板，替换 animation_recipes.md 的氛围类配方，含背景+人物双滤镜、bevel 边缘光 |
+| script_converter 提示词更新 | 场景开头 changeFigure:none 必须追加 -next；角色位置分配规则（2人 left/right、3人左中右、4人+ x偏移）      |
 
 ---
 
@@ -344,25 +357,25 @@
 
 ## 五、问题优先级矩阵
 
-| 优先级 | 问题 | 影响范围 | 修复难度 |
-|--------|------|----------|----------|
-| P1 | ReadFileTool 路径过宽 | 安全 | 低 |
-| P1 | API 调用超时硬编码 | 稳定性 | 低 |
-| P1 | LLM 调用无重试 | 稳定性 | 低 |
-| P1 | outline_writer 提示词矛盾 | 输出质量 | 低 |
-| P1 | 提示词名称与上下文标签不匹配 | 输出质量 | 低 |
-| P2 | 类型安全 | 代码质量 | 中 |
-| P2 | 统一异常处理 | 稳定性 | 低 |
-| P2 | 测试覆盖率 | 质量 | 高 |
-| P2 | _build_all_knowledge_contexts 多余查询 | 性能 | 低 |
-| P2 | script_converter 收到不必要知识 | token 浪费 | 低 |
-| P2 | expression_motion_guide 标签不完整 | 健壮性 | 低 |
-| P2 | script_writer `<空>` 占位符歧义 | 输出质量 | 低 |
-| P3 | 路径解析逻辑重复 | 可维护性 | 低 |
-| P3 | 未使用代码清理 | 整洁度 | 低 |
-| P3 | CSS 重复 | 可维护性 | 低 |
-| P3 | 配置系统统一 | 架构 | 中 |
+| 优先级  | 问题                                   | 影响范围   | 修复难度 |
+| ------- | -------------------------------------- | ---------- | -------- |
+| ~~P1~~ | ~~ReadFileTool 路径过宽~~ ✅          | 安全       | 低       |
+| P1      | API 调用超时硬编码                     | 稳定性     | 低       |
+| P1      | LLM 调用无重试                         | 稳定性     | 低       |
+| ~~P1~~ | ~~outline_writer 提示词矛盾~~ ✅      | 输出质量   | 低       |
+| ~~P1~~ | ~~提示词名称与上下文标签不匹配~~ ✅   | 输出质量   | 低       |
+| P2      | 类型安全                               | 代码质量   | 中       |
+| P2      | 统一异常处理                           | 稳定性     | 低       |
+| P2      | 测试覆盖率                             | 质量       | 高       |
+| P2      | _build_all_knowledge_contexts 多余查询 | 性能       | 低       |
+| P2      | script_converter 收到不必要知识        | token 浪费 | 低       |
+| P2      | expression_motion_guide 标签不完整     | 健壮性     | 低       |
+| P2      | script_writer `<空>` 占位符歧义      | 输出质量   | 低       |
+| P3      | 路径解析逻辑重复                       | 可维护性   | 低       |
+| P3      | 未使用代码清理                         | 整洁度     | 低       |
+| P3      | CSS 重复                               | 可维护性   | 低       |
+| P3      | 配置系统统一                           | 架构       | 中       |
 
 ---
 
-*最后更新: 2026-05-13*
+*最后更新: 2026-05-14*
