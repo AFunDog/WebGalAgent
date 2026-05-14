@@ -3,8 +3,19 @@
 提供基于 Playwright 的浏览器自动化能力，支持页面导航、元素操作、截图等。
 """
 
-from webgal_agent.browser.client import BrowserClient, BrowserConfig
-from webgal_agent.browser.models import PageState, ElementInfo, Selector
+from webgal_agent.browser.client import BrowserClient, DefaultBrowserConfig
+from webgal_agent.browser.models import (
+    PageState,
+    ElementInfo,
+    Selector,
+    SelectorType,
+    BrowserConfig,
+    CaptureConfig,
+    VideoConfig,
+    RecordingResult,
+)
+from webgal_agent.browser.capture import CanvasCapture
+from webgal_agent.browser.recorder import VideoRecorder
 from webgal_agent.browser.tools import (
     NavigateTool,
     ClickTool,
@@ -16,10 +27,17 @@ from webgal_agent.browser.tools import (
 
 __all__ = [
     "BrowserClient",
-    "BrowserConfig",
+    "DefaultBrowserConfig",
     "PageState",
     "ElementInfo",
     "Selector",
+    "SelectorType",
+    "BrowserConfig",
+    "CaptureConfig",
+    "VideoConfig",
+    "RecordingResult",
+    "CanvasCapture",
+    "VideoRecorder",
     "NavigateTool",
     "ClickTool",
     "ScreenshotTool",

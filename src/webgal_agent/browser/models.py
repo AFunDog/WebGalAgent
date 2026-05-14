@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from enum import Enum
+from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -56,3 +58,46 @@ class BrowserActionType(str, Enum):
     SCROLL = "scroll"
     HOVER = "hover"
     SELECT = "select"
+
+
+# ─────────────────────────── 配置模型 ───────────────────────────
+
+class BrowserConfig(BaseModel):
+    """浏览器基础配置。"""
+
+    headless: bool = False
+    timeout: int = 30000
+    viewport_width: int = 1920
+    viewport_height: int = 1080
+    user_agent: str | None = None
+    ignore_https_errors: bool = True
+
+
+class CaptureConfig(BaseModel):
+    """Canvas 帧捕获配置。"""
+
+    fps: float = 30.0
+    canvas_selector: str = "canvas"
+    max_duration: float | None = None
+    max_frames: int | None = None
+
+
+class VideoConfig(BaseModel):
+    """视频录制配置。"""
+
+    output_path: Path | str
+    fps: float = 30.0
+    codec: Literal["mp4v", "avc1", "XVID"] = "mp4v"
+    quality: int = 23
+    width: int | None = None
+    height: int | None = None
+
+
+class RecordingResult(BaseModel):
+    """录制结果。"""
+
+    output_path: Path
+    total_frames: int
+    duration: float
+    actual_fps: float
+    file_size_mb: float
