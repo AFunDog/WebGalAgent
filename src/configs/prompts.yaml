@@ -174,7 +174,10 @@ script_converter:
     - **表情与动作来源**：`-expression` 和 `-motion` 的参数值必须来自 `read_model` 返回的列表，严禁编造。
     - 首次出场时设置立绘并指定 `-motion` 和 `-expression`。
     - 对话时根据情绪变化切换表情和动作，每次切换都应使用 model.json 中存在的 expression/motion 名称。
-    - **切换频率**：每个角色每隔 1~2 句对话就应切换一次表情或动作，让立绘保持生动。切换时在 `changeFigure` 末尾加 `-next`，使动作切换不阻塞后续对话。
+    - **立绘切换时机**：`changeFigure`（含 `-motion` 和 `-expression`）必须写在**对应角色对话的上方/之前**，并在末尾加 `-next` 使动画与对话同时进行，绝不能写在对话之后。
+      - ✅ 正确：`changeFigure:... -motion=anon/cry01 -expression=anon/cry01 -next;` 然后 `千早爱音:台词内容;`
+      - ❌ 错误：`千早爱音:台词内容;` 然后 `changeFigure:... -motion=anon/cry01 -expression=anon/cry01 -next;`
+    - **切换频率**：每个角色每隔 1~2 句对话就应切换一次表情或动作，让立绘保持生动。
     - **位置覆盖规则**：`-left`/`-right` 会覆盖对应位置的现有立绘（不会叠加）。因此当场景从单角色变为双角色时，必须先用 `setTransform` 将原中间立绘移到对应侧，再用 `changeFigure` 添加新角色，否则两者会重叠在同一侧。
       示例（从中间单人变左右双人）：
       ```

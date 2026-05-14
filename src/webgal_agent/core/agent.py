@@ -194,7 +194,7 @@ class Agent(abc.ABC):
         self,
         system_prompt: str,
         user_content: str,
-        max_tool_rounds: int = 10,
+        max_tool_rounds: int = 30,
     ) -> LLMResponse:
         """调用 LLM 并支持工具调用循环（ReAct 模式）。
 
