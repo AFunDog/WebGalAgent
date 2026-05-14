@@ -41,6 +41,13 @@ async def demo_navigate(
     )
 
     async with BrowserClient(config) as client:
+        # 拦截 index-e1b3c40e.js 并注入
+        print(f"拦截脚本注入 (index-e1b3c40e.js)...")
+        await client.add_script_injection(
+            url_pattern="**/index-e1b3c40e.js",
+            inject_code="window.changeScene = gCe;\nwindow.toggleAuto = wU;",
+        )
+
         print(f"正在使用 {browser_type} 导航到: {url}")
         state = await client.navigate(url)
         print(f"页面标题: {state.title}")
@@ -73,12 +80,38 @@ async def demo_record(
     )
 
     async with BrowserClient(config) as client:
+        # 拦截 index-e1b3c40e.js 并注入 changeScene
+        print(f"拦截脚本注入 (index-e1b3c40e.js)...")
+        await client.add_script_injection(
+            url_pattern="**/index-e1b3c40e.js",
+            inject_code="window.changeScene = gCe;\nwindow.toggleAuto = wU;",
+        )
+
         print(f"正在使用 {browser_type} 导航到: {url}")
         try:
-            await client.navigate(url, wait_until="domcontentloaded")
+            await client.navigate(url, wait_until="load")
         except Exception as e:
             print(f"导航超时，继续等待页面加载... ({e})")
             await asyncio.sleep(5)
+
+        # 等待 changeScene 函数就绪并调用
+        print("等待 changeScene 函数就绪...")
+        page = await client.get_page()
+        try:
+            await page.wait_for_function(
+                "() => typeof window.changeScene === 'function' && typeof window.toggleAuto === 'function'",
+                timeout=10000,
+            )
+            print("changeScene 已就绪，调用...")
+            await page.evaluate("""
+                () => {
+                    window.changeScene("发布/AI剧场/爱素补作业/15/Scene1.txt", 1);
+                    window.toggleAuto();
+                }
+            """)
+            print("changeScene 调用完成")
+        except Exception as e:
+            print(f"警告: changeScene 调用失败: {e}")
 
         selected_selector = canvas_selector
         if canvas_selector == "auto":

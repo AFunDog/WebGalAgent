@@ -12,6 +12,7 @@ from playwright.async_api import (
     BrowserContext,
     ElementHandle,
     Page,
+    Route,
     TimeoutError as PlaywrightTimeout,
 )
 
@@ -180,6 +181,52 @@ class BrowserClient:
         )
 
         return context
+
+    # ---- 脚本拦截注入 ----
+
+    async def add_script_injection(
+        self,
+        url_pattern: str,
+        inject_code: str,
+        context_id: str = "default",
+    ) -> None:
+        """为指定 URL 模式的资源添加注入代码。
+
+        在页面加载前调用，拦截匹配的 JS 文件并在末尾注入自定义代码。
+        支持通配符，如 `**/index-e1b3c40e.js`。
+
+        Args:
+            url_pattern: URL 匹配模式（支持 glob，如 `**/*.js` 或部分路径）
+            inject_code: 要追加到文件末尾的 JavaScript 代码
+            context_id: 目标上下文 ID
+        """
+        if context_id not in self._instances:
+            await self.new_context(context_id)
+
+        page = await self.get_page(context_id)
+
+        async def handle_route(route: Route) -> None:
+            try:
+                response = await route.fetch()
+                original_body = await response.body()
+                content_type = response.headers.get("content-type", "")
+
+                # 追加注入代码
+                modified_body = original_body + f"\n/* injected */\n{inject_code}\n/* end inject */\n".encode("utf-8")
+
+                await route.fulfill(
+                    status=response.status,
+                    content_type=content_type,
+                    body=modified_body,
+                )
+            except Exception as e:
+                # 如果拦截失败，放行原始请求
+                print(f"警告: 脚本注入失败 ({url_pattern}): {e}")
+                await route.continue_()
+
+        await page.route(url_pattern, handle_route)
+
+    # --------------------
 
     async def get_page(self, context_id: str = "default") -> Page:
         """获取指定上下文的页面。"""
