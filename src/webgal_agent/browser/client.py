@@ -3,19 +3,99 @@
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import AsyncIterator
 
 from playwright.async_api import (
     async_playwright,
     Browser as PlaywrightBrowser,
     BrowserContext,
     Page,
-    ElementHandle,
     TimeoutError as PlaywrightTimeout,
 )
 
-from webgal_agent.browser.models import BrowserConfig, PageState, ElementInfo, Selector
+from webgal_agent.browser.models import BrowserConfig, PageState, ElementInfo, Selector, SelectorType
+
+
+async def create_browser(
+    browser_type: str = "chromium",
+    headless: bool = True,
+    viewport_width: int = 1920,
+    viewport_height: int = 1080,
+) -> BrowserClient:
+    """创建浏览器客户端的快捷函数。"""
+    config = DefaultBrowserConfig(
+        browser_type=browser_type,
+        headless=headless,
+        viewport_width=viewport_width,
+        viewport_height=viewport_height,
+    )
+    client = BrowserClient(config)
+    await client.__aenter__()
+    return client
+
+# Hook 脚本：控制虚拟时间，实现逐帧确定性渲染
+_TIME_CONTROL_SCRIPT = """
+() => {
+    if (window.__timeControlReady) return;
+
+    let currentTime = 0;
+    let rafId = 0;
+    const rafQueue = new Map();
+
+    const originalPerformanceNow = performance.now.bind(performance);
+    const originalDateNow = Date.now.bind(Date);
+    const originalRequestAnimationFrame = window.requestAnimationFrame.bind(window);
+    const originalCancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+
+    const getFrameTime = () => 1000 / (window.__targetFPS || 30);
+
+    performance.now = () => currentTime;
+    Date.now = () => Math.floor(currentTime);
+
+    window.requestAnimationFrame = (callback) => {
+        rafId += 1;
+        rafQueue.set(rafId, callback);
+        return rafId;
+    };
+
+    window.cancelAnimationFrame = (id) => {
+        rafQueue.delete(id);
+    };
+
+    window.__advanceFrame = async (frameCount = 1) => {
+        const steps = Math.max(1, Number(frameCount) || 1);
+
+        for (let i = 0; i < steps; i += 1) {
+            currentTime += getFrameTime();
+
+            const callbacks = Array.from(rafQueue.values());
+            rafQueue.clear();
+
+            for (const callback of callbacks) {
+                try {
+                    callback(currentTime);
+                } catch (error) {
+                    console.error("requestAnimationFrame callback failed", error);
+                }
+            }
+
+            await Promise.resolve();
+        }
+    };
+
+    window.__disableTimeControl = () => {
+        performance.now = originalPerformanceNow;
+        Date.now = originalDateNow;
+        window.requestAnimationFrame = originalRequestAnimationFrame;
+        window.cancelAnimationFrame = originalCancelAnimationFrame;
+        rafQueue.clear();
+        window.__timeControlReady = false;
+    };
+
+    window.__timeControlReady = true;
+}
+"""
 
 
 @dataclass
@@ -31,6 +111,7 @@ class BrowserInstance:
 class DefaultBrowserConfig:
     """浏览器默认配置。"""
 
+    browser_type: str = "chromium"
     headless: bool = True
     timeout: int = 30000
     viewport_width: int = 1920
@@ -71,8 +152,11 @@ class BrowserClient:
         if not self._playwright:
             raise RuntimeError("BrowserClient 未初始化，请使用 async with 上下文管理器")
 
-        browser = await self._playwright.chromium.launch(
+        channel = "msedge" if self._config.browser_type == "msedge" else None
+        browser_engine = getattr(self._playwright, "chromium")
+        browser = await browser_engine.launch(
             headless=self._config.headless,
+            channel=channel,
         )
 
         context_config = config or BrowserConfig()
@@ -101,12 +185,50 @@ class BrowserClient:
         self,
         url: str,
         context_id: str = "default",
-        wait_until: str = "load",
+        wait_until: str = "domcontentloaded",
     ) -> PageState:
         """导航到指定 URL。"""
         page = await self.get_page(context_id)
         await page.goto(url, wait_until=wait_until, timeout=self._config.timeout)
         return await self.get_page_state(context_id)
+
+    # ---- 时间控制 ----
+
+    async def enable_time_control(self, fps: float = 30.0) -> bool:
+        """启用虚拟时间控制。Hook performance.now / Date.now。返回是否注入成功。"""
+        page = await self.get_page()
+
+        # 先注入时间控制脚本
+        await page.evaluate(_TIME_CONTROL_SCRIPT)
+
+        # 设置 FPS（通过 evaluate 参数传递，不走 f-string 插值）
+        await page.evaluate(
+            "(f) => { window.__targetFPS = f; }",
+            fps,
+        )
+
+        # 验证注入是否成功
+        result = await page.evaluate(
+            "() => typeof window.__advanceFrame"
+        )
+        if result != "function":
+            raise RuntimeError(
+                f"时间控制脚本注入失败: __advanceFrame type={result}。"
+                "页面可能不支持或被重写了 window 对象。"
+            )
+        return True
+
+    async def advance_frame(self, frame_count: int = 1) -> None:
+        """推进虚拟时间（逐帧控制，无真实等待）。必须在 enable_time_control 后调用。"""
+        page = await self.get_page()
+        await page.evaluate("(count) => window.__advanceFrame(count)", frame_count)
+
+    async def disable_time_control(self) -> None:
+        """停止时间控制，恢复原生时间函数。"""
+        page = await self.get_page()
+        await page.evaluate("() => window.__disableTimeControl && window.__disableTimeControl()")
+
+    # --------------------
 
     async def get_page_state(self, context_id: str = "default") -> PageState:
         """获取当前页面状态。"""
@@ -114,7 +236,7 @@ class BrowserClient:
         return PageState(
             url=page.url,
             title=await page.title(),
-            visible=await page.is_visible(),
+            visible=True,
         )
 
     async def click(
@@ -136,7 +258,7 @@ class BrowserClient:
         context_id: str = "default",
         timeout: int | None = None,
     ) -> None:
-        """填充输入框。"""
+        """填写表单。"""
         page = await self.get_page(context_id)
         element = await self._locate(selector, page, timeout)
         await element.fill(value, timeout=timeout or self._config.timeout)
@@ -147,51 +269,49 @@ class BrowserClient:
         context_id: str = "default",
         timeout: int | None = None,
     ) -> str:
-        """获取元素文本内容。"""
+        """获取元素文本。"""
         page = await self.get_page(context_id)
         element = await self._locate(selector, page, timeout)
         return await element.inner_text() or ""
 
     async def screenshot(
         self,
+        path: str,
         context_id: str = "default",
-        path: str | None = None,
         full_page: bool = False,
-    ) -> bytes | str:
-        """截图。"""
+    ) -> bytes:
+        """页面截图。"""
         page = await self.get_page(context_id)
-        if path:
-            await page.screenshot(path=path, full_page=full_page)
-            return path
-        return await page.screenshot(full_page=full_page)
+        return await page.screenshot(path=path, full_page=full_page)
 
     async def wait_for(
         self,
         selector: Selector,
-        context_id: str = "default",
-        timeout: int | None = None,
         state: str = "visible",
+        timeout: int = 10000,
+        context_id: str = "default",
     ) -> bool:
-        """等待元素状态。"""
+        """等待元素出现或消失。"""
         page = await self.get_page(context_id)
-        locator = self._build_locator(selector, page)
+        element = await self._locate(selector, page, timeout)
         try:
-            await locator.wait_for(state=state, timeout=timeout or self._config.timeout)
+            if state == "visible":
+                await element.wait_for(state="visible", timeout=timeout)
+            elif state == "hidden":
+                await element.wait_for(state="hidden", timeout=timeout)
+            elif state == "attached":
+                await element.wait_for(state="attached", timeout=timeout)
+            elif state == "detached":
+                await element.wait_for(state="detached", timeout=timeout)
             return True
         except PlaywrightTimeout:
             return False
 
-    async def close_context(self, context_id: str = "default") -> None:
-        """关闭指定上下文。"""
-        if context_id in self._instances:
-            instance = self._instances.pop(context_id)
-            await instance.context.close()
-            await instance.browser.close()
-
     async def close_all(self) -> None:
         """关闭所有浏览器实例。"""
-        for context_id in list(self._instances.keys()):
-            await self.close_context(context_id)
+        for instance in self._instances.values():
+            await instance.context.close()
+        self._instances.clear()
 
     async def _locate(
         self,
@@ -199,56 +319,33 @@ class BrowserClient:
         page: Page,
         timeout: int | None = None,
     ) -> ElementHandle:
-        """根据选择器定位元素。"""
-        locator = self._build_locator(selector, page)
-        return await locator.wait_for(timeout=timeout or self._config.timeout)
+        """根据类型定位元素。"""
+        if selector.type == SelectorType.CSS:
+            return page.locator("css=" + selector.value).first
+        elif selector.type == SelectorType.XPATH:
+            return page.locator("xpath=" + selector.value).first
+        elif selector.type == SelectorType.TEXT:
+            return page.get_by_text(selector.value).first
+        elif selector.type == SelectorType.ROLE:
+            return page.get_by_role(selector.value).first
+        return page.locator(selector.value).first
 
-    def _build_locator(self, selector: Selector, page: Page):
-        """构建 Playwright Locator。"""
-        match selector.type:
-            case SelectorType.CSS:
-                return page.locator(selector.value)
-            case SelectorType.XPATH:
-                return page.locator(f"xpath={selector.value}")
-            case SelectorType.TEXT:
-                return page.get_by_text(selector.value)
-            case SelectorType.ROLE:
-                return page.get_by_role(selector.value)
-            case _:
-                return page.locator(selector.value)
-
-    async def _get_element_info(self, element: ElementHandle) -> ElementInfo:
+    @staticmethod
+    async def _get_element_info(element: ElementHandle) -> ElementInfo:
         """获取元素信息。"""
-        tag = await element.evaluate("el => el.tagName.toLowerCase()")
+        tag = await element.evaluate("el => el.tagName") or ""
         text = await element.inner_text() or ""
         bbox = await element.bounding_box()
-        is_visible = await element.is_visible()
-        is_enabled = await element.is_enabled()
-
-        attributes = await element.evaluate(
-            """el => {
-                const attrs = {};
-                for (const attr of el.attributes) {
-                    attrs[attr.name] = attr.value;
-                }
-                return attrs;
-            }"""
-        )
-
+        attrs: dict = {}
+        try:
+            attrs = await element.evaluate("el => Object.fromEntries(Array.from(el.attributes).map(a => [a.name, a.value]))") or {}
+        except Exception:
+            pass
         return ElementInfo(
             tag=tag,
             text=text,
-            is_visible=is_visible,
-            is_enabled=is_enabled,
-            bounding_box={"x": bbox.x, "y": bbox.y, "width": bbox.width, "height": bbox.height} if bbox else None,
-            attributes=attributes,
+            is_visible=await element.is_visible(),
+            is_enabled=await element.is_enabled(),
+            bounding_box=bbox or None,
+            attributes=attrs,
         )
-
-
-# 便捷的上下文管理器
-@asynccontextmanager
-async def create_browser(config: DefaultBrowserConfig | None = None):
-    """创建浏览器客户端的便捷函数。"""
-    client = BrowserClient(config)
-    async with client:
-        yield client

@@ -62,6 +62,15 @@ class BrowserActionType(str, Enum):
 
 # ─────────────────────────── 配置模型 ───────────────────────────
 
+class BrowserType(str, Enum):
+    """支持的浏览器类型。"""
+
+    CHROMIUM = "chromium"
+    FIREFOX = "firefox"
+    WEBKIT = "webkit"
+    MSEDGE = "msedge"
+
+
 class BrowserConfig(BaseModel):
     """浏览器基础配置。"""
 
@@ -87,10 +96,12 @@ class VideoConfig(BaseModel):
 
     output_path: Path | str
     fps: float = 30.0
-    codec: Literal["mp4v", "avc1", "XVID"] = "mp4v"
+    codec: Literal["mp4v", "avc1", "XVID", "MJPG"] = "XVID"
     quality: int = 23
     width: int | None = None
     height: int | None = None
+    max_width: int = 1920
+    max_height: int = 1080
 
 
 class RecordingResult(BaseModel):

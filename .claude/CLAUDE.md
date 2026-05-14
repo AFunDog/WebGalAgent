@@ -61,3 +61,24 @@ User Input → OutlineWriter → ScriptWriter → ScriptConverter → WebGal .tx
 - Vue: Composition API with `<script setup lang="ts">`, vue-router hash history
 - Pydantic v2 models for all data structures
 - Agent tools extend `Tool` ABC with JSON Schema `parameters`
+
+## Browser Recording Notes
+
+- Canvas fixed-FPS recording lives in `src/webgal_agent/browser/client.py`, `capture.py`, and `recorder.py`.
+- Do not treat `performance.now()` / `Date.now()` patching alone as enough for deterministic capture. That only changes time reads, but does not freeze render scheduling.
+- The stable approach used here is:
+  1. Hook `requestAnimationFrame` and `cancelAnimationFrame` in page context.
+  2. Queue RAF callbacks instead of letting the browser clock drive them.
+  3. Expose `window.__advanceFrame()` that increments virtual time by `1000 / fps`, drains queued RAF callbacks, and awaits a microtask tick.
+  4. In Python, record in time-control mode by advancing exactly one virtual frame per captured frame.
+- In time-control mode, capture termination must be based on target frame count, not wall-clock time.
+  Example: `duration=3`, `fps=30` means exactly `90` frames should be captured.
+- `RecordingResult.duration` should report the virtual/video duration in time-control mode, not the real encode time.
+- For canvas extraction, prefer direct canvas bitmap export first:
+  `canvas.toDataURL("image/png")`
+  and decode it in Python.
+- If direct export fails, fall back to Playwright element screenshot on the canvas locator.
+- Avoid full-page screenshot plus crop for fixed-FPS capture unless there is no alternative; it is much slower and causes unstable sampling.
+- Verified command for this repo:
+  `python -m webgal_agent.browser.demo record --url https://cl.yuzhes.com/demos/001-particles --output data/temp/video_fixed.avi --duration 3 --fps 30`
+  Expected result after the fix: `90` frames, `30.0 FPS`, `3.0s`.

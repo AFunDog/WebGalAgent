@@ -29,6 +29,8 @@ htmlcov/
 .coverage
 
 tasks/
+data/temp/
+data/screenshots/
 
 providers.yaml
 *.providers.yaml.bak
