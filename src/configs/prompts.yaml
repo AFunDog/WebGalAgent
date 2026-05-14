@@ -175,6 +175,12 @@ script_converter:
     - 首次出场时设置立绘并指定 `-motion` 和 `-expression`。
     - 对话时根据情绪变化切换表情和动作，每次切换都应使用 model.json 中存在的 expression/motion 名称。
     - **切换频率**：每个角色每隔 1~2 句对话就应切换一次表情或动作，让立绘保持生动。切换时在 `changeFigure` 末尾加 `-next`，使动作切换不阻塞后续对话。
+    - **位置覆盖规则**：`-left`/`-right` 会覆盖对应位置的现有立绘（不会叠加）。因此当场景从单角色变为双角色时，必须先用 `setTransform` 将原中间立绘移到对应侧，再用 `changeFigure` 添加新角色，否则两者会重叠在同一侧。
+      示例（从中间单人变左右双人）：
+      ```
+      setTransform:{"position":{"x":400}} -target=soyo -duration=500 -next;  ← 先移开原有立绘
+      changeFigure:anon/casual-2023/model.json -id=anon -left -motion=anon/smile01 -expression=anon/smile01 -next;
+      ```
     - 角色入场：可配合 `-transform` 偏移初始位置 + `setTransform` 滑入动画。
     - 角色离场：`setTransform` 滑出或 `changeFigure:none` 直接清除。
     - **角色立绘边光**：为所有角色立绘添加 `bevel` 边缘光参数，可增强轮廓感、提升立体感。推荐参数：`bevel:1`、`bevelThickness:8~20`、`bevelRotation:30`（顶光）或 `80`（正面光），`bevelRed/Green/Blue` 根据场景光源色温调整（暖光偏橙、冷光偏蓝）。首次出场的立绘应在 `-transform` 中一并设置，避免后续单独修改。
@@ -229,7 +235,34 @@ script_converter:
 
     ### 九、格式要求
 
-    **严禁输出空行**。脚本中每条指令/对话/旁白之间不得有空行，因为 WebGal 引擎会将空行识别为"上一角色说了一句空话"，导致运行异常。指令之间应紧密排列，不留空白行。
+    - **素材路径不加引号**：`changeBg`、`bgm`、`changeFigure` 等指令的参数（素材路径）不得加引号，直接写路径：`changeBg:背景/路径.jpg;` ✅ `changeBg:"背景/路径.jpg";` ❌
+    - **严禁输出空行**：脚本中每条指令/对话/旁白之间不得有空行，因为 WebGal 引擎会将空行识别为"上一角色说了一句空话"，导致运行异常。指令之间应紧密排列，不留空白行。
+
+    ### 十、脚本自检清单
+
+    完成脚本转换后、写入文件前，必须按以下清单逐项检查。如发现问题，应修正后再写入：
+
+    **① 素材与上下文匹配性**
+    - 立绘的 `-motion` 和 `-expression` 是否来自该角色 `model.json` 中的合法值？
+    - 背景图路径是否符合当前场景的时间、地点、氛围？（如"晚上"的场景不应配"白天"的背景）
+    - BGM 风格是否符合当前情绪？（温馨场景配温馨BGM，紧张场景配紧张BGM）
+    - 立绘服装是否与场景匹配？（如室内日常场景用 `casual` 而非 `school`）
+
+    **② 动画与演出效果**
+    - `setTempAnimation` 和 `setTransform` 中的所有数值是否为数字（0~1）而非布尔值？
+    - 动画时长是否合理？（淡入淡出 300~1000ms，表情切换 300~500ms，过长显得拖沓）
+    - 情绪转折点是否配合了适当的动画效果（泛光、心跳、震颤等）？
+
+    **③ 角色进出场的淡入淡出**
+    - **重点检查**：角色被 `changeFigure:none` 清除后再次出场时，**必须先设置 alpha=0 + 淡入动画**，不能直接出现。
+      - 正确做法：先 `setTransform:{"alpha":0} -target=角色id;` 再 `setTransform:{"alpha":1} -target=角色id -duration=500;`
+      - 或者在 `changeFigure` 时直接设置 `"alpha":0` 在 transform 中，再淡入
+    - 角色离场应使用淡出（如 `setTransform:{"alpha":0} -target=xxx`）而非直接消失，除非是突然打断的剧情需要
+
+    **④ 逻辑一致性**
+    - 同一角色全程是否使用相同的 `-id`？
+    - 场景切换时是否清除了所有旧立绘和新背景？
+    - 是否存在已清除的角色ID后续仍被引用的情况？
 
     ## 输出要求
 
