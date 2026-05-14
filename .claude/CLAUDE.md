@@ -64,30 +64,14 @@ User Input → OutlineWriter → ScriptWriter → ScriptConverter → WebGal .tx
 
 ## Browser Recording Notes
 
-- Fixed-FPS element recording lives in `src/webgal_agent/browser/client.py`, `capture.py`, and `recorder.py`.
-- For WebGal pages, the actual rendered target is usually `div#root`, not a raw `canvas`.
+- Fixed-FPS browser recording now uses `CCapture.js` in `src/webgal_agent/browser/capture.py` and `recorder.py`.
+- Vendored browser assets live in `src/webgal_agent/browser/assets/`:
+  `CCapture.all.min.js` and `html2canvas.min.js`.
+- For WebGal pages, the real target is usually `div#root`, not a raw `canvas`.
 - In CLI/demo flows, prefer an auto-detect selector strategy: try `#root` first for WebGal, then fall back to `canvas` for generic animation demos.
-- Do not treat `performance.now()` / `Date.now()` patching alone as enough for deterministic capture. That only changes time reads, but does not freeze render scheduling.
-- There are two levels of setup:
-  `enable_time_control()` patches the current page.
-  `prepare_time_control()` is the deterministic path and must run before navigation so page scripts never see the native RAF scheduler.
-- The stable approach used here is:
-  1. Before navigation, install the RAF hook into the browser context with `add_init_script(...)`.
-  2. Hook `requestAnimationFrame` and `cancelAnimationFrame` in page context.
-  3. Queue RAF callbacks instead of letting the browser clock drive them.
-  4. Expose `window.__advanceFrame()` that increments virtual time by `1000 / fps`, drains queued RAF callbacks, and awaits a microtask tick.
-  5. In Python, record in time-control mode by advancing exactly one virtual frame per captured frame.
-- Calling `enable_time_control()` only after the page has already loaded is not fully deterministic, because early page code may already have scheduled native RAF callbacks before the hook is installed.
-- Determinism should be verified, not just “script injected successfully”.
-  Use `verify_time_control()` to schedule a known RAF loop, advance a fixed number of frames, and confirm the observed timestamps match the expected sequence.
-- In time-control mode, capture termination must be based on target frame count, not wall-clock time.
-  Example: `duration=3`, `fps=30` means exactly `90` frames should be captured.
-- `RecordingResult.duration` should report the virtual/video duration in time-control mode, not the real encode time.
-- For extraction, prefer direct bitmap export only when the selected element is actually a `canvas`:
-  `canvas.toDataURL("image/png")`
-  and decode it in Python.
-- For normal DOM targets such as `#root`, use Playwright element screenshot on the selected locator.
-- Avoid full-page screenshot plus crop for fixed-FPS capture unless there is no alternative; it is much slower and causes unstable sampling.
+- `CCapture.js` is responsible for fixed-framerate time stepping and frame capture.
+- Because WebGal often renders the final scene as DOM under `#root`, the capture bridge rasterizes non-canvas targets with `html2canvas(...)` into a hidden mirror canvas, then hands that canvas to `CCapture`.
+- For native canvas targets, the bridge passes the source canvas directly to `CCapture` without the extra rasterization step.
+- The current backend writes browser-generated `webm` output. `VideoConfig.codec` should be `webm`.
 - Verified command for this repo:
-  `python -m webgal_agent.browser.demo record --url https://cl.yuzhes.com/demos/001-particles --output data/temp/video_fixed.avi --duration 3 --fps 30`
-  Expected result after the fix: `90` frames, `30.0 FPS`, `3.0s`, and `逐帧验证: True`.
+  `python -m webgal_agent.browser.demo record --url https://cl.yuzhes.com/demos/001-particles --output data/temp/output.webm --duration 3 --fps 30`

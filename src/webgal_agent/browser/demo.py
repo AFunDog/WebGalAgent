@@ -64,7 +64,7 @@ async def demo_record(
     codec: str = "XVID",
     headless: bool = False,
 ) -> None:
-    """演示：录制目标元素视频（时间控制模式）。"""
+    """演示：使用 CCapture.js 录制目标元素视频。"""
     config = DefaultBrowserConfig(
         browser_type=browser_type,
         headless=headless,
@@ -73,9 +73,6 @@ async def demo_record(
     )
 
     async with BrowserClient(config) as client:
-        print(f"预装时间控制 ({fps} FPS)...")
-        await client.prepare_time_control(fps=fps)
-
         print(f"正在使用 {browser_type} 导航到: {url}")
         try:
             await client.navigate(url, wait_until="domcontentloaded")
@@ -113,11 +110,6 @@ async def demo_record(
         # 等待目标元素内部渲染初始化
         await asyncio.sleep(1)
 
-        # 验证虚拟时间控制
-        print(f"验证时间控制 ({fps} FPS)...")
-        ok = await client.verify_time_control(fps=fps)
-        print(f"逐帧验证: {ok}")
-
         # 配置录制
         capture_cfg = CaptureConfig(
             fps=fps,
@@ -130,7 +122,7 @@ async def demo_record(
             codec=codec,
         )
 
-        print(f"开始录制 {duration}s @ {fps} FPS (时间控制模式)...")
+        print(f"开始录制 {duration}s @ {fps} FPS (CCapture.js 模式)...")
         print(f"输出: {output_path}")
 
         page = await client.get_page()
@@ -138,13 +130,8 @@ async def demo_record(
             page,
             video_cfg,
             capture_cfg,
-            enable_time_control=True,
-            advance_frame_fn=client.advance_frame,
         )
         result = await recorder.start()
-
-        # 恢复原生时间
-        await client.disable_time_control()
 
         print("录制完成!")
         print(f"  输出路径: {result.output_path}")
@@ -162,7 +149,7 @@ def main() -> None:
         help="运行模式: navigate=导航截图, record=录制视频",
     )
     parser.add_argument("--url", default="https://example.com", help="目标 URL")
-    parser.add_argument("--output", default="data/temp/output.avi", help="输出路径 (XVID 建议用 .avi 扩展名)")
+    parser.add_argument("--output", default="data/temp/output.webm", help="输出路径 (CCapture.js 当前输出为 .webm)")
     parser.add_argument("--duration", type=float, default=5.0, help="录制时长（秒）")
     parser.add_argument("--fps", type=float, default=30.0, help="帧率")
     parser.add_argument("--selector", default="auto", help="录制目标元素 CSS 选择器；auto 会优先尝试 #root，再回退到 canvas")
@@ -175,9 +162,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--codec",
-        default="XVID",
-        choices=["XVID", "MJPG", "mp4v", "avc1"],
-        help="视频编码器 (XVID 最稳定，mp4v/avc1 大尺寸可能失败)",
+        default="webm",
+        choices=["webm"],
+        help="视频编码器（CCapture.js 当前仅支持 webm 输出）",
     )
     parser.add_argument("--headless", action="store_true", help="无头模式")
 

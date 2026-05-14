@@ -86,5 +86,5 @@ class TestVideoConfig:
         """测试视频配置默认值。"""
         config = VideoConfig(output_path="test.mp4")
         assert config.fps == 30.0
-        assert config.codec == "mp4v"
+        assert config.codec == "webm"
         assert config.quality == 23

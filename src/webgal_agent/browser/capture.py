@@ -1,24 +1,307 @@
-"""元素帧捕获器：定时采集目标元素内容。"""
+"""CCapture.js 驱动的目标元素录制。"""
 
 from __future__ import annotations
 
-import asyncio
 import base64
-import time
-from collections.abc import AsyncIterator
 from dataclasses import dataclass
-
-import cv2
-import numpy as np
+from pathlib import Path
 
 from webgal_agent.browser.models import CaptureConfig
+
+_ASSETS_DIR = Path(__file__).with_name("assets")
+_CCAPTURE_ASSET = _ASSETS_DIR / "CCapture.all.min.js"
+_HTML2CANVAS_ASSET = _ASSETS_DIR / "html2canvas.min.js"
+
+_CCAPTURE_BRIDGE_SCRIPT = """
+() => {
+    if (window.__webgalCCaptureBridgeReady) {
+        return;
+    }
+
+    window.__webgalCCaptureBridge = {
+        capturer: null,
+        mirrorCanvas: null,
+        overlayCanvas: null,
+        overlayDirty: true,
+        overlayObserver: null,
+        overlaySelector: null,
+        selector: "canvas",
+        fps: 30,
+        totalFrames: 0,
+        width: 0,
+        height: 0,
+
+        ensureMirrorCanvas(width, height) {
+            const nextWidth = Math.max(1, Math.ceil(width));
+            const nextHeight = Math.max(1, Math.ceil(height));
+
+            if (!this.mirrorCanvas) {
+                const canvas = document.createElement("canvas");
+                canvas.setAttribute("data-webgal-agent-capture", "true");
+                canvas.style.position = "fixed";
+                canvas.style.left = "-100000px";
+                canvas.style.top = "-100000px";
+                canvas.style.pointerEvents = "none";
+                canvas.style.opacity = "0";
+                document.body.appendChild(canvas);
+                this.mirrorCanvas = canvas;
+            }
+
+            if (this.mirrorCanvas.width !== nextWidth) {
+                this.mirrorCanvas.width = nextWidth;
+            }
+            if (this.mirrorCanvas.height !== nextHeight) {
+                this.mirrorCanvas.height = nextHeight;
+            }
+            return this.mirrorCanvas;
+        },
+
+        ensureOverlayCanvas(width, height) {
+            const nextWidth = Math.max(1, Math.ceil(width));
+            const nextHeight = Math.max(1, Math.ceil(height));
+
+            if (!this.overlayCanvas) {
+                const canvas = document.createElement("canvas");
+                canvas.setAttribute("data-webgal-agent-overlay-capture", "true");
+                canvas.style.position = "fixed";
+                canvas.style.left = "-100000px";
+                canvas.style.top = "-100000px";
+                canvas.style.pointerEvents = "none";
+                canvas.style.opacity = "0";
+                document.body.appendChild(canvas);
+                this.overlayCanvas = canvas;
+            }
+
+            if (this.overlayCanvas.width !== nextWidth) {
+                this.overlayCanvas.width = nextWidth;
+            }
+            if (this.overlayCanvas.height !== nextHeight) {
+                this.overlayCanvas.height = nextHeight;
+            }
+            return this.overlayCanvas;
+        },
+
+        findTarget(selector) {
+            return document.querySelector(selector);
+        },
+
+        disconnectOverlayObserver() {
+            if (this.overlayObserver) {
+                this.overlayObserver.disconnect();
+                this.overlayObserver = null;
+            }
+        },
+
+        watchOverlayChanges(target) {
+            if (this.overlaySelector === this.selector && this.overlayObserver) {
+                return;
+            }
+
+            this.disconnectOverlayObserver();
+            this.overlaySelector = this.selector;
+            this.overlayDirty = true;
+
+            this.overlayObserver = new MutationObserver(() => {
+                this.overlayDirty = true;
+            });
+            this.overlayObserver.observe(target, {
+                attributes: true,
+                characterData: true,
+                childList: true,
+                subtree: true,
+            });
+        },
+
+        async renderOverlay(target, rect) {
+            const overlayCanvas = this.ensureOverlayCanvas(rect.width, rect.height);
+            const overlayCtx = overlayCanvas.getContext("2d");
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+
+            await window.html2canvas(target, {
+                backgroundColor: null,
+                canvas: overlayCanvas,
+                ignoreElements: (element) => {
+                    if (element instanceof HTMLCanvasElement) {
+                        return true;
+                    }
+                    if (element instanceof HTMLVideoElement) {
+                        return true;
+                    }
+                    if (element.hasAttribute?.("data-webgal-agent-capture")) {
+                        return true;
+                    }
+                    if (element.hasAttribute?.("data-webgal-agent-overlay-capture")) {
+                        return true;
+                    }
+                    return false;
+                },
+                logging: false,
+                scale: 1,
+                useCORS: true,
+                width: Math.ceil(rect.width),
+                height: Math.ceil(rect.height),
+            });
+            this.overlayDirty = false;
+            return overlayCanvas;
+        },
+
+        drawVisualElement(ctx, element, rootRect) {
+            const rect = element.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) {
+                return false;
+            }
+
+            const dx = rect.left - rootRect.left;
+            const dy = rect.top - rootRect.top;
+
+            try {
+                ctx.drawImage(element, dx, dy, rect.width, rect.height);
+                return true;
+            } catch (error) {
+                console.warn("Failed to draw visual element", error);
+                return false;
+            }
+        },
+
+        async snapshotTarget(selector) {
+            const target = this.findTarget(selector);
+            if (!target) {
+                throw new Error(`Target element not found: ${selector}`);
+            }
+
+            if (target instanceof HTMLCanvasElement) {
+                return {
+                    canvas: target,
+                    width: target.width || target.clientWidth,
+                    height: target.height || target.clientHeight,
+                    tagName: "CANVAS",
+                };
+            }
+
+            const rect = target.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) {
+                throw new Error(`Target element has invalid size: ${selector}`);
+            }
+
+            const canvas = this.ensureMirrorCanvas(rect.width, rect.height);
+            const ctx = canvas.getContext("2d");
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            this.watchOverlayChanges(target);
+
+            const visualElements = [
+                ...Array.from(target.querySelectorAll("canvas")),
+                ...Array.from(target.querySelectorAll("video")).filter(
+                    (video) => video.readyState >= 2,
+                ),
+            ];
+            for (const element of visualElements) {
+                this.drawVisualElement(ctx, element, rect);
+            }
+
+            const overlayCanvas = this.overlayDirty
+                ? await this.renderOverlay(target, rect)
+                : this.ensureOverlayCanvas(rect.width, rect.height);
+            ctx.drawImage(overlayCanvas, 0, 0);
+
+            return {
+                canvas,
+                width: canvas.width,
+                height: canvas.height,
+                tagName: target.tagName,
+            };
+        },
+
+        async start(options) {
+            this.selector = options.selector;
+            this.fps = options.fps;
+            this.totalFrames = 0;
+
+            const snapshot = await this.snapshotTarget(this.selector);
+            this.width = snapshot.width;
+            this.height = snapshot.height;
+
+            this.capturer = new window.CCapture({
+                display: false,
+                format: "webm",
+                framerate: this.fps,
+                name: options.name || "webgal-agent-capture",
+                quality: options.quality ?? 100,
+                verbose: false,
+            });
+            this.capturer.start();
+        },
+
+        async captureFrame() {
+            if (!this.capturer) {
+                throw new Error("CCapture has not been started");
+            }
+
+            const target = this.findTarget(this.selector);
+            if (!target) {
+                throw new Error(`Target element not found: ${this.selector}`);
+            }
+
+            const snapshot = await this.snapshotTarget(this.selector);
+            this.width = snapshot.width;
+            this.height = snapshot.height;
+            this.capturer.capture(snapshot.canvas);
+            this.totalFrames += 1;
+
+            return {
+                frameIndex: this.totalFrames - 1,
+                height: this.height,
+                ok: true,
+                width: this.width,
+            };
+        },
+
+        async stop() {
+            if (!this.capturer) {
+                throw new Error("CCapture has not been started");
+            }
+
+            const capturer = this.capturer;
+            this.capturer = null;
+            this.disconnectOverlayObserver();
+            capturer.stop();
+
+            const result = await new Promise((resolve, reject) => {
+                try {
+                    capturer.save((blob) => {
+                        const reader = new FileReader();
+                        reader.onerror = () => reject(new Error("Failed to read CCapture blob"));
+                        reader.onloadend = () => {
+                            resolve({
+                                dataUrl: reader.result,
+                                frameCount: this.totalFrames,
+                                height: this.height,
+                                mimeType: blob.type || "video/webm",
+                                size: blob.size || 0,
+                                width: this.width,
+                            });
+                        };
+                        reader.readAsDataURL(blob);
+                    });
+                } catch (error) {
+                    reject(error);
+                }
+            });
+
+            return result;
+        },
+    };
+
+    window.__webgalCCaptureBridgeReady = true;
+}
+"""
 
 
 @dataclass
 class Frame:
-    """单帧数据。"""
+    """兼容旧接口保留的帧结构。"""
 
-    data: np.ndarray
+    data: bytes
     timestamp: float
     frame_index: int
 
@@ -33,171 +316,112 @@ class CaptureStats:
     actual_fps: float = 0.0
 
 
-class CanvasCapture:
-    """目标元素帧捕获器。
+@dataclass
+class CaptureArtifact:
+    """浏览器端产物。"""
 
-    支持两种模式：
-    - 时间控制模式（enable_time_control=True）：逐帧推进虚拟时间，稳定输出帧率
-    - 实时模式（默认）：按目标 FPS 采样真实浏览器帧
-    """
+    data: bytes
+    frame_count: int
+    width: int
+    height: int
+    mime_type: str
+
+
+class CanvasCapture:
+    """基于 CCapture.js 的目标元素捕获器。"""
 
     def __init__(
         self,
         page,
         config: CaptureConfig | None = None,
         enable_time_control: bool = False,
-        advance_frame_fn=None,  # 可选：外部提供的 advance_frame 函数
+        advance_frame_fn=None,
     ) -> None:
         self._page = page
         self._config = config or CaptureConfig()
         self._enable_time_control = enable_time_control
         self._advance_frame = advance_frame_fn
-        self._running = False
         self._stats = CaptureStats()
-        self._frame_index = 0
-        self._start_time = 0.0
-        self._virtual_elapsed_time = 0.0
+        self._running = False
 
     @property
     def stats(self) -> CaptureStats:
         return self._stats
 
-    async def _ensure_target_ready(self) -> bool:
-        """确认目标元素存在。"""
-        try:
-            exists = await self._page.evaluate(
-                "(selector) => !!document.querySelector(selector)",
-                self._config.canvas_selector,
-            )
-            return bool(exists)
-        except Exception:
-            return False
+    async def _ensure_runtime(self) -> None:
+        ready = await self._page.evaluate("() => !!window.__webgalCCaptureBridgeReady")
+        if ready:
+            return
 
-    async def _snapshot_target(self) -> np.ndarray | None:
-        """优先直接导出 canvas 位图，其他元素使用 Playwright 元素截图。"""
-        try:
-            data_url: str | None = await self._page.evaluate(
-                """(selector) => {
-                    const element = document.querySelector(selector);
-                    if (!element || element.tagName !== "CANVAS" || typeof element.toDataURL !== "function") {
-                        return null;
-                    }
-                    try {
-                        return element.toDataURL("image/png");
-                    } catch (error) {
-                        return null;
-                    }
-                }""",
-                self._config.canvas_selector,
-            )
-            if data_url and "," in data_url:
-                encoded = data_url.split(",", 1)[1]
-                img = cv2.imdecode(
-                    np.frombuffer(base64.b64decode(encoded), np.uint8),
-                    cv2.IMREAD_COLOR,
-                )
-                if img is not None:
-                    return img
+        await self._page.add_script_tag(path=str(_CCAPTURE_ASSET.resolve()))
+        await self._page.add_script_tag(path=str(_HTML2CANVAS_ASSET.resolve()))
+        await self._page.evaluate(_CCAPTURE_BRIDGE_SCRIPT)
 
-            locator = self._page.locator(self._config.canvas_selector).first
-            png_bytes: bytes = await locator.screenshot(type="png", timeout=5000)
-            return cv2.imdecode(np.frombuffer(png_bytes, np.uint8), cv2.IMREAD_COLOR)
-        except Exception:
-            return None
+    async def start(self) -> CaptureArtifact:
+        """执行完整捕获并返回浏览器端产物。"""
+        await self._ensure_runtime()
 
-    async def capture_frame(self) -> np.ndarray | None:
-        """采集一帧。"""
-        return await self._snapshot_target()
-
-    async def _capture_loop_real_time(self) -> AsyncIterator[Frame]:
-        """实时模式：按目标 FPS 采样，有丢帧但不需要外部控制。"""
-        interval = 1.0 / self._config.fps
-        next_time = time.monotonic() + interval
-
-        while self._running:
-            elapsed = time.monotonic() - self._start_time
-            if self._config.max_duration and elapsed >= self._config.max_duration:
-                break
-            if self._config.max_frames and self._frame_index >= self._config.max_frames:
-                break
-
-            sleep_time = next_time - time.monotonic()
-            if sleep_time > 0:
-                await asyncio.sleep(sleep_time)
-            next_time += interval
-
-            frame_data = await self.capture_frame()
-            elapsed_now = time.monotonic() - self._start_time
-
-            if frame_data is not None:
-                yield Frame(
-                    data=frame_data,
-                    timestamp=elapsed_now,
-                    frame_index=self._frame_index,
-                )
-                self._frame_index += 1
-            else:
-                self._stats.dropped_frames += 1
-
-    async def _capture_loop_time_controlled(self) -> AsyncIterator[Frame]:
-        """时间控制模式：推进虚拟时间 -> 截图，无真实等待。"""
         if self._config.max_frames is not None:
-            total = self._config.max_frames
+            total_frames = self._config.max_frames
         elif self._config.max_duration is not None:
-            total = max(1, int(round(self._config.max_duration * self._config.fps)))
+            total_frames = max(1, int(round(self._config.max_duration * self._config.fps)))
         else:
-            total = 1
+            total_frames = 1
 
-        while self._running and self._frame_index < total:
-            # 推进虚拟时间（无需等待）
-            if self._advance_frame:
-                await self._advance_frame(1)
-            else:
-                await self._page.evaluate("() => window.__advanceFrame && window.__advanceFrame()")
+        await self._page.evaluate(
+            """async ({ fps, name, quality, selector }) => {
+                await window.__webgalCCaptureBridge.start({
+                    fps,
+                    name,
+                    quality,
+                    selector,
+                });
+            }""",
+            {
+                "fps": self._config.fps,
+                "name": "webgal-agent-capture",
+                "quality": 100,
+                "selector": self._config.canvas_selector,
+            },
+        )
 
-            self._virtual_elapsed_time = (self._frame_index + 1) / self._config.fps
-
-            # 立即截图（虚拟时间已推进，RAF 回调会被同步执行）
-            frame_data = await self.capture_frame()
-
-            if frame_data is not None:
-                yield Frame(
-                    data=frame_data,
-                    timestamp=self._virtual_elapsed_time,
-                    frame_index=self._frame_index,
-                )
-                self._frame_index += 1
-            else:
-                self._stats.dropped_frames += 1
-
-    async def start(self) -> AsyncIterator[Frame]:
-        """启动捕获，返回帧迭代器。"""
         self._running = True
-        self._start_time = time.monotonic()
-        self._frame_index = 0
-        self._stats = CaptureStats()
-        self._virtual_elapsed_time = 0.0
-
-        await self._ensure_target_ready()
-
-        loop = self._capture_loop_time_controlled() if self._enable_time_control else self._capture_loop_real_time()
-
+        dropped_frames = 0
         try:
-            async for frame in loop:
-                self._stats.total_frames += 1
-                yield frame
+            for _ in range(total_frames):
+                try:
+                    await self._page.evaluate(
+                        "() => window.__webgalCCaptureBridge.captureFrame()"
+                    )
+                except Exception:
+                    dropped_frames += 1
         finally:
-            if self._enable_time_control:
-                self._stats.elapsed_time = self._virtual_elapsed_time
-                self._stats.actual_fps = self._config.fps if self._stats.total_frames else 0.0
-            else:
-                self._stats.elapsed_time = time.monotonic() - self._start_time
-                self._stats.actual_fps = (
-                    self._stats.total_frames / self._stats.elapsed_time
-                    if self._stats.elapsed_time > 0 else 0.0
-                )
             self._running = False
 
+        result = await self._page.evaluate(
+            "() => window.__webgalCCaptureBridge.stop()"
+        )
+        if not isinstance(result, dict):
+            raise RuntimeError("CCapture did not return a valid artifact")
+
+        data_url = str(result["dataUrl"])
+        _, encoded = data_url.split(",", 1)
+        artifact = CaptureArtifact(
+            data=base64.b64decode(encoded),
+            frame_count=int(result["frameCount"]),
+            width=int(result["width"]),
+            height=int(result["height"]),
+            mime_type=str(result["mimeType"]),
+        )
+
+        self._stats = CaptureStats(
+            total_frames=artifact.frame_count,
+            dropped_frames=dropped_frames,
+            elapsed_time=artifact.frame_count / self._config.fps if artifact.frame_count else 0.0,
+            actual_fps=self._config.fps if artifact.frame_count else 0.0,
+        )
+        return artifact
+
     def stop(self) -> None:
-        """停止捕获。"""
+        """保留兼容接口。"""
         self._running = False

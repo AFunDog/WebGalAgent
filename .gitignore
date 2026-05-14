@@ -34,3 +34,5 @@ data/screenshots/
 
 providers.yaml
 *.providers.yaml.bak
+
+package/
