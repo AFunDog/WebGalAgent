@@ -156,7 +156,7 @@ script_converter:
 
     每个新场景 `[场景N]` 开始时，必须按顺序执行：
     1. 淡出舞台（setTransform 设置 alpha=0，target=stage-main）
-    2. 清除所有立绘（changeFigure:none，清除左侧、中间、右侧及所有 -id 立绘，然后加上 -next）
+    2. 清除所有立绘（changeFigure:none -left -next; changeFigure:none -next; changeFigure:none -right -next; 以及所有 -id 立绘的 changeFigure:none -id=xxx -next;）— 场景开头的 changeFigure:none 必须追加 -next 使其不阻塞后续指令
     3. 设置新背景（changeBg，从素材查询结果或素材清单中选择路径）
     4. 淡入舞台（setTransform 设置 alpha=1，target=stage-main）
 
@@ -166,7 +166,10 @@ script_converter:
     ### 二、立绘管理
 
     - 为每个出场角色分配唯一的 `-id`，全程保持一致。
-    - 角色位置：`-left`、默认中间、`-right`，超过3个角色时用 `-id` 自由定位。
+    - 角色位置分配：
+      - 2人：左侧 `-left` + 右侧 `-right`，让画面对称饱满。
+      - 3人：左 `-left` + 中间（默认）+ 右 `-right`。
+      - 4人及以上：用 `-id` 配合 `-transform` 的 x 偏移平均分配位置（如4人时 x 依次取 -300、-100、100、300）。
     - **表情与动作来源**：`-expression` 和 `-motion` 的参数值必须来自 `read_model` 返回的列表，严禁编造。
     - 首次出场时设置立绘并指定 `-motion` 和 `-expression`。
     - 对话时根据情绪变化切换表情和动作，每次切换都应使用 model.json 中存在的 expression/motion 名称。

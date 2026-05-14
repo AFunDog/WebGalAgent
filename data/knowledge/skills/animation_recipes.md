@@ -22,44 +22,213 @@ title: 动画演出效果配方
 
 ## 一、氛围/环境类
 
-### 1.1 柔光暖色（温馨日常）
+> 以下配方均提供**背景**和**人物**两行 `setTransform`，需同时使用以保持画面一致。
+> 人物的 `-target` 需根据实际立绘位置替换为 `fig-left`、`fig-center`、`fig-right` 或自定义 `-id`。
+> `bevel`（边缘光/倒角滤镜）的 `bevelRotation` 需根据实际光源调整（约80为居中）。
+> 优先用 `-transform={}` 内联在 `changeBg`/`changeFigure` 中，而非单独 `setTransform`。
 
-适用：温暖的家庭场景、朋友聚会、日常闲聊
+### 1.1 白天室外晴天
 
+适用：晴天户外、学校操场、街道
+
+背景：
 ```
-changeBg:背景.jpg -next -transform={"brightness":0.85,"contrast":0.9,"saturation":0.85,"colorRed":255,"colorGreen":235,"colorBlue":210,"bloom":0.6,"bloomBrightness":0.8,"bloomBlur":12};
+setTransform:{"brightness":0.8,"contrast":0.8,"saturation":0.7,"gamma":0.5,"colorRed":227,"colorGreen":227,"colorBlue":227,"bloom":0.7,"bloomBrightness":1,"bloomBlur":10} -target=bg-main -duration=0 -next;
 ```
-
-立绘同理：
+人物：
 ```
-changeFigure:角色/model.json -id=角色id -transform={"brightness":0.7,"contrast":1.1,"saturation":0.9,"colorRed":255,"colorGreen":234,"colorBlue":217,"bloom":0.4,"bloomBrightness":0.9,"bloomBlur":10} -motion=角色/表情 -expression=角色/表情 -next;
-```
-
-### 1.2 冷色调（忧郁/孤独）
-
-适用：独处、雨天、内心独白、冷清场景
-
-```
-changeBg:背景.jpg -next -transform={"brightness":0.7,"contrast":1.1,"saturation":0.6,"colorRed":180,"colorGreen":200,"colorBlue":230};
+setTransform:{"brightness":0.75,"contrast":1,"saturation":0.8,"gamma":0.7,"colorRed":255,"colorGreen":255,"colorBlue":255,"bloom":0.5,"bloomBrightness":0.85,"bloomBlur":4,"bevel":0.5,"bevelThickness":8,"bevelRotation":30,"bevelRed":196,"bevelGreen":185,"bevelBlue":185} -target=fig-center -duration=0;
 ```
 
-### 1.3 黄昏暖阳
+### 1.2 白天（通用）
 
-适用：夕阳、放学、回忆
+适用：室内白天、日常场景
 
+背景：
 ```
-changeBg:背景.jpg -next -transform={"brightness":0.8,"contrast":0.95,"saturation":0.9,"colorRed":255,"colorGreen":210,"colorBlue":160,"bloom":0.5,"bloomBrightness":0.8,"bloomBlur":15};
+setTransform:{"brightness":0.7,"contrast":1.1,"saturation":0.8,"gamma":0.5,"colorRed":255,"colorGreen":255,"colorBlue":255,"bloom":0.5,"bloomBrightness":0.8,"bloomBlur":10} -target=bg-main -duration=0 -next;
 ```
-
-### 1.4 夜晚/月色
-
-适用：深夜、月光、安静
-
+人物：
 ```
-changeBg:背景.jpg -next -transform={"brightness":0.5,"contrast":1.1,"saturation":0.5,"colorRed":160,"colorGreen":180,"colorBlue":220,"bloom":0.3,"bloomBrightness":0.6,"bloomBlur":10};
+setTransform:{"brightness":0.6,"contrast":1.1,"saturation":0.8,"gamma":0.6,"colorRed":255,"colorGreen":255,"colorBlue":255,"bloom":0.7,"bloomBrightness":0.6,"bloomBlur":10,"bevel":1,"bevelThickness":18,"bevelRotation":30,"bevelRed":255,"bevelGreen":255,"bevelBlue":255} -target=fig-center -duration=0;
 ```
 
-### 1.5 赛博朋克/电子故障
+### 1.3 清爽版室内白天
+
+适用：明亮的室内、教室、活动室
+
+背景：
+```
+setTransform:{"brightness":0.7,"contrast":1.1,"saturation":0.8,"gamma":0.5,"colorRed":255,"colorGreen":255,"colorBlue":255,"bloom":0.5,"bloomBrightness":1,"bloomBlur":10} -target=bg-main -duration=0 -next;
+```
+人物：
+```
+setTransform:{"brightness":0.6,"contrast":1.1,"saturation":0.9,"gamma":0.9,"colorRed":255,"colorGreen":234,"colorBlue":217,"bloom":0.7,"bloomBrightness":1,"bloomBlur":2,"bevel":1,"bevelThickness":4,"bevelRotation":30,"bevelRed":255,"bevelGreen":238,"bevelBlue":224} -target=fig-center -duration=0;
+```
+
+### 1.4 清晨/黄昏（轻）
+
+适用：清晨、傍晚的柔和光线、回忆
+
+背景：
+```
+setTransform:{"brightness":0.7,"contrast":0.8,"saturation":0.7,"gamma":0.5,"colorRed":255,"colorGreen":234,"colorBlue":214,"bloom":1,"bloomBrightness":0.7,"bloomBlur":10} -target=bg-main -duration=0 -next;
+```
+人物：
+```
+setTransform:{"brightness":0.6,"contrast":1.1,"saturation":0.9,"gamma":0.9,"colorRed":255,"colorGreen":234,"colorBlue":217,"bloom":0.4,"bloomBrightness":0.9,"bloomBlur":10,"bevel":1,"bevelThickness":10,"bevelRotation":30,"bevelRed":255,"bevelGreen":238,"bevelBlue":224} -target=fig-center -duration=0;
+```
+
+### 1.5 黄昏(重)（室外）
+
+适用：夕阳强烈的室外、天空被染橙
+
+背景：
+```
+setTransform:{"brightness":0.9,"contrast":0.8,"saturation":0.7,"gamma":0.5,"colorRed":255,"colorGreen":205,"colorBlue":171,"bloom":0.7,"bloomBrightness":0.8,"bloomBlur":10} -target=bg-main -duration=0 -next;
+```
+人物：
+```
+setTransform:{"brightness":0.4,"contrast":1.2,"saturation":0.7,"gamma":0.8,"colorRed":255,"colorGreen":213,"colorBlue":176,"bloom":0.5,"bloomBlur":10,"bevel":1,"bevelThickness":18,"bevelRotation":30,"bevelRed":255,"bevelGreen":204,"bevelBlue":148} -target=fig-center -duration=0;
+```
+
+### 1.6 黄昏(重)（室内）
+
+适用：夕阳透窗的室内、暖橙色氛围
+
+背景：
+```
+setTransform:{"brightness":0.9,"contrast":0.8,"saturation":0.7,"gamma":0.5,"colorRed":255,"colorGreen":203,"colorBlue":171,"bloom":0.7,"bloomBrightness":0.9,"bloomBlur":10} -target=bg-main -duration=0 -next;
+```
+人物：
+```
+setTransform:{"brightness":0.5,"contrast":1.2,"saturation":0.7,"gamma":0.8,"colorRed":255,"colorGreen":208,"colorBlue":176,"bloom":0.5,"bloomBlur":10,"bevel":1,"bevelThickness":18,"bevelRotation":30,"bevelRed":255,"bevelGreen":184,"bevelBlue":148} -target=fig-center -duration=0;
+```
+
+### 1.7 淡色黄昏
+
+适用：柔和黄昏、略带怀旧的温暖氛围
+
+背景：特写用高斯模糊20，大场景用高斯模糊5（附加 `blur` 参数）
+人物：
+```
+setTransform:{"brightness":1,"contrast":1,"saturation":1.5,"colorRed":255,"colorGreen":251,"colorBlue":217,"bloomThreshold":10,"bevel":1,"bevelThickness":15,"bevelSoftness":1,"bevelRed":253,"bevelGreen":255,"bevelBlue":181} -target=fig-center -duration=0;
+```
+
+### 1.8 室内有光暖色
+
+适用：暖色灯光室内、温馨房间
+
+人物：
+```
+setTransform:{"brightness":0.75,"contrast":1.1,"saturation":0.8,"gamma":1,"colorRed":255,"colorGreen":234,"colorBlue":217,"bloom":0.6,"bloomBrightness":0.7,"bloomBlur":1,"bevel":2,"bevelThickness":5,"bevelRotation":80,"bevelRed":255,"bevelGreen":201,"bevelBlue":125} -target=fig-center -duration=0;
+```
+背景：
+```
+setTransform:{"brightness":0.9,"contrast":0.8,"saturation":0.5,"gamma":0.6,"colorRed":255,"colorGreen":218,"colorBlue":184,"bloom":1,"bloomBrightness":0.8,"bloomBlur":2,"bevelRed":255,"bevelGreen":194,"bevelBlue":125} -target=bg-main -duration=0;
+```
+
+### 1.9 夜晚室内白光
+
+适用：夜间开灯的室内、冷白灯光
+
+人物：
+```
+setTransform:{"brightness":0.6,"contrast":1.1,"saturation":0.9,"gamma":0.9,"colorRed":255,"colorGreen":255,"colorBlue":255,"bloom":0.5,"bloomBrightness":1,"bloomBlur":2,"bevel":1,"bevelThickness":8,"bevelRotation":30,"bevelRed":204,"bevelGreen":204,"bevelBlue":204} -target=fig-center -duration=0;
+```
+背景：
+```
+setTransform:{"brightness":0.7,"contrast":0.8,"saturation":0.7,"gamma":0.5,"colorRed":255,"colorGreen":255,"colorBlue":255,"bloom":1,"bloomBrightness":1,"bloomBlur":2} -target=bg-main -duration=500;
+```
+
+### 1.10 黑暗（有灯光）
+
+适用：夜间有光源的场景、路灯下、台灯旁
+
+背景：
+```
+setTransform:{"brightness":0.7,"contrast":0.8,"saturation":0.7,"gamma":0.5,"colorRed":255,"colorGreen":255,"colorBlue":255,"bloom":1,"bloomBrightness":0.7,"bloomBlur":10} -target=bg-main -duration=0 -next;
+```
+人物：
+```
+setTransform:{"brightness":0.6,"contrast":1.1,"saturation":0.9,"gamma":0.9,"colorRed":255,"colorGreen":255,"colorBlue":255,"bloom":0.2,"bloomBrightness":0.9,"bloomBlur":10,"bevel":1,"bevelThickness":18,"bevelRotation":30,"bevelRed":204,"bevelGreen":204,"bevelBlue":204} -target=fig-center -duration=0;
+```
+
+### 1.11 黑暗（无灯光）
+
+适用：完全黑暗或仅有极微弱光线
+
+背景：
+```
+setTransform:{"brightness":0.7,"contrast":0.8,"saturation":0.7,"gamma":0.5,"colorRed":222,"colorGreen":222,"colorBlue":222,"bloom":1,"bloomBrightness":0.7,"bloomBlur":10} -target=bg-main -duration=0 -next;
+```
+人物：
+```
+setTransform:{"brightness":0.4,"contrast":1.1,"saturation":0.9,"gamma":0.7,"colorRed":255,"colorGreen":255,"colorBlue":255,"bloom":0.2,"bloomBrightness":0.9,"bloomBlur":10,"bevel":0.2,"bevelThickness":18,"bevelRotation":130,"bevelRed":161,"bevelGreen":161,"bevelBlue":161} -target=fig-center -duration=0;
+```
+
+### 1.12 黑夜微光
+
+适用：深夜仅有月光或远处微光
+
+人物：
+```
+setTransform:{"colorRed":209,"colorGreen":224,"colorBlue":255,"bevel":1,"bevelThickness":10,"bevelRotation":30,"bevelSoftness":0,"bevelRed":119,"bevelGreen":168,"bevelBlue":252} -target=fig-center -duration=0;
+```
+
+### 1.13 火光/爆炸
+
+适用：火灾、爆炸、篝火旁、强烈暖光源
+
+背景：
+```
+setTransform:{"brightness":0.9,"contrast":0.8,"saturation":0.5,"gamma":0.6,"colorRed":255,"colorGreen":218,"colorBlue":184,"bloom":1,"bloomBrightness":0.8,"bloomBlur":8,"bevelRed":255,"bevelGreen":194,"bevelBlue":125} -target=bg-main -duration=0 -next;
+```
+人物：
+```
+setTransform:{"brightness":0.75,"contrast":1.1,"saturation":0.8,"gamma":1,"colorRed":255,"colorGreen":234,"colorBlue":217,"bloom":0.6,"bloomBrightness":0.7,"bloomBlur":4,"bevel":2,"bevelThickness":20,"bevelRotation":80,"bevelRed":255,"bevelGreen":201,"bevelBlue":125} -target=fig-center -duration=0;
+```
+
+### 1.14 面光（白天）
+
+适用：白天正面对光、角色面向光源
+
+背景：
+```
+setTransform:{"brightness":0.8,"contrast":0.8,"saturation":0.7,"gamma":0.5,"colorRed":227,"colorGreen":227,"colorBlue":227,"bloom":0.7,"bloomBrightness":0.8,"bloomBlur":10} -target=bg-main -duration=0 -next;
+```
+人物：
+```
+setTransform:{"brightness":0.75,"contrast":1,"saturation":0.8,"gamma":0.7,"colorRed":255,"colorGreen":255,"colorBlue":255,"bloom":0.5,"bloomBrightness":1,"bloomBlur":10,"bevel":0.5,"bevelThickness":18,"bevelRotation":30,"bevelRed":196,"bevelGreen":185,"bevelBlue":185} -target=fig-center -duration=0;
+```
+
+### 1.15 面光（黄昏）
+
+适用：黄昏正面对光、逆光夕阳
+
+背景：
+```
+setTransform:{"brightness":0.7,"contrast":0.8,"saturation":0.7,"gamma":0.5,"colorRed":255,"colorGreen":203,"colorBlue":171,"bloom":0.6,"bloomBrightness":0.8,"bloomBlur":10} -target=bg-main -duration=0 -next;
+```
+人物：
+```
+setTransform:{"brightness":0.5,"contrast":1,"saturation":0.7,"gamma":1,"colorRed":255,"colorGreen":208,"colorBlue":176,"bloom":0.4,"bloomBrightness":1.8,"bloomBlur":10,"bevel":0.3,"bevelThickness":18,"bevelRotation":30,"bevelRed":255,"bevelGreen":184,"bevelBlue":148} -target=fig-center -duration=0;
+```
+
+### 1.16 面光[清晨/黄昏（轻）]
+
+适用：清晨或轻黄昏的柔光面光
+
+背景：
+```
+setTransform:{"brightness":0.7,"contrast":0.8,"saturation":0.7,"gamma":0.5,"colorRed":255,"colorGreen":234,"colorBlue":214,"bloom":1,"bloomBrightness":0.7,"bloomBlur":10} -target=bg-main -duration=0 -next;
+```
+人物：
+```
+setTransform:{"brightness":0.8,"contrast":1.1,"saturation":0.9,"gamma":0.8,"colorRed":242,"colorGreen":216,"colorBlue":194,"bloom":0.5,"bloomBrightness":0.8,"bloomBlur":10,"bevel":1,"bevelThickness":15,"bevelRotation":30,"bevelRed":255,"bevelGreen":212,"bevelBlue":176} -target=fig-center -duration=0;
+```
+
+### 1.17 赛博朋克/电子故障
 
 适用：受到干扰、电子画面、内心崩坏
 
@@ -67,7 +236,7 @@ changeBg:背景.jpg -next -transform={"brightness":0.5,"contrast":1.1,"saturatio
 setTransform:{"glitchFilm":1,"rgbFilm":1,"oldFilm":0.5,"colorRed":200,"colorGreen":255,"colorBlue":255,"brightness":1.2} -target=bg-main -duration=0;
 ```
 
-### 1.6 复古黑白电视/监控画面
+### 1.18 复古黑白电视/监控画面
 
 适用：查看监控、老电视、过去的时间线
 
@@ -256,10 +425,22 @@ setTransform:{"saturation":1,"brightness":1} -target=bg-main -duration=1000;
 
 | 剧本情绪 | 推荐效果 | 作用目标 |
 |----------|----------|----------|
-| 温馨日常 | 柔光暖色滤镜 | bg-main（-transform 内联） |
-| 孤独忧郁 | 冷色调滤镜 | bg-main（-transform 内联） |
-| 夕阳回忆 | 黄昏暖阳滤镜 | bg-main（-transform 内联） |
-| 深夜安静 | 夜晚月色滤镜 | bg-main（-transform 内联） |
+| 温馨日常 | 室内有光暖色 / 清爽版室内白天 | bg-main + fig |
+| 晴天户外 | 白天室外晴天 | bg-main + fig |
+| 室内白天 | 白天（通用）/ 清爽版室内白天 | bg-main + fig |
+| 柔和晨暮 | 清晨/黄昏（轻） | bg-main + fig |
+| 夕阳强烈 | 黄昏(重)（室外） | bg-main + fig |
+| 室内夕阳 | 黄昏(重)（室内） | bg-main + fig |
+| 柔和黄昏 | 淡色黄昏 | fig（背景加模糊） |
+| 暖色灯光 | 室内有光暖色 | bg-main + fig |
+| 夜间开灯 | 夜晚室内白光 | bg-main + fig |
+| 夜间有灯 | 黑暗（有灯光） | bg-main + fig |
+| 完全黑暗 | 黑暗（无灯光） | bg-main + fig |
+| 深夜微光 | 黑夜微光 | fig |
+| 火光爆炸 | 火光/爆炸 | bg-main + fig |
+| 白天面光 | 面光（白天） | bg-main + fig |
+| 黄昏面光 | 面光（黄昏） | bg-main + fig |
+| 轻柔面光 | 面光[清晨/黄昏（轻）] | bg-main + fig |
 | 记忆涌现 | 闪光弹 / 闪回白光 | bg-main |
 | 紧张压迫 | 缓慢推近 / 呼吸缩放 | bg-main |
 | 恐惧心跳 | 心跳 / 紧张暗角 | bg-main |
