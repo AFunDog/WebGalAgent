@@ -10,6 +10,7 @@ from playwright.async_api import (
     async_playwright,
     Browser as PlaywrightBrowser,
     BrowserContext,
+    ElementHandle,
     Page,
     TimeoutError as PlaywrightTimeout,
 )
@@ -35,9 +36,11 @@ async def create_browser(
     return client
 
 # Hook 脚本：控制虚拟时间，实现逐帧确定性渲染
-_TIME_CONTROL_SCRIPT = """
-() => {
-    if (window.__timeControlReady) return;
+_TIME_CONTROL_SOURCE = """
+(() => {
+    if (window.__timeControlReady) {
+        return;
+    }
 
     let currentTime = 0;
     let rafId = 0;
@@ -94,8 +97,10 @@ _TIME_CONTROL_SCRIPT = """
     };
 
     window.__timeControlReady = true;
-}
+})();
 """
+
+_TIME_CONTROL_SCRIPT = f"() => {{ {_TIME_CONTROL_SOURCE} }}"
 
 
 @dataclass
@@ -130,6 +135,7 @@ class BrowserClient:
         self._config = config or DefaultBrowserConfig()
         self._playwright = None
         self._instances: dict[str, BrowserInstance] = {}
+        self._time_control_prepared: set[str] = set()
 
     async def __aenter__(self) -> "BrowserClient":
         """异步上下文管理器入口。"""
@@ -195,7 +201,7 @@ class BrowserClient:
     # ---- 时间控制 ----
 
     async def enable_time_control(self, fps: float = 30.0) -> bool:
-        """启用虚拟时间控制。Hook performance.now / Date.now。返回是否注入成功。"""
+        """为当前页面启用虚拟时间控制。若要完全确定性，请在导航前先 prepare_time_control。"""
         page = await self.get_page()
 
         # 先注入时间控制脚本
@@ -218,6 +224,25 @@ class BrowserClient:
             )
         return True
 
+    async def prepare_time_control(
+        self,
+        fps: float = 30.0,
+        context_id: str = "default",
+    ) -> bool:
+        """为上下文预装时间控制脚本，确保后续导航在页面脚本执行前接管 RAF。"""
+        if context_id not in self._instances:
+            await self.new_context(context_id)
+
+        instance = self._instances[context_id]
+        if context_id not in self._time_control_prepared:
+            await instance.context.add_init_script(script=_TIME_CONTROL_SOURCE)
+            self._time_control_prepared.add(context_id)
+
+        await instance.context.add_init_script(
+            script=f"window.__targetFPS = {float(fps)!r};"
+        )
+        return await self.enable_time_control(fps=fps)
+
     async def advance_frame(self, frame_count: int = 1) -> None:
         """推进虚拟时间（逐帧控制，无真实等待）。必须在 enable_time_control 后调用。"""
         page = await self.get_page()
@@ -227,6 +252,44 @@ class BrowserClient:
         """停止时间控制，恢复原生时间函数。"""
         page = await self.get_page()
         await page.evaluate("() => window.__disableTimeControl && window.__disableTimeControl()")
+
+    async def verify_time_control(
+        self,
+        fps: float = 30.0,
+        frames: int = 3,
+        context_id: str = "default",
+    ) -> bool:
+        """验证 RAF hook 与逐帧推进是否按预期生效。"""
+        await self.enable_time_control(fps=fps)
+        page = await self.get_page(context_id)
+        result = await page.evaluate(
+            """async ({ fps, frames }) => {
+                const frameTime = 1000 / fps;
+                const seen = [];
+
+                function step(ts) {
+                    seen.push(ts);
+                    if (seen.length < frames) {
+                        requestAnimationFrame(step);
+                    }
+                }
+
+                requestAnimationFrame(step);
+                await window.__advanceFrame(frames);
+
+                const expected = Array.from(
+                    { length: frames },
+                    (_, index) => frameTime * (index + 1),
+                );
+
+                return (
+                    seen.length === frames &&
+                    seen.every((value, index) => Math.abs(value - expected[index]) < 0.001)
+                );
+            }""",
+            {"fps": fps, "frames": frames},
+        )
+        return bool(result)
 
     # --------------------
 

@@ -59,12 +59,12 @@ async def demo_record(
     output_path: str,
     duration: float = 5.0,
     fps: float = 30.0,
-    canvas_selector: str = "canvas",
+    canvas_selector: str = "auto",
     browser_type: str = "msedge",
     codec: str = "XVID",
     headless: bool = False,
 ) -> None:
-    """演示：录制画布视频（时间控制模式）。"""
+    """演示：录制目标元素视频（时间控制模式）。"""
     config = DefaultBrowserConfig(
         browser_type=browser_type,
         headless=headless,
@@ -73,6 +73,9 @@ async def demo_record(
     )
 
     async with BrowserClient(config) as client:
+        print(f"预装时间控制 ({fps} FPS)...")
+        await client.prepare_time_control(fps=fps)
+
         print(f"正在使用 {browser_type} 导航到: {url}")
         try:
             await client.navigate(url, wait_until="domcontentloaded")
@@ -80,28 +83,45 @@ async def demo_record(
             print(f"导航超时，继续等待页面加载... ({e})")
             await asyncio.sleep(5)
 
-        print("等待 canvas 元素出现...")
-        found = await client.wait_for(
-            Selector(value=canvas_selector, type=SelectorType.CSS),
-            state="visible",
-            timeout=10000,
-        )
-        if not found:
-            print("错误: 未找到 canvas 元素")
-            return
+        selected_selector = canvas_selector
+        if canvas_selector == "auto":
+            for candidate in ("#root", "canvas"):
+                found = await client.wait_for(
+                    Selector(value=candidate, type=SelectorType.CSS),
+                    state="visible",
+                    timeout=3000,
+                )
+                if found:
+                    selected_selector = candidate
+                    break
+            else:
+                print("错误: 未找到可录制目标（已尝试 #root, canvas）")
+                return
+        else:
+            print(f"等待目标元素出现: {canvas_selector}")
+            found = await client.wait_for(
+                Selector(value=canvas_selector, type=SelectorType.CSS),
+                state="visible",
+                timeout=10000,
+            )
+            if not found:
+                print(f"错误: 未找到目标元素 {canvas_selector}")
+                return
 
-        # 等待画布初始化
+        print(f"录制目标元素: {selected_selector}")
+
+        # 等待目标元素内部渲染初始化
         await asyncio.sleep(1)
 
-        # 启用虚拟时间控制
-        print(f"启用时间控制 ({fps} FPS)...")
-        ok = await client.enable_time_control(fps=fps)
-        print(f"注入验证: {ok}")
+        # 验证虚拟时间控制
+        print(f"验证时间控制 ({fps} FPS)...")
+        ok = await client.verify_time_control(fps=fps)
+        print(f"逐帧验证: {ok}")
 
         # 配置录制
         capture_cfg = CaptureConfig(
             fps=fps,
-            canvas_selector=canvas_selector,
+            canvas_selector=selected_selector,
             max_duration=duration,
         )
         video_cfg = VideoConfig(
@@ -145,7 +165,8 @@ def main() -> None:
     parser.add_argument("--output", default="data/temp/output.avi", help="输出路径 (XVID 建议用 .avi 扩展名)")
     parser.add_argument("--duration", type=float, default=5.0, help="录制时长（秒）")
     parser.add_argument("--fps", type=float, default=30.0, help="帧率")
-    parser.add_argument("--canvas", default="canvas", help="Canvas 选择器")
+    parser.add_argument("--selector", default="auto", help="录制目标元素 CSS 选择器；auto 会优先尝试 #root，再回退到 canvas")
+    parser.add_argument("--canvas", dest="selector_legacy", default=None, help="兼容旧参数：等同于 --selector")
     parser.add_argument(
         "--browser",
         default="msedge",
@@ -172,7 +193,7 @@ def main() -> None:
                     output_path=args.output,
                     duration=args.duration,
                     fps=args.fps,
-                    canvas_selector=args.canvas,
+                    canvas_selector=args.selector_legacy or args.selector,
                     browser_type=args.browser,
                     codec=args.codec,
                     headless=args.headless,

@@ -1,4 +1,4 @@
-"""Canvas 帧捕获器：定时采集画布内容。"""
+"""元素帧捕获器：定时采集目标元素内容。"""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class CaptureStats:
 
 
 class CanvasCapture:
-    """Canvas 帧捕获器。
+    """目标元素帧捕获器。
 
     支持两种模式：
     - 时间控制模式（enable_time_control=True）：逐帧推进虚拟时间，稳定输出帧率
@@ -56,49 +56,34 @@ class CanvasCapture:
         self._stats = CaptureStats()
         self._frame_index = 0
         self._start_time = 0.0
-        self._canvas_box: dict | None = None
         self._virtual_elapsed_time = 0.0
 
     @property
     def stats(self) -> CaptureStats:
         return self._stats
 
-    async def _ensure_canvas_box(self) -> dict | None:
-        """获取 canvas 在视口中的位置和尺寸（绝对坐标）。"""
-        if self._canvas_box:
-            return self._canvas_box
+    async def _ensure_target_ready(self) -> bool:
+        """确认目标元素存在。"""
         try:
-            box: dict | None = await self._page.evaluate(
-                f"""
-                () => {{
-                    const canvas = document.querySelector('{self._config.canvas_selector}');
-                    if (!canvas) return null;
-                    const rect = canvas.getBoundingClientRect();
-                    return {{
-                        x: rect.left,
-                        y: rect.top,
-                        width: Math.floor(rect.width),
-                        height: Math.floor(rect.height)
-                    }};
-                }}
-                """
+            exists = await self._page.evaluate(
+                "(selector) => !!document.querySelector(selector)",
+                self._config.canvas_selector,
             )
-            self._canvas_box = box
-            return box
+            return bool(exists)
         except Exception:
-            return None
+            return False
 
-    async def _snapshot_canvas(self) -> np.ndarray | None:
-        """优先直接导出 canvas 位图，失败时再回退到元素截图。"""
+    async def _snapshot_target(self) -> np.ndarray | None:
+        """优先直接导出 canvas 位图，其他元素使用 Playwright 元素截图。"""
         try:
             data_url: str | None = await self._page.evaluate(
                 """(selector) => {
-                    const canvas = document.querySelector(selector);
-                    if (!canvas || typeof canvas.toDataURL !== "function") {
+                    const element = document.querySelector(selector);
+                    if (!element || element.tagName !== "CANVAS" || typeof element.toDataURL !== "function") {
                         return null;
                     }
                     try {
-                        return canvas.toDataURL("image/png");
+                        return element.toDataURL("image/png");
                     } catch (error) {
                         return null;
                     }
@@ -122,7 +107,7 @@ class CanvasCapture:
 
     async def capture_frame(self) -> np.ndarray | None:
         """采集一帧。"""
-        return await self._snapshot_canvas()
+        return await self._snapshot_target()
 
     async def _capture_loop_real_time(self) -> AsyncIterator[Frame]:
         """实时模式：按目标 FPS 采样，有丢帧但不需要外部控制。"""
@@ -193,7 +178,7 @@ class CanvasCapture:
         self._stats = CaptureStats()
         self._virtual_elapsed_time = 0.0
 
-        await self._ensure_canvas_box()
+        await self._ensure_target_ready()
 
         loop = self._capture_loop_time_controlled() if self._enable_time_control else self._capture_loop_real_time()
 
