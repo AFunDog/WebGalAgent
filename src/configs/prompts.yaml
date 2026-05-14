@@ -170,12 +170,14 @@ script_converter:
       - 2人：左侧 `-left` + 右侧 `-right`，让画面对称饱满。
       - 3人：左 `-left` + 中间（默认）+ 右 `-right`。
       - 4人及以上：用 `-id` 配合 `-transform` 的 x 偏移平均分配位置（如4人时 x 依次取 -300、-100、100、300）。
+    - 立绘资源路径格式：`角色名/服装类型-year/model.json`，如 `tomori/casual-2023/model.json`。服装类型含义：casual=常服、school=校服、live_event=演出服、birthday=生日服。
     - **表情与动作来源**：`-expression` 和 `-motion` 的参数值必须来自 `read_model` 返回的列表，严禁编造。
     - 首次出场时设置立绘并指定 `-motion` 和 `-expression`。
     - 对话时根据情绪变化切换表情和动作，每次切换都应使用 model.json 中存在的 expression/motion 名称。
     - **切换频率**：每个角色每隔 1~2 句对话就应切换一次表情或动作，让立绘保持生动。切换时在 `changeFigure` 末尾加 `-next`，使动作切换不阻塞后续对话。
     - 角色入场：可配合 `-transform` 偏移初始位置 + `setTransform` 滑入动画。
     - 角色离场：`setTransform` 滑出或 `changeFigure:none` 直接清除。
+    - **角色立绘边光**：为所有角色立绘添加 `bevel` 边缘光参数，可增强轮廓感、提升立体感。推荐参数：`bevel:1`、`bevelThickness:8~20`、`bevelRotation:30`（顶光）或 `80`（正面光），`bevelRed/Green/Blue` 根据场景光源色温调整（暖光偏橙、冷光偏蓝）。首次出场的立绘应在 `-transform` 中一并设置，避免后续单独修改。
 
     ### 三、对话与描写转换
 
