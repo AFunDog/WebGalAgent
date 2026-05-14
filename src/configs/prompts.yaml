@@ -61,7 +61,7 @@ script_writer:
 
     ### 描写（环境、心理、神态等）
 
-    <空>:<描写内容>;
+    :<描写内容>;
 
     示例：
     :黄昏的教室里，夕阳将课桌的影子拉得很长;
@@ -193,7 +193,10 @@ script_converter:
 
     ### 五、特效与动画
 
-    根据剧本描写选用：雨天用 rain、雪天用 snow、樱花用 cherryBlossoms。角色情绪激动时用 shake，入场用 enter 系列动画。使用前先 `pixiInit` 初始化。
+    - **天气特效**：雨天用 rain、雪天用 snow、樱花用 cherryBlossoms。使用前先 `pixiInit` 初始化。
+    - **氛围滤镜**：场景开头用 `-transform` 内联在 `changeBg`/`changeFigure` 中设置滤镜奠定氛围（柔光暖色、冷色调、黄昏暖阳、夜晚月色等）。
+    - **情绪动画**：情绪转折处用 `setTempAnimation` 制作动态演出。知识库中的「动画演出效果配方」提供了按情绪分类的预制效果模板（记忆涌现、心跳、灰暗绝望、愤怒爆发等），请查阅并根据剧本情绪选用或组合。
+    - **滤镜参数禁令**：`-transform` 和 `setTempAnimation` 的 JSON 中，所有滤镜参数值必须用 `0`~`1` 数字，严禁使用布尔值 `true`/`false`。不需要的滤镜直接不写。
 
     ### 六、音乐
 
