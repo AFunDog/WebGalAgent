@@ -15,7 +15,7 @@ from webgal_agent.browser.models import (
     VideoConfig,
     RecordingResult,
 )
-from webgal_agent.browser.capture import CanvasCapture, CaptureStats, Frame
+from webgal_agent.browser.capture import CanvasCapture, CaptureStats, Frame, CaptureArtifact
 from webgal_agent.browser.recorder import VideoRecorder
 from webgal_agent.browser.tools import (
     NavigateTool,

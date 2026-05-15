@@ -124,6 +124,7 @@ class DefaultBrowserConfig:
     viewport_height: int = 1080
     user_agent: str | None = None
     ignore_https_errors: bool = True
+    executable_path: str | None = None
 
 
 class BrowserClient:
@@ -159,12 +160,16 @@ class BrowserClient:
         if not self._playwright:
             raise RuntimeError("BrowserClient 未初始化，请使用 async with 上下文管理器")
 
-        channel = "msedge" if self._config.browser_type == "msedge" else None
-        browser_engine = getattr(self._playwright, "chromium")
-        browser = await browser_engine.launch(
-            headless=self._config.headless,
-            channel=channel,
-        )
+        browser_engine = getattr(self._playwright, self._config.browser_type)
+
+        launch_kwargs: dict = {
+            "headless": self._config.headless,
+        }
+        if self._config.executable_path:
+            launch_kwargs["executable_path"] = self._config.executable_path
+            launch_kwargs.pop("channel", None)  # executable_path 和 channel 互斥
+
+        browser = await browser_engine.launch(**launch_kwargs)
 
         context_config = config or BrowserConfig()
         context = await browser.new_context(
@@ -183,6 +188,13 @@ class BrowserClient:
         return context
 
     # ---- 脚本拦截注入 ----
+
+    async def create_cdp_session(self, context_id: str = "default") -> Any:
+        """为当前页面创建 CDP Session，用于底层协议操作（如虚拟时间控制）。"""
+        if context_id not in self._instances:
+            await self.new_context(context_id)
+        instance = self._instances[context_id]
+        return await instance.context.new_cdp_session(instance.page)
 
     async def add_script_injection(
         self,

@@ -4,7 +4,9 @@
     python -m webgal_agent.browser.demo
 
 前置依赖：
-    playwright install msedge
+    1. playwright install chromium（若使用默认 chromium）
+    2. 系统路径中需有 ffmpeg
+    3. 若使用 chrome-headless-shell，需通过 --executable 指定路径
 """
 
 from __future__ import annotations
@@ -29,8 +31,9 @@ from webgal_agent.browser.models import CaptureConfig, VideoConfig
 
 async def demo_navigate(
     url: str,
-    browser_type: str = "msedge",
+    browser_type: str = "chromium",
     headless: bool = False,
+    executable_path: str | None = None,
 ) -> None:
     """演示：导航并截图。"""
     config = DefaultBrowserConfig(
@@ -38,11 +41,12 @@ async def demo_navigate(
         headless=headless,
         viewport_width=1280,
         viewport_height=720,
+        executable_path=executable_path,
     )
 
     async with BrowserClient(config) as client:
         # 拦截 index-e1b3c40e.js 并注入
-        print(f"拦截脚本注入 (index-e1b3c40e.js)...")
+        print("拦截脚本注入 (index-e1b3c40e.js)...")
         await client.add_script_injection(
             url_pattern="**/index-e1b3c40e.js",
             inject_code="window.changeScene = gCe;\nwindow.toggleAuto = wU;",
@@ -66,22 +70,24 @@ async def demo_record(
     output_path: str,
     duration: float = 5.0,
     fps: float = 30.0,
-    canvas_selector: str = "auto",
-    browser_type: str = "msedge",
-    codec: str = "XVID",
+    canvas_selector: str = "div._MainStage_main_9enex_1",
+    browser_type: str = "chromium",
     headless: bool = False,
+    no_record: bool = False,
+    executable_path: str | None = None,
 ) -> None:
-    """演示：使用 CCapture.js 录制目标元素视频。"""
+    """演示：使用 CDP 虚拟时间 + FFmpeg 逐帧确定性录制。"""
     config = DefaultBrowserConfig(
         browser_type=browser_type,
         headless=headless,
         viewport_width=1280,
         viewport_height=720,
+        executable_path=executable_path,
     )
 
     async with BrowserClient(config) as client:
-        # 拦截 index-e1b3c40e.js 并注入 changeScene
-        print(f"拦截脚本注入 (index-e1b3c40e.js)...")
+        # 拦截 index-e1b3c40e.js 并注入
+        print("拦截脚本注入 (index-e1b3c40e.js)...")
         await client.add_script_injection(
             url_pattern="**/index-e1b3c40e.js",
             inject_code="window.changeScene = gCe;\nwindow.toggleAuto = wU;",
@@ -104,8 +110,9 @@ async def demo_record(
             )
             print("changeScene 已就绪，调用...")
             await page.evaluate("""
-                () => {
+                async () => {
                     window.changeScene("发布/AI剧场/爱素补作业/15/Scene1.txt", 1);
+                    await new Promise(r => setTimeout(r, 1000));
                     window.toggleAuto();
                 }
             """)
@@ -115,7 +122,7 @@ async def demo_record(
 
         selected_selector = canvas_selector
         if canvas_selector == "auto":
-            for candidate in ("#root", "canvas"):
+            for candidate in ("div._MainStage_main_9enex_1", "#root", "canvas"):
                 found = await client.wait_for(
                     Selector(value=candidate, type=SelectorType.CSS),
                     state="visible",
@@ -125,7 +132,7 @@ async def demo_record(
                     selected_selector = candidate
                     break
             else:
-                print("错误: 未找到可录制目标（已尝试 #root, canvas）")
+                print("错误: 未找到可录制目标（已尝试 div._MainStage_main_9enex_1, #root, canvas）")
                 return
         else:
             print(f"等待目标元素出现: {canvas_selector}")
@@ -143,6 +150,16 @@ async def demo_record(
         # 等待目标元素内部渲染初始化
         await asyncio.sleep(1)
 
+        if no_record:
+            print(f"跳过录制，等待 {duration}s 观察页面状态...")
+            await asyncio.sleep(duration)
+            print("观察完成!")
+            return
+
+        # 创建 CDP Session
+        print("创建 CDP Session...")
+        cdp = await client.create_cdp_session()
+
         # 配置录制
         capture_cfg = CaptureConfig(
             fps=fps,
@@ -152,25 +169,25 @@ async def demo_record(
         video_cfg = VideoConfig(
             output_path=output_path,
             fps=fps,
-            codec=codec,
+            codec="libx264",
         )
 
-        print(f"开始录制 {duration}s @ {fps} FPS (CCapture.js 模式)...")
+        total_frames = max(1, int(round(duration * fps)))
+        print(f"开始录制 {duration}s @ {fps} FPS (CDP + FFmpeg 模式)...")
         print(f"输出: {output_path}")
+        print(f"总帧数: {total_frames}")
 
-        page = await client.get_page()
-        recorder = VideoRecorder(
-            page,
-            video_cfg,
-            capture_cfg,
-        )
+        recorder = VideoRecorder(cdp, page, video_cfg, capture_cfg)
         result = await recorder.start()
 
         print("录制完成!")
         print(f"  输出路径: {result.output_path}")
         print(f"  总帧数: {result.total_frames}")
         print(f"  实际帧率: {result.actual_fps:.1f} FPS")
-        print(f"  时长: {result.duration:.1f}s")
+        print(f"  视频时长: {result.duration:.1f}s")
+        print(f"  实际录制时间: {result.wall_time:.2f}s")
+        if result.wall_time > 0:
+            print(f"  时间比: {result.duration / result.wall_time:.2f}x")
         print(f"  文件大小: {result.file_size_mb:.2f} MB")
 
 
@@ -182,30 +199,30 @@ def main() -> None:
         help="运行模式: navigate=导航截图, record=录制视频",
     )
     parser.add_argument("--url", default="https://example.com", help="目标 URL")
-    parser.add_argument("--output", default="data/temp/output.webm", help="输出路径 (CCapture.js 当前输出为 .webm)")
+    parser.add_argument("--output", default="data/temp/output.mp4", help="输出路径 (默认 .mp4)")
     parser.add_argument("--duration", type=float, default=5.0, help="录制时长（秒）")
     parser.add_argument("--fps", type=float, default=30.0, help="帧率")
-    parser.add_argument("--selector", default="auto", help="录制目标元素 CSS 选择器；auto 会优先尝试 #root，再回退到 canvas")
+    parser.add_argument("--selector", default="div._MainStage_main_9enex_1", help="录制目标元素 CSS 选择器")
     parser.add_argument("--canvas", dest="selector_legacy", default=None, help="兼容旧参数：等同于 --selector")
     parser.add_argument(
         "--browser",
-        default="msedge",
-        choices=["chromium", "firefox", "webkit", "msedge"],
+        default="chromium",
+        choices=["chromium", "firefox", "webkit"],
         help="浏览器类型",
     )
     parser.add_argument(
-        "--codec",
-        default="webm",
-        choices=["webm"],
-        help="视频编码器（CCapture.js 当前仅支持 webm 输出）",
+        "--executable",
+        default=None,
+        help="浏览器可执行文件路径（如 chrome-headless-shell 路径）",
     )
     parser.add_argument("--headless", action="store_true", help="无头模式")
+    parser.add_argument("--no-record", action="store_true", help="不录制，仅等待 duration 时间观察页面")
 
     args = parser.parse_args()
 
     match args.mode:
         case "navigate":
-            asyncio.run(demo_navigate(args.url, args.browser, args.headless))
+            asyncio.run(demo_navigate(args.url, args.browser, args.headless, args.executable))
         case "record":
             asyncio.run(
                 demo_record(
@@ -215,8 +232,9 @@ def main() -> None:
                     fps=args.fps,
                     canvas_selector=args.selector_legacy or args.selector,
                     browser_type=args.browser,
-                    codec=args.codec,
                     headless=args.headless,
+                    no_record=args.no_record,
+                    executable_path=args.executable,
                 )
             )
 

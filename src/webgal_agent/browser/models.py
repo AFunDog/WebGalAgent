@@ -112,3 +112,4 @@ class RecordingResult(BaseModel):
     duration: float
     actual_fps: float
     file_size_mb: float
+    wall_time: float = 0.0
