@@ -77,12 +77,29 @@ async def demo_record(
     executable_path: str | None = None,
 ) -> None:
     """演示：使用 CDP 虚拟时间 + FFmpeg 逐帧确定性录制。"""
+
+    # 确定性录制所需的 Chrome 启动参数
+    deterministic_args: list[str] | None = None
+    if executable_path:
+        deterministic_args = [
+            "--run-all-compositor-stages-before-draw",
+            "--enable-begin-frame-control",
+            "--disable-threaded-animation",
+            "--disable-threaded-scrolling",
+            "--disable-frame-rate-limit",
+            "--disable-gpu-vsync",
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+            "--force-color-profile=srgb",
+        ]
+
     config = DefaultBrowserConfig(
         browser_type=browser_type,
         headless=headless,
         viewport_width=1280,
         viewport_height=720,
         executable_path=executable_path,
+        launch_args=deterministic_args,
     )
 
     async with BrowserClient(config) as client:
@@ -177,7 +194,15 @@ async def demo_record(
         print(f"输出: {output_path}")
         print(f"总帧数: {total_frames}")
 
-        recorder = VideoRecorder(cdp, page, video_cfg, capture_cfg)
+        await client.prepare_time_control(fps=fps)
+
+        recorder = VideoRecorder(
+            cdp,
+            page,
+            video_cfg,
+            capture_cfg,
+            advance_frame_fn=client.advance_frame,
+        )
         result = await recorder.start()
 
         print("录制完成!")

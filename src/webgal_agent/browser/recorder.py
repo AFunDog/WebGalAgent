@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import subprocess
 import time
@@ -26,12 +27,14 @@ class VideoRecorder:
         page: Any,
         video_config: VideoConfig,
         capture_config: CaptureConfig | None = None,
+        advance_frame_fn: Any | None = None,
     ) -> None:
         self._cdp = cdp_session
         self._page = page
         self._video_config = video_config
         self._capture_config = capture_config or CaptureConfig(fps=video_config.fps)
         self._output_path = Path(video_config.output_path)
+        self._advance_frame_fn = advance_frame_fn
         self._running = False
 
     async def start(self) -> RecordingResult:
@@ -45,20 +48,7 @@ class VideoRecorder:
         # 获取目标元素裁剪区域
         clip = await self._resolve_clip(selector)
 
-        # 启动虚拟时间（暂停）
-        await self._cdp.send("Emulation.setVirtualTimePolicy", {"policy": "pause"})
-
-        # compositor 预热
-        for _ in range(5):
-            await self._cdp.send(
-                "HeadlessExperimental.beginFrame",
-                {"interval": frame_interval},
-            )
-
-        # 启动 FFmpeg
-        self._output_path.parent.mkdir(parents=True, exist_ok=True)
-        ffmpeg_cmd = self._build_ffmpeg_command(fps)
-        ffmpeg = subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
+        ffmpeg = self._start_ffmpeg(fps)
 
         last_frame: bytes | None = None
         dropped = 0
@@ -67,48 +57,27 @@ class VideoRecorder:
         record_start = time.monotonic()
 
         try:
-            for frame_idx in range(total_frames):
-                if not self._running:
-                    break
-
-                virtual_time = frame_idx * frame_interval
-
-                result = await self._cdp.send(
-                    "HeadlessExperimental.beginFrame",
-                    {
-                        "frameTimeTicks": virtual_time,
-                        "interval": frame_interval,
-                        "screenshot": {
-                            "format": "png",
-                            "clip": clip,
-                        },
-                    },
+            try:
+                dropped, last_frame = await self._record_with_cdp(
+                    ffmpeg=ffmpeg,
+                    total_frames=total_frames,
+                    frame_interval=frame_interval,
+                    clip=clip,
                 )
+            except Exception as exc:
+                if not self._advance_frame_fn:
+                    raise RuntimeError(
+                        "CDP beginFrame 录制失败，且未提供兼容降级方案。"
+                        "请使用支持 begin-frame-control 的 chrome-headless-shell，"
+                        "或传入 JS 帧推进回调以启用截图降级模式。"
+                    ) from exc
 
-                img: bytes | None = None
-                if result.get("screenshotData"):
-                    img = base64.b64decode(result["screenshotData"])
-                    last_frame = img
-                elif last_frame:
-                    img = last_frame
-                else:
-                    # 首帧 fallback：使用 Playwright 截图
-                    png_bytes = await self._page.screenshot(clip=clip, type="png")
-                    img = png_bytes
-                    last_frame = img
-
-                if img:
-                    try:
-                        ffmpeg.stdin.write(img)  # type: ignore[union-attr]
-                    except BrokenPipeError:
-                        break
-                else:
-                    dropped += 1
-
-                # 进度提示（每秒一次）
-                if (frame_idx + 1) % int(fps) == 0:
-                    elapsed_sec = (frame_idx + 1) / fps
-                    print(f"  进度: {elapsed_sec:.0f}/{duration:.0f} 秒")
+                print(f"警告: CDP beginFrame 不可用，切换到兼容降级模式: {exc}")
+                dropped, last_frame = await self._record_with_screenshot_fallback(
+                    ffmpeg=ffmpeg,
+                    total_frames=total_frames,
+                    clip=clip,
+                )
 
         finally:
             self._running = False
@@ -160,6 +129,133 @@ class VideoRecorder:
             "scale": 1,
         }
 
+    def _start_ffmpeg(self, fps: float) -> subprocess.Popen:
+        """启动 FFmpeg 进程。"""
+        self._output_path.parent.mkdir(parents=True, exist_ok=True)
+        ffmpeg_cmd = self._build_ffmpeg_command(fps)
+        return subprocess.Popen(ffmpeg_cmd, stdin=subprocess.PIPE)
+
+    async def _record_with_cdp(
+        self,
+        ffmpeg: subprocess.Popen,
+        total_frames: int,
+        frame_interval: float,
+        clip: dict[str, Any],
+    ) -> tuple[int, bytes | None]:
+        """优先使用 CDP beginFrame 进行确定性录制。"""
+        begin_frame_timeout = 2.0
+
+        await self._cdp.send("Emulation.setVirtualTimePolicy", {"policy": "pause"})
+
+        for _ in range(2):
+            await asyncio.wait_for(
+                self._cdp.send(
+                    "HeadlessExperimental.beginFrame",
+                    {"interval": frame_interval},
+                ),
+                timeout=begin_frame_timeout,
+            )
+
+        last_frame: bytes | None = None
+        dropped = 0
+
+        for frame_idx in range(total_frames):
+            if not self._running:
+                break
+
+            virtual_time = frame_idx * frame_interval
+            result = await asyncio.wait_for(
+                self._cdp.send(
+                    "HeadlessExperimental.beginFrame",
+                    {
+                        "frameTimeTicks": virtual_time,
+                        "interval": frame_interval,
+                        "screenshot": {
+                            "format": "png",
+                            "clip": clip,
+                        },
+                    },
+                ),
+                timeout=begin_frame_timeout,
+            )
+
+            img, last_frame = await self._decode_or_capture_frame(result, clip, last_frame)
+            if self._write_frame(ffmpeg, img):
+                if img is None:
+                    dropped += 1
+            else:
+                break
+
+            self._report_progress(frame_idx=frame_idx, total_frames=total_frames, fps=self._capture_config.fps, img=img)
+
+        return dropped, last_frame
+
+    async def _record_with_screenshot_fallback(
+        self,
+        ffmpeg: subprocess.Popen,
+        total_frames: int,
+        clip: dict[str, Any],
+    ) -> tuple[int, bytes | None]:
+        """降级到 JS 帧推进 + Playwright screenshot。"""
+        last_frame: bytes | None = None
+        dropped = 0
+
+        for frame_idx in range(total_frames):
+            if not self._running:
+                break
+
+            await self._advance_frame_fn(1)
+            img = await self._page.screenshot(clip=clip, type="png")
+            if img:
+                last_frame = img
+
+            if self._write_frame(ffmpeg, img):
+                if img is None:
+                    dropped += 1
+            else:
+                break
+
+            self._report_progress(frame_idx=frame_idx, total_frames=total_frames, fps=self._capture_config.fps, img=img)
+
+        return dropped, last_frame
+
+    async def _decode_or_capture_frame(
+        self,
+        result: dict[str, Any],
+        clip: dict[str, Any],
+        last_frame: bytes | None,
+    ) -> tuple[bytes | None, bytes | None]:
+        """解码 beginFrame 截图；必要时回退到 page.screenshot。"""
+        img: bytes | None = None
+        if result.get("screenshotData"):
+            img = base64.b64decode(result["screenshotData"])
+            last_frame = img
+        elif last_frame:
+            img = last_frame
+        else:
+            img = await self._page.screenshot(clip=clip, type="png")
+            last_frame = img
+        return img, last_frame
+
+    def _write_frame(self, ffmpeg: subprocess.Popen, img: bytes | None) -> bool:
+        """将一帧写入 FFmpeg。"""
+        if not img:
+            return True
+        try:
+            ffmpeg.stdin.write(img)  # type: ignore[union-attr]
+            return True
+        except BrokenPipeError:
+            return False
+
+    @staticmethod
+    def _report_progress(frame_idx: int, total_frames: int, fps: float, img: bytes | None) -> None:
+        """输出进度。"""
+        if (frame_idx + 1) % 5 != 0 and frame_idx + 1 != total_frames:
+            return
+        elapsed_sec = (frame_idx + 1) / fps
+        img_size = len(img) if img else 0
+        print(f"  帧 {frame_idx + 1}/{total_frames} | 已处理 {elapsed_sec:.1f}s | 截图 {img_size} bytes")
+
     def _build_ffmpeg_command(self, fps: float) -> list[str]:
         """构建 FFmpeg 命令行。"""
         return [
@@ -174,7 +270,7 @@ class VideoRecorder:
             "-pix_fmt", "yuv420p",
             "-preset", "slow",
             "-crf", "18",
-            "-vsync", "cfr",
+            "-fps_mode", "cfr",
             str(self._output_path),
         ]
 

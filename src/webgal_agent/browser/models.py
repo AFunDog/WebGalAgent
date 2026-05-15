@@ -96,7 +96,7 @@ class VideoConfig(BaseModel):
 
     output_path: Path | str
     fps: float = 30.0
-    codec: Literal["webm", "mp4v", "avc1", "XVID", "MJPG"] = "webm"
+    codec: Literal["webm", "mp4v", "avc1", "XVID", "MJPG", "libx264"] = "webm"
     quality: int = 23
     width: int | None = None
     height: int | None = None
