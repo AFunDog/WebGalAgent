@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
-from typing import AsyncIterator
+from typing import Any, Literal
 
 from playwright.async_api import (
     async_playwright,
     Browser as PlaywrightBrowser,
     BrowserContext,
-    ElementHandle,
+    Locator,
     Page,
     Route,
     TimeoutError as PlaywrightTimeout,
@@ -250,7 +249,7 @@ class BrowserClient:
         self,
         url: str,
         context_id: str = "default",
-        wait_until: str = "domcontentloaded",
+        wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "domcontentloaded",
     ) -> PageState:
         """导航到指定 URL。"""
         page = await self.get_page(context_id)
@@ -440,7 +439,7 @@ class BrowserClient:
         selector: Selector,
         page: Page,
         timeout: int | None = None,
-    ) -> ElementHandle:
+    ) -> Locator:
         """根据类型定位元素。"""
         if selector.type == SelectorType.CSS:
             return page.locator("css=" + selector.value).first
@@ -449,11 +448,11 @@ class BrowserClient:
         elif selector.type == SelectorType.TEXT:
             return page.get_by_text(selector.value).first
         elif selector.type == SelectorType.ROLE:
-            return page.get_by_role(selector.value).first
+            return page.get_by_role(selector.value).first  # type: ignore[arg-type]
         return page.locator(selector.value).first
 
     @staticmethod
-    async def _get_element_info(element: ElementHandle) -> ElementInfo:
+    async def _get_element_info(element: Locator) -> ElementInfo:
         """获取元素信息。"""
         tag = await element.evaluate("el => el.tagName") or ""
         text = await element.inner_text() or ""
@@ -468,6 +467,6 @@ class BrowserClient:
             text=text,
             is_visible=await element.is_visible(),
             is_enabled=await element.is_enabled(),
-            bounding_box=bbox or None,
+            bounding_box={"x": bbox["x"], "y": bbox["y"], "width": bbox["width"], "height": bbox["height"]} if bbox else None,
             attributes=attrs,
         )
