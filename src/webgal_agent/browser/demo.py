@@ -76,6 +76,7 @@ async def demo_record(
     headless: bool = False,
     screencast_quality: int = 90,
     no_record: bool = False,
+    save_frames: str | None = None,
 ) -> None:
     """演示：使用 CDP Screencast 从 compositor 直接拉帧 + ffmpeg 编码。"""
     config = DefaultBrowserConfig(
@@ -165,7 +166,7 @@ async def demo_record(
         recorder = ScreencastRecorder(
             client, video_cfg, screencast_quality=screencast_quality
         )
-        result = await recorder.start(duration=duration)
+        result = await recorder.start(duration=duration, save_frames_dir=save_frames)
 
         print("录制完成!")
         print(f"  输出路径: {result.output_path}")
@@ -202,6 +203,11 @@ def main() -> None:
     parser.add_argument("--no-record", action="store_true", help="不录制，仅等待 duration 时间观察页面")
     parser.add_argument("--screencast-quality", type=int, default=90, help="Screencast JPEG 质量 (0-100)")
     parser.add_argument(
+        "--save-frames",
+        default=None,
+        help="保存原始 JPEG 帧到指定目录（用于调试）",
+    )
+    parser.add_argument(
         "--executable",
         default=None,
         help="浏览器可执行文件路径（如 chrome-headless-shell 路径）",
@@ -234,6 +240,7 @@ def main() -> None:
                     headless=args.headless,
                     screencast_quality=args.screencast_quality,
                     no_record=args.no_record,
+                    save_frames=args.save_frames,
                 )
             )
 

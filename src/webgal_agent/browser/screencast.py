@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import shutil
+import time
 from pathlib import Path
 
 from webgal_agent.browser.models import RecordingResult, VideoConfig
@@ -48,7 +49,7 @@ class ScreencastRecorder:
             await client.navigate("https://example.com")
 
             recorder = ScreencastRecorder(client, video_cfg)
-            result = await recorder.start(duration=5.0)
+            result = await recorder.start(duration=5.0, save_frames_dir="data/temp/frames")
     """
 
     def __init__(
@@ -66,12 +67,14 @@ class ScreencastRecorder:
         self,
         duration: float,
         context_id: str = "default",
+        save_frames_dir: str | Path | None = None,
     ) -> RecordingResult:
         """开始录制，阻塞 duration 秒后停止并编码输出。
 
         Args:
             duration: 录制时长（秒）。
             context_id: 浏览器上下文 ID。
+            save_frames_dir: 如果设置，会将原始 JPEG 帧保存到该目录用于调试。
         """
         page = await self._client.get_page(context_id)
         cdp = await self._client.create_cdp_session(context_id)
@@ -80,11 +83,13 @@ class ScreencastRecorder:
         if not viewport:
             raise RuntimeError("无法获取页面 viewport 尺寸")
 
-        frames: list[bytes] = []
+        frames: list[tuple[float, bytes]] = []
+        start_time = time.monotonic()
 
         def on_frame(params: dict) -> None:
+            timestamp = time.monotonic() - start_time
             data = base64.b64decode(params["data"])
-            frames.append(data)
+            frames.append((timestamp, data))
             asyncio.ensure_future(
                 cdp.send("Page.screencastFrameAck", {"sessionId": params["sessionId"]})
             )
@@ -111,35 +116,64 @@ class ScreencastRecorder:
         if not frames:
             raise RuntimeError("Screencast 未捕获到任何帧")
 
-        source_fps = len(frames) / duration
+        # 保存原始帧用于调试
+        if save_frames_dir:
+            await self._save_frames(frames, Path(save_frames_dir))
 
-        await self._encode(frames, source_fps)
+        # 统计帧信息
+        total_frames = len(frames)
+        actual_duration = frames[-1][0] - frames[0][0] if total_frames > 1 else duration
+        source_fps = total_frames / actual_duration if actual_duration > 0 else total_frames / duration
+
+        print(f"[ScreencastRecorder] 捕获帧数: {total_frames}")
+        print(f"[ScreencastRecorder] 实际录制时长: {actual_duration:.2f}s (期望: {duration}s)")
+        print(f"[ScreencastRecorder] 源帧率: {source_fps:.2f} FPS")
+
+        # 提取纯帧数据用于编码
+        frame_data = [f[1] for f in frames]
+
+        await self._encode(frame_data, source_fps)
 
         file_size = self._output_path.stat().st_size / (1024 * 1024)
         return RecordingResult(
             output_path=self._output_path,
-            total_frames=len(frames),
-            duration=duration,
-            actual_fps=self._video_config.fps,
+            total_frames=total_frames,
+            duration=actual_duration,
+            actual_fps=source_fps,
             file_size_mb=file_size,
             source_fps=source_fps,
             output_fps=self._video_config.fps,
         )
 
+    async def _save_frames(
+        self,
+        frames: list[tuple[float, bytes]],
+        output_dir: Path,
+    ) -> None:
+        """保存原始 JPEG 帧到目录用于调试。"""
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for i, (timestamp, data) in enumerate(frames):
+            frame_path = output_dir / f"frame_{i:06d}_{timestamp:.3f}s.jpg"
+            frame_path.write_bytes(data)
+        print(f"[ScreencastRecorder] 已保存 {len(frames)} 帧到 {output_dir}")
+
     async def _encode(self, frames: list[bytes], source_fps: float) -> None:
         """将 JPEG 帧流式写入 ffmpeg stdin 编码为视频。"""
         ffmpeg = _find_ffmpeg()
         fmt, encoder = _codec_from_ext(self._output_path)
+        target_fps = self._video_config.fps
 
         self._output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # 构建 ffmpeg 命令
+        # 使用 -framerate 指定输入帧率，使用 -r 转换为目标帧率
         args = [
             ffmpeg, "-y",
             "-f", "image2pipe",
             "-framerate", f"{source_fps:.6f}",
             "-i", "-",
             "-an",
-            "-r", str(self._video_config.fps),
+            "-r", str(target_fps),  # 输出帧率转换
             "-c:v", encoder,
             "-crf", str(self._video_config.quality),
         ]
@@ -147,9 +181,11 @@ class ScreencastRecorder:
         if fmt == "webm":
             args.extend(["-deadline", "good", "-cpu-used", "2", "-f", "webm"])
         else:
-            args.extend(["-preset", "slower", "-pix_fmt", "yuv420p", "-f", "mp4"])
+            args.extend(["-preset", "fast", "-pix_fmt", "yuv420p", "-f", "mp4"])
 
         args.append(str(self._output_path))
+
+        print(f"[ScreencastRecorder] 源帧率: {source_fps:.2f} FPS → 输出帧率: {target_fps:.0f} FPS")
 
         proc = await asyncio.create_subprocess_exec(
             *args,
@@ -167,3 +203,5 @@ class ScreencastRecorder:
 
         if proc.returncode != 0:
             raise RuntimeError(f"ffmpeg 编码失败:\n{stderr.decode()}")
+        else:
+            print(f"[ScreencastRecorder] FFmpeg 编码完成")
