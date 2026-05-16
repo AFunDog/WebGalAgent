@@ -170,8 +170,13 @@ class ScreencastRecorder:
 
         output_fps = int(self._video_config.fps)
         print(f"[ScreencastRecorder] 源帧率: {source_fps:.2f} FPS → 输出帧率: {output_fps} FPS")
+        print("[ScreencastRecorder] 开始 FFmpeg 编码 (minterpolate 运动补偿插帧)...")
+        encode_start = time.monotonic()
 
         await self._encode_from_dir(frames_dir, ext, source_fps, output_fps)
+
+        encode_elapsed = time.monotonic() - encode_start
+        print(f"[ScreencastRecorder] FFmpeg 编码完成，耗时 {encode_elapsed:.1f}s")
 
         # 清理临时帧目录
         if save_frames_dir:
@@ -208,7 +213,7 @@ class ScreencastRecorder:
             "-framerate", f"{source_fps:.6f}",
             "-i", str(frames_dir / f"frame_%08d.{ext}"),
             "-an",
-            "-r", str(output_fps),
+            "-vf", f"tmix=2:weights='1 1',fps={output_fps}",
             "-c:v", encoder,
             "-crf", str(self._video_config.quality),
         ]
@@ -229,4 +234,3 @@ class ScreencastRecorder:
 
         if proc.returncode != 0:
             raise RuntimeError(f"ffmpeg 编码失败:\n{stderr.decode()}")
-        print("[ScreencastRecorder] FFmpeg 编码完成")
