@@ -82,6 +82,16 @@
         </small>
       </div>
 
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>截图格式</label>
+          <select v-model="config.format" class="form-select">
+            <option value="jpeg">JPEG（有损，小文件）</option>
+            <option value="png">PNG（无损，画质最好）</option>
+          </select>
+        </div>
+      </div>
+
       <div class="form-group">
         <label>输出路径（可选）</label>
         <input
@@ -142,6 +152,14 @@
           <span class="result-label">文件大小:</span>
           <span>{{ result.file_size_mb.toFixed(2) }} MB</span>
         </div>
+        <div v-if="result.source_fps" class="result-row">
+          <span class="result-label">源帧率:</span>
+          <span>{{ result.source_fps.toFixed(2) }} FPS</span>
+        </div>
+        <div v-if="result.output_fps" class="result-row">
+          <span class="result-label">输出帧率:</span>
+          <span>{{ result.output_fps.toFixed(2) }} FPS</span>
+        </div>
       </div>
       <button v-if="result.success && result.output_path" class="btn" @click="openFile(result.output_path)">
         在资源管理器中打开
@@ -177,6 +195,7 @@ const config = reactive<{
   browser_type: string
   headless: boolean
   executable_path: string
+  format: 'jpeg' | 'png'
 }>({
   url: '',
   output_path: '',
@@ -186,6 +205,7 @@ const config = reactive<{
   browser_type: 'chromium',
   headless: false,
   executable_path: '',
+  format: 'jpeg',
 })
 
 async function startRecord() {
@@ -208,6 +228,7 @@ async function startRecord() {
       duration: config.duration,
       fps: config.fps,
       canvas_selector: config.canvas_selector,
+      format: config.format,
     }
     result.value = await api.startRecord(recordConfig)
   } catch (e) {
@@ -217,6 +238,8 @@ async function startRecord() {
       output_path: null,
       total_frames: 0,
       duration: 0,
+      source_fps: 0,
+      output_fps: 0,
       file_size_mb: 0,
     }
   } finally {

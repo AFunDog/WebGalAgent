@@ -35,6 +35,7 @@ class RecordConfigRequest(BaseModel):
     viewport_width: int = 1920
     viewport_height: int = 1080
     channel: str | None = None
+    format: str = "jpeg"
 
 
 class RecordResultResponse(BaseModel):
@@ -152,7 +153,10 @@ async def start_record(req: RecordConfigRequest, background_tasks: BackgroundTas
                 screencast_quality=90,
             )
 
-            result = await recorder.start(duration=req.duration)
+            result = await recorder.start(
+                duration=req.duration,
+                format=req.format,
+            )
 
             _recording_state["recording"] = False
             _recording_state["progress"] = 100.0

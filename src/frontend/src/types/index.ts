@@ -129,6 +129,8 @@ export interface RecordConfig {
   duration: number
   fps: number
   canvas_selector: string
+  format?: 'jpeg' | 'png'
+  channel?: string
 }
 
 export interface RecordResult {
@@ -137,5 +139,7 @@ export interface RecordResult {
   output_path: string | null
   total_frames: number
   duration: number
+  source_fps: number
+  output_fps: number
   file_size_mb: number
 }
