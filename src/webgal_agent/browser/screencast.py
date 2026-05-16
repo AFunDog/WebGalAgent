@@ -170,7 +170,7 @@ class ScreencastRecorder:
 
         output_fps = int(self._video_config.fps)
         print(f"[ScreencastRecorder] 源帧率: {source_fps:.2f} FPS → 输出帧率: {output_fps} FPS")
-        print("[ScreencastRecorder] 开始 FFmpeg 编码 (minterpolate 运动补偿插帧)...")
+        print("[ScreencastRecorder] 开始 FFmpeg 编码 (tmix 时间混合 + fps 输出)...")
         encode_start = time.monotonic()
 
         await self._encode_from_dir(frames_dir, ext, source_fps, output_fps)
@@ -224,6 +224,8 @@ class ScreencastRecorder:
             args.extend(["-preset", "ultrafast", "-pix_fmt", "yuv420p", "-f", "mp4"])
 
         args.append(str(self._output_path))
+
+        print(f"[ScreencastRecorder] ffmpeg {' '.join(args[1:])}")
 
         proc = await asyncio.create_subprocess_exec(
             *args,
