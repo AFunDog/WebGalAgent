@@ -88,6 +88,7 @@ async def demo_record(
     width: int = 1920,
     height: int = 1080,
     selector: str = "auto",
+    scene_path: str = "index.txt",
     browser_type: str = "msedge",
     headless: bool = False,
     screencast_quality: int = 90,
@@ -134,13 +135,14 @@ async def demo_record(
                 timeout=10000,
             )
             _log("changeScene 已就绪，调用...", json_mode=json_mode)
-            await page.evaluate("""
-                async () => {
-                    window.changeScene("发布/AI剧场/爱素补作业/15/Scene1.txt", 1);
+            await page.evaluate(
+                """async (path) => {
+                    window.changeScene(path, 1);
                     await new Promise(r => setTimeout(r, 500));
                     window.toggleAuto();
-                }
-            """)
+                }""",
+                scene_path,
+            )
             _log("changeScene 调用完成", json_mode=json_mode)
         except Exception as e:
             _log(f"警告: changeScene 调用失败: {e}", json_mode=json_mode)
@@ -226,6 +228,10 @@ def main() -> None:
         help="等待的目标元素 CSS 选择器；auto 会优先尝试 #root，再回退到 canvas",
     )
     parser.add_argument(
+        "--scene", default="index.txt", dest="scene_path",
+        help="调用 changeScene 时传入的场景路径",
+    )
+    parser.add_argument(
         "--browser",
         default="msedge",
         choices=["chromium", "firefox", "webkit", "msedge"],
@@ -280,6 +286,7 @@ def main() -> None:
                     width=args.width,
                     height=args.height,
                     selector=args.selector,
+                    scene_path=args.scene_path,
                     browser_type=args.browser,
                     headless=args.headless,
                     screencast_quality=args.screencast_quality,

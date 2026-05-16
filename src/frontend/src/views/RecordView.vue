@@ -24,6 +24,19 @@
       </div>
 
       <div class="form-group">
+        <label>场景路径 (changeScene)</label>
+        <input
+          v-model="config.scene_path"
+          type="text"
+          class="form-input"
+          placeholder="index.txt"
+        />
+        <small style="color:var(--text-muted);font-size:11px">
+          调用 window.changeScene(path, 1) 时传入的场景文件路径
+        </small>
+      </div>
+
+      <div class="form-group">
         <label>录制目标选择器</label>
         <input
           v-model="config.canvas_selector"
@@ -219,6 +232,7 @@ const config = reactive<{
   duration: number
   fps: number
   canvas_selector: string
+  scene_path: string
   browser_type: string
   headless: boolean
   executable_path: string
@@ -230,6 +244,7 @@ const config = reactive<{
   duration: 5.0,
   fps: 30,
   canvas_selector: 'div._MainStage_main_9enex_1',
+  scene_path: 'index.txt',
   browser_type: 'chromium',
   headless: false,
   executable_path: '',
@@ -248,6 +263,7 @@ onMounted(async () => {
     if (serverConfig.fps) config.fps = serverConfig.fps
     if (serverConfig.duration) config.duration = serverConfig.duration
     if (serverConfig.canvas_selector) config.canvas_selector = serverConfig.canvas_selector
+    if (serverConfig.scene_path) config.scene_path = serverConfig.scene_path
     if (serverConfig.browser_type) config.browser_type = serverConfig.browser_type
     if (serverConfig.headless !== undefined) config.headless = serverConfig.headless
   } catch (e) {
@@ -270,6 +286,7 @@ async function startRecord() {
       duration: config.duration,
       fps: config.fps,
       canvas_selector: config.canvas_selector,
+      scene_path: config.scene_path,
       format: config.format,
       quality: config.quality,
     }

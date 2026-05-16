@@ -53,6 +53,7 @@ class RecordConfigRequest(BaseModel):
     duration: float = 5.0
     fps: float = 30.0
     canvas_selector: str = "auto"
+    scene_path: str = "index.txt"
     browser_type: str = "msedge"
     headless: bool = False
     viewport_width: int = 1920
@@ -97,6 +98,7 @@ def _build_cli_args(req: RecordConfigRequest, output_path: str) -> list[str]:
         "--width", str(req.viewport_width),
         "--height", str(req.viewport_height),
         "--selector", req.canvas_selector,
+        "--scene", req.scene_path,
         "--browser", req.browser_type,
         "--screencast-quality", str(req.quality),
         "--format", req.format,
@@ -230,6 +232,7 @@ async def get_record_config() -> dict:
         "fps": defaults.get("fps", 30),
         "duration": defaults.get("duration", 5.0),
         "canvas_selector": defaults.get("canvas_selector", "auto"),
+        "scene_path": defaults.get("scene_path", "index.txt"),
         "browser_type": defaults.get("browser_type", "msedge"),
         "headless": defaults.get("headless", False),
         "viewport_width": defaults.get("viewport_width", 1920),

@@ -15,6 +15,9 @@ fps: 60
 # 默认录制时长（秒）
 duration: 20.0
 
+# changeScene 默认场景路径
+scene_path: "index.txt"
+
 # 默认目标选择器
 canvas_selector: "div._MainStage_main_9enex_1"
 
