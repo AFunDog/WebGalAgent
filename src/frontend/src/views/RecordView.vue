@@ -42,7 +42,7 @@
           v-model="config.stop_condition"
           type="text"
           class="form-input"
-          placeholder="window.sceneManager?.sceneData?.currentScene?.sceneUrl === './game/scene/start.txt'"
+          placeholder="window.__webgal?.sceneManager?.sceneData?.currentScene?.sceneUrl === './game/scene/start.txt'"
         />
         <small style="color:var(--text-muted);font-size:11px">
           录制期间每 0.5 秒在页面求值，返回 truthy 时提前终止录制

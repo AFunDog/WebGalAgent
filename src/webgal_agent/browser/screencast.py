@@ -125,18 +125,22 @@ class ScreencastRecorder:
 
         await cdp.send("Page.startScreencast", screencast_opts)
 
-        # 并发等待：最大时长 vs 停止条件，谁先完成就停止
-        page = await self._client.get_page(context_id)
-        tasks: list[asyncio.Task] = []
-        if duration > 0:
-            tasks.append(asyncio.create_task(asyncio.sleep(duration)))
-        if stop_condition:
-            tasks.append(asyncio.create_task(
-                page.wait_for_function(stop_condition, timeout=(duration * 1000) if duration > 0 else None)
-            ))
-        if not tasks:
-            raise RuntimeError("没有可用的等待任务")
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        url = await page.evaluate("window.__webgal?.sceneManager?.sceneData?.currentScene?.sceneUrl")
+        print(f"[ScreencastRecorder] 当前 sceneUrl: {url}")
+
+        # 并发等待：最大时长 vs 停止条件
+        pending: set[asyncio.Task] = set()
+        if duration > 0 and not stop_condition:
+            await asyncio.sleep(duration)
+        elif duration > 0 and stop_condition:
+            t_sleep = asyncio.create_task(asyncio.sleep(duration))
+            t_stop = asyncio.create_task(
+                page.wait_for_function(stop_condition, timeout=duration * 1000)
+            )
+            _, pending = await asyncio.wait([t_sleep, t_stop], return_when=asyncio.FIRST_COMPLETED)
+        elif duration <= 0 and stop_condition:
+            await asyncio.sleep(1.0)
+            await page.wait_for_function(stop_condition)
         for t in pending:
             t.cancel()
 
@@ -145,6 +149,17 @@ class ScreencastRecorder:
         await asyncio.sleep(0.1)
 
         if not frames:
+            # 停止条件立即触发导致 0 帧：返回空结果而非报错
+            if stop_condition:
+                return RecordingResult(
+                    output_path=self._output_path,
+                    total_frames=0,
+                    duration=0,
+                    actual_fps=0,
+                    file_size_mb=0,
+                    source_fps=0,
+                    output_fps=self._video_config.fps,
+                )
             raise RuntimeError("Screencast 未捕获到任何帧")
 
         # 保存原始帧用于调试
@@ -154,7 +169,9 @@ class ScreencastRecorder:
         # 统计帧信息
         total_frames = len(frames)
         actual_duration = frames[-1][0] - frames[0][0] if total_frames > 1 else duration
-        source_fps = total_frames / actual_duration if actual_duration > 0 else total_frames / duration
+        source_fps = (
+            total_frames / actual_duration if actual_duration > 0 else total_frames / duration
+        )
 
         print(f"[ScreencastRecorder] 捕获帧数: {total_frames}")
         print(f"[ScreencastRecorder] 截图格式: {format.upper()}")
@@ -205,14 +222,21 @@ class ScreencastRecorder:
         # 构建 ffmpeg 命令
         # 使用 -framerate 指定输入帧率，使用 -r 转换为目标帧率
         args = [
-            ffmpeg, "-y",
-            "-f", input_fmt,
-            "-framerate", f"{source_fps:.6f}",
-            "-i", "-",
+            ffmpeg,
+            "-y",
+            "-f",
+            input_fmt,
+            "-framerate",
+            f"{source_fps:.6f}",
+            "-i",
+            "-",
             "-an",
-            "-r", str(target_fps),  # 输出帧率转换
-            "-c:v", encoder,
-            "-crf", str(self._video_config.quality),
+            "-r",
+            str(target_fps),  # 输出帧率转换
+            "-c:v",
+            encoder,
+            "-crf",
+            str(self._video_config.quality),
         ]
 
         if fmt == "webm":

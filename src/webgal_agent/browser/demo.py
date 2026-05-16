@@ -121,7 +121,7 @@ async def demo_record(
             inject_code="""
             window.changeScene = gCe;
             window.toggleAuto = wU;
-            window.sceneManager = L.sceneManager;
+            window.__webgal = L;
             """,
         )
 
@@ -136,14 +136,14 @@ async def demo_record(
         page = await client.get_page()
         try:
             await page.wait_for_function(
-                """() => 
-                typeof window.changeScene === 'function' && 
+                """() =>
+                typeof window.changeScene === 'function' &&
                 typeof window.toggleAuto === 'function' &&
-                typeof window.sceneManager === 'object'
+                typeof window.__webgal === 'object'
                 """,
                 timeout=10000,
             )
-            _log("changeScene 已就绪，调用...", json_mode=json_mode)
+            _log(f"changeScene 已就绪，调用 changeScene(\"{scene_path}\", 1)...", json_mode=json_mode)
             await page.evaluate(
                 """async (path) => {
                     window.changeScene(path, 1);
