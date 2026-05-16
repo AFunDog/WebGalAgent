@@ -49,24 +49,27 @@ JPEG 95 和 80 肉眼差别很小，但编码/传输/解码开销大很多。
 
 ## 修复方案
 
-### 方案 1：用实际帧率作为输出帧率（最关键）
+### 方案 1：用实际帧率作为输出帧率 ✅ 已实现
 
 `output_fps` 不应强制 60，而是用实际录到的帧率：
 
 ```python
-output_fps = round(actual_fps)  # 如 48
+output_fps = int(round(source_fps))  # 如 48
 ```
 
-视频时长立刻就正常了。
+已实现在 `screencast.py` 的 `start()` 方法中。
 
-### 方案 2：先存帧再编码（推荐）
+### 方案 2：先存帧再编码 ✅ 已实现
 
+录制阶段帧直接 `write_bytes` 到临时目录（`tempfile.mkdtemp`），零编码开销。录制结束后用 ffmpeg 批量编码（`_encode_from_dir`）。
+
+流程：
 ```text
-录制阶段: 只保存 JPEG 帧到磁盘
-结束后: 再 ffmpeg 批量编码
+录制时: CDP 帧 → Base64 解码 → 写磁盘 (frame_00000001.jpg)
+结束后: ffmpeg -framerate <fps> -i frame_%08d.jpg -r <output_fps> ...
 ```
 
-消除实时编码对 CDP 录制的反向压力。
+已实现在 `screencast.py` 中，替代了旧的实时管道编码（`_encode` 方法已删除）。
 
 ### 方案 3：降低质量参数
 
@@ -74,13 +77,9 @@ output_fps = round(actual_fps)  # 如 48
 --screencast-quality 80  # 95 → 80，肉眼无差，性能提升明显
 ```
 
-### 方案 4：ffmpeg 用 ultrafast preset
+### 方案 4：ffmpeg 用 ultrafast preset ✅ 已实现
 
-```bash
--preset ultrafast -crf 18
-```
-
-速度几倍提升。
+当前默认 `-preset ultrafast`（mp4）/ `-deadline good -cpu-used 2`（webm）。
 
 ### 方案 5：降低目标帧率
 
@@ -97,6 +96,8 @@ WebGAL 不是高动态内容，30fps 足够：
 ```python
 timestamp = now - start_time
 ```
+
+> 已通过方案 1+2 间接解决：帧保存时不分配时间戳，ffmpeg 按 `-framerate <source_fps>` 统一分配 PTS。
 
 ### 方案 7：不用 CDP Screencast（如果真的需要稳定 60fps）
 
