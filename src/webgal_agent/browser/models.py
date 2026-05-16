@@ -97,7 +97,7 @@ class VideoConfig(BaseModel):
     output_path: Path | str
     fps: float = 30.0
     codec: Literal["webm", "mp4v", "avc1", "XVID", "MJPG", "libx264"] = "webm"
-    quality: int = 23
+    quality: int = 17
     width: int | None = None
     height: int | None = None
     max_width: int = 1920
@@ -113,3 +113,5 @@ class RecordingResult(BaseModel):
     actual_fps: float
     file_size_mb: float
     wall_time: float = 0.0
+    source_fps: float = 0.0
+    output_fps: float = 0.0

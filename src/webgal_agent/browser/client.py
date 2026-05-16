@@ -161,7 +161,8 @@ class BrowserClient:
         if not self._playwright:
             raise RuntimeError("BrowserClient 未初始化，请使用 async with 上下文管理器")
 
-        browser_engine = getattr(self._playwright, self._config.browser_type)
+        engine_name = "chromium" if self._config.browser_type == "msedge" else self._config.browser_type
+        browser_engine = getattr(self._playwright, engine_name)
 
         launch_kwargs: dict = {
             "headless": self._config.headless,

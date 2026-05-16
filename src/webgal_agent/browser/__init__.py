@@ -17,6 +17,7 @@ from webgal_agent.browser.models import (
 )
 from webgal_agent.browser.capture import CanvasCapture, CaptureStats, Frame, CaptureArtifact
 from webgal_agent.browser.recorder import VideoRecorder
+from webgal_agent.browser.screencast import ScreencastRecorder
 from webgal_agent.browser.tools import (
     NavigateTool,
     ClickTool,
@@ -39,6 +40,7 @@ __all__ = [
     "RecordingResult",
     "CanvasCapture",
     "VideoRecorder",
+    "ScreencastRecorder",
     "NavigateTool",
     "ClickTool",
     "ScreenshotTool",
