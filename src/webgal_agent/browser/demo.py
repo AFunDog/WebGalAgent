@@ -77,6 +77,7 @@ async def demo_record(
     screencast_quality: int = 90,
     no_record: bool = False,
     save_frames: str | None = None,
+    format: str = "jpeg",
 ) -> None:
     """演示：使用 CDP Screencast 从 compositor 直接拉帧 + ffmpeg 编码。"""
     config = DefaultBrowserConfig(
@@ -166,7 +167,7 @@ async def demo_record(
         recorder = ScreencastRecorder(
             client, video_cfg, screencast_quality=screencast_quality
         )
-        result = await recorder.start(duration=duration, save_frames_dir=save_frames)
+        result = await recorder.start(duration=duration, format=format, save_frames_dir=save_frames)
 
         print("录制完成!")
         print(f"  输出路径: {result.output_path}")
@@ -205,7 +206,13 @@ def main() -> None:
     parser.add_argument(
         "--save-frames",
         default=None,
-        help="保存原始 JPEG 帧到指定目录（用于调试）",
+        help="保存原始帧到指定目录（用于调试）",
+    )
+    parser.add_argument(
+        "--format",
+        default="jpeg",
+        choices=["jpeg", "png"],
+        help="截图格式：jpeg（有损，小文件）或 png（无损，画质最好）",
     )
     parser.add_argument(
         "--executable",
@@ -241,6 +248,7 @@ def main() -> None:
                     screencast_quality=args.screencast_quality,
                     no_record=args.no_record,
                     save_frames=args.save_frames,
+                    format=args.format,
                 )
             )
 

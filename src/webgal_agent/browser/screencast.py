@@ -1,6 +1,6 @@
 """CDP Screencast 录制器：从 Chromium compositor 直接拉帧，绕过 MediaRecorder 帧率限制。
 
-通过 Page.startScreencast 从浏览器 compositor 实时拉取 JPEG 帧，
+通过 Page.startScreencast 从浏览器 compositor 实时拉取帧，
 再通过管道喂给 ffmpeg 编码为视频文件。帧率不受 Playwright 内置
 MediaRecorder 的 25fps 限制，可达到显示器刷新率。
 """
@@ -35,7 +35,11 @@ class ScreencastRecorder:
     """CDP Screencast 录制器。
 
     通过 Chrome DevTools Protocol 的 Page.startScreencast 从 Chromium
-    compositor 直接拉取 JPEG 帧，再通过管道喂给 ffmpeg 编码为视频。
+    compositor 直接拉取帧，再通过管道喂给 ffmpeg 编码为视频。
+
+    支持的截图格式：
+    - "jpeg"：有损压缩，文件小，画质可调（quality 参数）
+    - "png"：无损压缩，画质最好，但文件更大
 
     与 VideoRecorder（基于 HeadlessExperimental.beginFrame）的区别：
     - 无需 chrome-headless-shell，普通 Chromium/Edge 即可
@@ -49,7 +53,10 @@ class ScreencastRecorder:
             await client.navigate("https://example.com")
 
             recorder = ScreencastRecorder(client, video_cfg)
-            result = await recorder.start(duration=5.0, save_frames_dir="data/temp/frames")
+            # PNG 无损录制（画质最好）
+            result = await recorder.start(duration=5.0, format="png")
+            # JPEG 高质量录制（文件更小）
+            result = await recorder.start(duration=5.0, format="jpeg", quality=95)
     """
 
     def __init__(
@@ -67,6 +74,7 @@ class ScreencastRecorder:
         self,
         duration: float,
         context_id: str = "default",
+        format: str = "jpeg",
         save_frames_dir: str | Path | None = None,
     ) -> RecordingResult:
         """开始录制，阻塞 duration 秒后停止并编码输出。
@@ -74,8 +82,12 @@ class ScreencastRecorder:
         Args:
             duration: 录制时长（秒）。
             context_id: 浏览器上下文 ID。
-            save_frames_dir: 如果设置，会将原始 JPEG 帧保存到该目录用于调试。
+            format: 截图格式，"jpeg"（有损，小文件）或 "png"（无损，画质最好）。
+            save_frames_dir: 如果设置，会将原始帧保存到该目录用于调试。
         """
+        if format not in ("jpeg", "png"):
+            raise ValueError(f"不支持的格式: {format}，支持 jpeg 和 png")
+
         page = await self._client.get_page(context_id)
         cdp = await self._client.create_cdp_session(context_id)
 
@@ -96,16 +108,17 @@ class ScreencastRecorder:
 
         cdp.on("Page.screencastFrame", on_frame)
 
-        await cdp.send(
-            "Page.startScreencast",
-            {
-                "format": "jpeg",
-                "quality": self._quality,
-                "maxWidth": viewport["width"],
-                "maxHeight": viewport["height"],
-                "everyNthFrame": 1,
-            },
-        )
+        # 启动 Screencast
+        screencast_opts: dict = {
+            "format": format,
+            "maxWidth": viewport["width"],
+            "maxHeight": viewport["height"],
+            "everyNthFrame": 1,
+        }
+        if format == "jpeg":
+            screencast_opts["quality"] = self._quality
+
+        await cdp.send("Page.startScreencast", screencast_opts)
 
         await asyncio.sleep(duration)
 
@@ -118,7 +131,7 @@ class ScreencastRecorder:
 
         # 保存原始帧用于调试
         if save_frames_dir:
-            await self._save_frames(frames, Path(save_frames_dir))
+            await self._save_frames(frames, Path(save_frames_dir), format)
 
         # 统计帧信息
         total_frames = len(frames)
@@ -126,13 +139,14 @@ class ScreencastRecorder:
         source_fps = total_frames / actual_duration if actual_duration > 0 else total_frames / duration
 
         print(f"[ScreencastRecorder] 捕获帧数: {total_frames}")
+        print(f"[ScreencastRecorder] 截图格式: {format.upper()}")
         print(f"[ScreencastRecorder] 实际录制时长: {actual_duration:.2f}s (期望: {duration}s)")
         print(f"[ScreencastRecorder] 源帧率: {source_fps:.2f} FPS")
 
         # 提取纯帧数据用于编码
         frame_data = [f[1] for f in frames]
 
-        await self._encode(frame_data, source_fps)
+        await self._encode(frame_data, source_fps, format)
 
         file_size = self._output_path.stat().st_size / (1024 * 1024)
         return RecordingResult(
@@ -149,27 +163,32 @@ class ScreencastRecorder:
         self,
         frames: list[tuple[float, bytes]],
         output_dir: Path,
+        format: str,
     ) -> None:
-        """保存原始 JPEG 帧到目录用于调试。"""
+        """保存原始帧到目录用于调试。"""
         output_dir.mkdir(parents=True, exist_ok=True)
+        ext = "png" if format == "png" else "jpg"
         for i, (timestamp, data) in enumerate(frames):
-            frame_path = output_dir / f"frame_{i:06d}_{timestamp:.3f}s.jpg"
+            frame_path = output_dir / f"frame_{i:06d}_{timestamp:.3f}s.{ext}"
             frame_path.write_bytes(data)
         print(f"[ScreencastRecorder] 已保存 {len(frames)} 帧到 {output_dir}")
 
-    async def _encode(self, frames: list[bytes], source_fps: float) -> None:
-        """将 JPEG 帧流式写入 ffmpeg stdin 编码为视频。"""
+    async def _encode(self, frames: list[bytes], source_fps: float, format: str) -> None:
+        """将帧流式写入 ffmpeg stdin 编码为视频。"""
         ffmpeg = _find_ffmpeg()
         fmt, encoder = _codec_from_ext(self._output_path)
         target_fps = self._video_config.fps
 
         self._output_path.parent.mkdir(parents=True, exist_ok=True)
 
+        # 根据输入格式选择 ffmpeg 输入格式
+        input_fmt = "png_pipe" if format == "png" else "mjpeg"
+
         # 构建 ffmpeg 命令
         # 使用 -framerate 指定输入帧率，使用 -r 转换为目标帧率
         args = [
             ffmpeg, "-y",
-            "-f", "image2pipe",
+            "-f", input_fmt,
             "-framerate", f"{source_fps:.6f}",
             "-i", "-",
             "-an",
