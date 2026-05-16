@@ -10,8 +10,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import shutil
-import tempfile
 import time
+import uuid
 from pathlib import Path
 
 from webgal_agent.browser.models import RecordingResult, VideoConfig
@@ -92,9 +92,10 @@ class ScreencastRecorder:
         if not viewport:
             raise RuntimeError("无法获取页面 viewport 尺寸")
 
-        # 创建临时帧目录
+        # 创建帧目录（项目 data/temp 下）
         ext = "png" if format == "png" else "jpg"
-        frames_dir = Path(tempfile.mkdtemp(prefix="webgal_screencast_"))
+        frames_dir = Path("data/temp") / f"webgal_screencast_{uuid.uuid4().hex[:8]}"
+        frames_dir.mkdir(parents=True, exist_ok=True)
         frame_index = 0
         start_time = time.monotonic()
 
@@ -123,17 +124,22 @@ class ScreencastRecorder:
 
         # 并发等待：最大时长 vs 停止条件
         pending: set[asyncio.Task] = set()
-        if duration > 0 and not stop_condition:
-            await asyncio.sleep(duration)
-        elif duration > 0 and stop_condition:
-            t_sleep = asyncio.create_task(asyncio.sleep(duration))
-            t_stop = asyncio.create_task(
-                page.wait_for_function(stop_condition, timeout=duration * 1000)
-            )
-            _, pending = await asyncio.wait([t_sleep, t_stop], return_when=asyncio.FIRST_COMPLETED)
-        elif duration <= 0 and stop_condition:
-            await asyncio.sleep(1.0)
-            await page.wait_for_function(stop_condition, timeout=0)
+        record_error: str | None = None
+        try:
+            if duration > 0 and not stop_condition:
+                await asyncio.sleep(duration)
+            elif duration > 0 and stop_condition:
+                t_sleep = asyncio.create_task(asyncio.sleep(duration))
+                t_stop = asyncio.create_task(
+                    page.wait_for_function(stop_condition, timeout=duration * 1000)
+                )
+                _, pending = await asyncio.wait([t_sleep, t_stop], return_when=asyncio.FIRST_COMPLETED)
+            elif duration <= 0 and stop_condition:
+                await asyncio.sleep(1.0)
+                await page.wait_for_function(stop_condition, timeout=0)
+        except Exception as e:
+            record_error = str(e)
+            print(f"[ScreencastRecorder] 录制过程异常: {e}")
         for t in pending:
             t.cancel()
 
@@ -145,6 +151,13 @@ class ScreencastRecorder:
         await asyncio.sleep(0.1)
 
         total_frames = frame_index
+        actual_duration = time.monotonic() - start_time
+        source_fps = total_frames / actual_duration if actual_duration > 0 else 0
+
+        print(f"[ScreencastRecorder] 捕获帧数: {total_frames}")
+        print(f"[ScreencastRecorder] 截图格式: {format.upper()}")
+        print(f"[ScreencastRecorder] 实际录制时长: {actual_duration:.2f}s")
+        print(f"[ScreencastRecorder] 源帧率: {source_fps:.2f} FPS")
 
         if total_frames == 0:
             shutil.rmtree(frames_dir, ignore_errors=True)
@@ -160,20 +173,17 @@ class ScreencastRecorder:
                 )
             raise RuntimeError("Screencast 未捕获到任何帧")
 
-        actual_duration = time.monotonic() - start_time
-        source_fps = total_frames / actual_duration if actual_duration > 0 else 0
-
-        print(f"[ScreencastRecorder] 捕获帧数: {total_frames}")
-        print(f"[ScreencastRecorder] 截图格式: {format.upper()}")
-        print(f"[ScreencastRecorder] 实际录制时长: {actual_duration:.2f}s")
-        print(f"[ScreencastRecorder] 源帧率: {source_fps:.2f} FPS")
-
         output_fps = int(self._video_config.fps)
         print(f"[ScreencastRecorder] 源帧率: {source_fps:.2f} FPS → 输出帧率: {output_fps} FPS")
         print("[ScreencastRecorder] 开始 FFmpeg 编码 (tmix 时间混合 + fps 输出)...")
         encode_start = time.monotonic()
 
-        await self._encode_from_dir(frames_dir, ext, source_fps, output_fps)
+        encode_error: str | None = None
+        try:
+            await self._encode_from_dir(frames_dir, ext, source_fps, output_fps)
+        except Exception as e:
+            encode_error = str(e)
+            print(f"[ScreencastRecorder] FFmpeg 编码失败: {e}")
 
         encode_elapsed = time.monotonic() - encode_start
         print(f"[ScreencastRecorder] FFmpeg 编码完成，耗时 {encode_elapsed:.1f}s")
@@ -188,7 +198,9 @@ class ScreencastRecorder:
         else:
             shutil.rmtree(frames_dir, ignore_errors=True)
 
-        file_size = self._output_path.stat().st_size / (1024 * 1024)
+        output_exists = self._output_path.exists()
+        file_size = self._output_path.stat().st_size / (1024 * 1024) if output_exists else 0
+
         return RecordingResult(
             output_path=self._output_path,
             total_frames=total_frames,
