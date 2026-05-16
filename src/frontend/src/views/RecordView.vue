@@ -193,6 +193,10 @@
         <div class="progress-fill" :style="{ width: progress + '%' }"></div>
       </div>
       <p style="text-align:center;margin-top:8px">{{ progress.toFixed(0) }}%</p>
+      <!-- 实时日志 -->
+      <div v-if="logs.length" class="record-log">
+        <div v-for="(line, i) in logs" :key="i" class="log-line">{{ line }}</div>
+      </div>
     </div>
   </div>
 </template>
@@ -205,6 +209,7 @@ import type { RecordConfig, RecordResult } from '../types'
 const recording = ref(false)
 const progress = ref(0)
 const result = ref<RecordResult | null>(null)
+const logs = ref<string[]>([])
 const configLoaded = ref(false)
 const configError = ref('')
 
@@ -237,6 +242,7 @@ onMounted(async () => {
   try {
     const serverConfig = await api.getRecordConfig()
     configLoaded.value = true
+    if (serverConfig.url) config.url = serverConfig.url
     if (serverConfig.format) config.format = serverConfig.format
     if (serverConfig.quality) config.quality = serverConfig.quality
     if (serverConfig.fps) config.fps = serverConfig.fps
@@ -255,6 +261,7 @@ async function startRecord() {
   recording.value = true
   progress.value = 0
   result.value = null
+  logs.value = []
 
   try {
     const recordConfig: RecordConfig = {
@@ -277,12 +284,17 @@ async function startRecord() {
 
     // 轮询状态直到完成
     let pollCount = 0
-    const maxPolls = Math.ceil(config.duration * 2) + 30  // 2x duration + 30s buffer
+    const maxPolls = Math.ceil(config.duration * 2) + 30
     while (pollCount < maxPolls) {
       await new Promise(r => setTimeout(r, 1000))
       pollCount++
       const status = await api.getRecordStatus()
       progress.value = Math.min(status.progress || (pollCount / maxPolls * 100), 100)
+
+      // 实时更新日志
+      if (status.logs) {
+        logs.value = status.logs
+      }
 
       if (!status.recording) {
         result.value = {
@@ -366,5 +378,21 @@ code {
   height: 100%;
   background: var(--primary-hover);
   transition: width 0.3s;
+}
+.record-log {
+  max-height: 300px;
+  overflow-y: auto;
+  background: #0d1117;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 12px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.log-line {
+  color: #8b949e;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>

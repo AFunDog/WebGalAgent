@@ -10,6 +10,7 @@ import asyncio
 import json
 import subprocess
 import sys
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -75,7 +76,14 @@ _recording_state: dict[str, Any] = {
     "recording": False,
     "proc": None,
     "progress": 0.0,
+    "logs": [],
 }
+
+
+def _read_stderr(proc: subprocess.Popen, logs: list[str]) -> None:
+    """在后台线程中逐行读取子进程 stderr，追加到共享日志列表。"""
+    for line in proc.stderr:
+        logs.append(line.rstrip())
 
 
 def _build_cli_args(req: RecordConfigRequest, output_path: str) -> list[str]:
@@ -133,6 +141,12 @@ async def start_record(req: RecordConfigRequest) -> RecordResultResponse:
     _recording_state["recording"] = True
     _recording_state["proc"] = proc
     _recording_state["progress"] = 0.0
+    _recording_state["logs"] = []
+
+    # 后台线程：实时读取 stderr 日志
+    t = threading.Thread(target=_read_stderr, args=(proc, _recording_state["logs"]), daemon=True)
+    t.start()
+    _recording_state["stderr_thread"] = t
 
     # 异步等待子进程完成
     asyncio.ensure_future(_wait_recording(proc))
@@ -190,17 +204,19 @@ async def stop_record() -> dict:
 @router.get("/status")
 async def get_record_status() -> dict:
     """获取录制状态和结果。"""
+    logs = _recording_state.get("logs", [])
     proc = _recording_state.get("proc")
     if proc and proc.poll() is None:
         return {
             "recording": True,
             "progress": _recording_state.get("progress", 0),
             "message": "正在录制中...",
+            "logs": logs,
         }
     last = _recording_state.get("last_result")
     if last:
-        return {"recording": False, "progress": 100.0, **last}
-    return {"recording": False, "progress": 0}
+        return {"recording": False, "progress": 100.0, "logs": logs, **last}
+    return {"recording": False, "progress": 0, "logs": logs}
 
 
 @router.get("/config")
@@ -208,6 +224,7 @@ async def get_record_config() -> dict:
     """获取录制配置默认值。"""
     defaults = _record_defaults()
     return {
+        "url": defaults.get("url", ""),
         "format": defaults.get("format", "jpeg"),
         "quality": defaults.get("quality", 90),
         "fps": defaults.get("fps", 30),

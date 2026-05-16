@@ -122,6 +122,7 @@ export const api = {
     request<{
       recording: boolean
       progress?: number
+      logs?: string[]
       success?: boolean
       message?: string
       output_path?: string | null

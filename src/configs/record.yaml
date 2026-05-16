@@ -1,5 +1,8 @@
 # 浏览器录制配置
 
+# 默认目标 URL
+url: "http://localhost:3001/games/MyGO3.0.0/"
+
 # 截图格式：jpeg（有损，小文件）或 png（无损，画质最好）
 format: jpeg
 
