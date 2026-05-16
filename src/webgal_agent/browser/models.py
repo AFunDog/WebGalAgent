@@ -82,15 +82,6 @@ class BrowserConfig(BaseModel):
     ignore_https_errors: bool = True
 
 
-class CaptureConfig(BaseModel):
-    """目标元素帧捕获配置。"""
-
-    fps: float = 30.0
-    canvas_selector: str = "canvas"
-    max_duration: float | None = None
-    max_frames: int | None = None
-
-
 class VideoConfig(BaseModel):
     """视频录制配置。"""
 

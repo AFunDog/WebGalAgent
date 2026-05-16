@@ -1,6 +1,6 @@
 """浏览器自动化模块。
 
-提供基于 Playwright 的浏览器自动化能力，支持页面导航、元素操作、截图等。
+提供基于 Playwright 的浏览器自动化能力，支持页面导航、元素操作、截图和视频录制。
 """
 
 from webgal_agent.browser.client import BrowserClient, DefaultBrowserConfig, create_browser
@@ -11,12 +11,9 @@ from webgal_agent.browser.models import (
     Selector,
     SelectorType,
     BrowserConfig,
-    CaptureConfig,
     VideoConfig,
     RecordingResult,
 )
-from webgal_agent.browser.capture import CanvasCapture, CaptureStats, Frame, CaptureArtifact
-from webgal_agent.browser.recorder import VideoRecorder
 from webgal_agent.browser.screencast import ScreencastRecorder
 from webgal_agent.browser.tools import (
     NavigateTool,
@@ -30,16 +27,15 @@ from webgal_agent.browser.tools import (
 __all__ = [
     "BrowserClient",
     "DefaultBrowserConfig",
+    "create_browser",
     "PageState",
     "ElementInfo",
     "Selector",
     "SelectorType",
     "BrowserConfig",
-    "CaptureConfig",
+    "BrowserType",
     "VideoConfig",
     "RecordingResult",
-    "CanvasCapture",
-    "VideoRecorder",
     "ScreencastRecorder",
     "NavigateTool",
     "ClickTool",

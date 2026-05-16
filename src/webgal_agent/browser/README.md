@@ -1,6 +1,6 @@
 # browser 模块
 
-基于 Playwright 的浏览器自动化与确定性视频录制模块，为 WebGal Agent 提供页面操控、脚本注入和逐帧录制能力。
+基于 Playwright 的浏览器自动化与视频录制模块，为 WebGal Agent 提供页面操控、脚本注入和视频录制能力。
 
 ## 架构概览
 
@@ -9,11 +9,9 @@ browser/
 ├── __init__.py       # 模块导出
 ├── client.py         # BrowserClient — 浏览器生命周期与页面操作
 ├── models.py         # Pydantic 数据模型（配置、状态、结果）
-├── recorder.py       # VideoRecorder — CDP + FFmpeg 逐帧确定性录制
-├── capture.py        # CanvasCapture — CCapture.js 方案（旧版，保留兼容）
+├── screencast.py     # ScreencastRecorder — CDP Screencast + FFmpeg 录制
 ├── tools.py          # Agent 工具封装（navigate/click/fill/screenshot/get_text/wait_for）
-├── demo.py           # 命令行演示入口
-└── assets/           # CCapture.js / html2canvas 静态资源
+└── demo.py           # 命令行演示入口
 ```
 
 ### 核心流程
@@ -22,20 +20,17 @@ browser/
 BrowserClient
   │
   ├── add_script_injection()   ← 页面加载前拦截 JS，注入自定义代码
-  ├── navigate()                ← 导航到目标页面
-  ├── wait_for() / click() ...  ← 页面交互
+  ├── new_context()            ← 创建浏览器上下文
+  ├── navigate()               ← 导航到目标页面
+  ├── wait_for() / click() ... ← 页面交互
   │
-  └── create_cdp_session()      ← 建立 CDP 连接
+  └── ScreencastRecorder
         │
-        ▼
-VideoRecorder
-  │
-  ├── Emulation.setVirtualTimePolicy("pause")   ← 冻结虚拟时间
-  ├── HeadlessExperimental.beginFrame(...)       ← 逐帧推进 + 截图
-  │       │
-  │       └── base64 PNG → FFmpeg stdin          ← 管道编码
-  │
-  └── 输出 MP4 (libx264 / CRF 18)
+        ├── Page.startScreencast()              ← 启动 CDP Screencast
+        │     │
+        │     └── JPEG 帧 → FFmpeg stdin        ← 管道编码
+        │
+        └── 输出 MP4 (libx264 / H.264)
 ```
 
 ## 关键组件
@@ -46,7 +41,7 @@ Playwright 浏览器的异步封装，核心能力：
 
 | 方法 | 说明 |
 |---|---|
-| `new_context()` | 创建浏览器上下文，支持 `executable_path` 指定自定义浏览器 |
+| `new_context()` | 创建浏览器上下文，支持 `record_video_dir` 录制 |
 | `add_script_injection()` | 拦截指定 URL 的响应，在 JS 文件末尾注入代码 |
 | `create_cdp_session()` | 创建 CDP Session 用于底层协议操作 |
 | `navigate()` | 导航到 URL，支持 `wait_until` 参数 |
@@ -54,28 +49,18 @@ Playwright 浏览器的异步封装，核心能力：
 | `screenshot()` | 页面截图 |
 | `wait_for()` | 等待元素状态变化 |
 
-**虚拟时间控制**（用于 JS 侧确定性渲染）：
+### 2. ScreencastRecorder (`screencast.py`)
 
-| 方法 | 说明 |
-|---|---|
-| `enable_time_control(fps)` | Hook `performance.now`/`Date.now`/`requestAnimationFrame` |
-| `prepare_time_control(fps)` | 通过 `add_init_script` 在导航前注入，确保先于页面脚本执行 |
-| `advance_frame(count)` | 推进虚拟时间 N 帧 |
-| `disable_time_control()` | 恢复原生时间函数 |
+**CDP Screencast + FFmpeg** 录制方案：
 
-### 2. VideoRecorder (`recorder.py`)
-
-**CDP + FFmpeg** 逐帧确定性录制方案：
-
-1. 通过 `Emulation.setVirtualTimePolicy("pause")` 冻结浏览器虚拟时间
-2. 循环调用 `HeadlessExperimental.beginFrame`，指定 `frameTimeTicks` 和 `interval` 推进时间并获取截图
-3. 解码 base64 PNG 数据，通过 stdin 管道喂给 FFmpeg 编码为 MP4
-4. 无新帧时复用上一帧（`last_frame` fallback）
+1. 通过 `Page.startScreencast` 从浏览器 compositor 拉取 JPEG 帧
+2. 帧通过管道喂给 FFmpeg 编码为 MP4
+3. 支持自定义输出帧率和质量
 
 特点：
-- **确定性**：每帧的虚拟时间精确控制，不受系统负载影响
-- **高效**：无需等待真实时间，录制速度取决于 CPU（通常数倍于实时）
-- **高质量**：libx264 + CRF 18 + slow preset
+- **高帧率**：帧率由 compositor 决定，可达显示器刷新率
+- **兼容性**：普通 Chromium/Edge 即可，无需特殊 Chrome
+- **高质量**：libx264 + CRF 可调
 
 ### 3. 脚本拦截注入 (`add_script_injection`)
 
@@ -102,9 +87,6 @@ playwright install chromium
 
 # 2. 确保 FFmpeg 在系统 PATH 中
 ffmpeg -version
-
-# 3. （可选）下载 chrome-headless-shell 用于确定性录制
-#    https://googlechromelabs.github.io/chrome-for-testing/
 ```
 
 ### 命令行演示
@@ -113,16 +95,16 @@ ffmpeg -version
 # 导航截图模式
 python -m webgal_agent.browser.demo navigate --url https://example.com
 
-# 录制模式（默认 chromium）
+# 录制模式（默认 msedge）
 python -m webgal_agent.browser.demo record \
     --url http://localhost:3000 \
     --duration 10 \
-    --fps 30
+    --fps 60
 
-# 使用 chrome-headless-shell（推荐用于确定性录制）
+# 使用 chromium
 python -m webgal_agent.browser.demo record \
     --url http://localhost:3000 \
-    --executable "D:\Program\chrome-headless-shell-win64\chrome-headless-shell.exe" \
+    --browser chromium \
     --headless
 
 # 仅观察页面，不录制
@@ -131,10 +113,10 @@ python -m webgal_agent.browser.demo record \
     --no-record \
     --duration 5
 
-# 自定义选择器
+# 自定义分辨率
 python -m webgal_agent.browser.demo record \
     --url http://localhost:3000 \
-    --selector "div._MainStage_main_9enex_1"
+    --width 1280 --height 720
 ```
 
 ### 命令行参数
@@ -145,12 +127,14 @@ python -m webgal_agent.browser.demo record \
 | `--url` | `https://example.com` | 目标 URL |
 | `--output` | `data/temp/output.mp4` | 输出路径 |
 | `--duration` | `5.0` | 录制时长（秒） |
-| `--fps` | `30.0` | 帧率 |
-| `--selector` | `div._MainStage_main_9enex_1` | 录制目标 CSS 选择器，`auto` 自动检测 |
-| `--browser` | `chromium` | 浏览器引擎：chromium / firefox / webkit |
-| `--executable` | — | 自定义浏览器可执行文件路径 |
+| `--fps` | `60.0` | 输出帧率 |
+| `--width` | `1920` | 视口宽度 |
+| `--height` | `1080` | 视口高度 |
+| `--selector` | `auto` | 录制目标 CSS 选择器，`auto` 自动检测 |
+| `--browser` | `msedge` | 浏览器引擎：chromium / firefox / webkit / msedge |
 | `--headless` | `False` | 无头模式 |
 | `--no-record` | `False` | 跳过录制，仅等待观察 |
+| `--screencast-quality` | `90` | Screencast JPEG 质量 (0-100) |
 
 ### 编程接口
 
@@ -159,57 +143,44 @@ import asyncio
 from webgal_agent.browser import (
     BrowserClient,
     DefaultBrowserConfig,
-    VideoRecorder,
+    ScreencastRecorder,
     Selector,
     SelectorType,
 )
-from webgal_agent.browser.models import CaptureConfig, VideoConfig
+from webgal_agent.browser.models import VideoConfig
 
 
 async def main():
     config = DefaultBrowserConfig(
-        browser_type="chromium",
-        headless=True,
-        executable_path="D:/Program/chrome-headless-shell-win64/chrome-headless-shell.exe",
+        browser_type="msedge",
+        headless=False,
+        viewport_width=1920,
+        viewport_height=1080,
+        channel="msedge",
     )
 
     async with BrowserClient(config) as client:
-        # 1. 注入脚本（在导航前）
+        # 1. 创建上下文
+        await client.new_context(context_id="default")
+
+        # 2. 注入脚本（在导航前）
         await client.add_script_injection(
             url_pattern="**/index-e1b3c40e.js",
             inject_code="window.changeScene = gCe;\nwindow.toggleAuto = wU;",
         )
 
-        # 2. 导航
+        # 3. 导航
         await client.navigate("http://localhost:3000", wait_until="load")
 
-        # 3. 页面交互
-        page = await client.get_page()
-        await page.wait_for_function(
-            "() => typeof window.changeScene === 'function'",
-            timeout=10000,
-        )
-        await page.evaluate('() => window.changeScene("场景路径", 1)')
-
-        # 4. 创建 CDP Session + 录制
-        cdp = await client.create_cdp_session()
-
-        recorder = VideoRecorder(
-            cdp_session=cdp,
-            page=page,
-            video_config=VideoConfig(output_path="output.mp4", fps=30),
-            capture_config=CaptureConfig(
-                fps=30,
-                canvas_selector="div._MainStage_main_9enex_1",
-                max_duration=10.0,
-            ),
-        )
-        result = await recorder.start()
+        # 4. 录制
+        video_cfg = VideoConfig(output_path="output.mp4", fps=60)
+        recorder = ScreencastRecorder(client, video_cfg)
+        result = await recorder.start(duration=10.0)
 
         print(f"录制完成: {result.total_frames} 帧, "
-              f"视频 {result.duration:.1f}s, "
-              f"实际耗时 {result.wall_time:.1f}s, "
-              f"时间比 {result.duration / result.wall_time:.2f}x")
+              f"源帧率 {result.source_fps:.1f} FPS, "
+              f"输出帧率 {result.output_fps:.1f} FPS, "
+              f"文件大小 {result.file_size_mb:.2f} MB")
 
 
 asyncio.run(main())
@@ -237,23 +208,11 @@ navigate = NavigateTool(client)
 result = await navigate.execute(url="https://example.com")
 ```
 
-## 两种录制方案对比
-
-| | CDP + FFmpeg (`VideoRecorder`) | CCapture.js (`CanvasCapture`) |
-|---|---|---|
-| 时间控制 | CDP `Emulation.setVirtualTimePolicy` | JS Hook `performance.now`/`Date.now` |
-| 截图方式 | `HeadlessExperimental.beginFrame` | `canvas.toDataURL` / `html2canvas` |
-| 编码 | FFmpeg 管道 (libx264) | 浏览器端 WebM 编码 |
-| 确定性 | 高（引擎级控制） | 中（依赖 JS Hook 时序） |
-| 输出格式 | MP4 (H.264) | WebM |
-| 推荐场景 | 生产录制 | 旧版兼容 |
-
 ## 选择器自动检测
 
 `--selector auto` 模式按优先级检测可录制目标：
 
-1. `div._MainStage_main_9enex_1` — WebGal 主舞台
-2. `#root` — 通用根元素
-3. `canvas` — Canvas 元素
+1. `#root` — 通用根元素
+2. `canvas` — Canvas 元素
 
 首个可见元素将被选为录制目标。

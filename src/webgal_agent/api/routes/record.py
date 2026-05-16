@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import uuid
 from pathlib import Path
 from typing import Any
@@ -14,8 +13,7 @@ from pydantic import BaseModel
 from webgal_agent.browser import (
     BrowserClient,
     DefaultBrowserConfig,
-    VideoRecorder,
-    CaptureConfig,
+    ScreencastRecorder,
     VideoConfig,
     Selector,
     SelectorType,
@@ -30,11 +28,13 @@ class RecordConfigRequest(BaseModel):
     url: str
     output_path: str | None = None
     duration: float = 5.0
-    fps: float = 30.0
+    fps: float = 60.0
     canvas_selector: str = "div._MainStage_main_9enex_1"
     browser_type: str = "chromium"
     headless: bool = False
-    executable_path: str | None = None
+    viewport_width: int = 1920
+    viewport_height: int = 1080
+    channel: str | None = None
 
 
 class RecordResultResponse(BaseModel):
@@ -45,6 +45,8 @@ class RecordResultResponse(BaseModel):
     output_path: str | None = None
     total_frames: int = 0
     duration: float = 0.0
+    source_fps: float = 0.0
+    output_fps: float = 0.0
     file_size_mb: float = 0.0
 
 
@@ -84,31 +86,18 @@ async def start_record(req: RecordConfigRequest, background_tasks: BackgroundTas
     _recording_state["progress"] = 0.0
 
     try:
-        # 构建确定性录制所需的 Chrome 启动参数
-        deterministic_args: list[str] | None = None
-        if req.executable_path:
-            deterministic_args = [
-                "--run-all-compositor-stages-before-draw",
-                "--enable-begin-frame-control",
-                "--disable-threaded-animation",
-                "--disable-threaded-scrolling",
-                "--disable-frame-rate-limit",
-                "--disable-gpu-vsync",
-                "--disable-background-timer-throttling",
-                "--disable-renderer-backgrounding",
-                "--force-color-profile=srgb",
-            ]
-
         config = DefaultBrowserConfig(
             browser_type=req.browser_type,
             headless=req.headless,
-            viewport_width=1280,
-            viewport_height=720,
-            executable_path=req.executable_path,
-            launch_args=deterministic_args,
+            viewport_width=req.viewport_width,
+            viewport_height=req.viewport_height,
+            channel=req.channel,
         )
 
         async with BrowserClient(config) as client:
+            # 创建上下文
+            await client.new_context(context_id="default")
+
             # 拦截脚本注入
             await client.add_script_injection(
                 url_pattern="**/index-e1b3c40e.js",
@@ -151,31 +140,19 @@ async def start_record(req: RecordConfigRequest, background_tasks: BackgroundTas
 
             await asyncio.sleep(1)
 
-            # 创建 CDP Session
-            cdp = await client.create_cdp_session()
-            await client.prepare_time_control(fps=req.fps)
-
             # 配置录制
-            capture_cfg = CaptureConfig(
-                fps=req.fps,
-                canvas_selector=req.canvas_selector,
-                max_duration=req.duration,
-            )
             video_cfg = VideoConfig(
                 output_path=output_path,
                 fps=req.fps,
-                codec="libx264",
             )
 
-            recorder = VideoRecorder(
-                cdp,
-                page,
+            recorder = ScreencastRecorder(
+                client,
                 video_cfg,
-                capture_cfg,
-                advance_frame_fn=client.advance_frame,
+                screencast_quality=90,
             )
 
-            result = await recorder.start()
+            result = await recorder.start(duration=req.duration)
 
             _recording_state["recording"] = False
             _recording_state["progress"] = 100.0
@@ -186,6 +163,8 @@ async def start_record(req: RecordConfigRequest, background_tasks: BackgroundTas
                 output_path=str(result.output_path),
                 total_frames=result.total_frames,
                 duration=result.duration,
+                source_fps=result.source_fps,
+                output_fps=result.output_fps,
                 file_size_mb=result.file_size_mb,
             )
 
@@ -200,10 +179,6 @@ async def start_record(req: RecordConfigRequest, background_tasks: BackgroundTas
 @router.post("/stop")
 async def stop_record() -> dict:
     """停止录制。"""
-    # VideoRecorder.stop() 是同步方法，需要在事件循环中调用
-    recorder = _recording_state.get("recorder")
-    if recorder:
-        recorder.stop()
     _recording_state["recording"] = False
     return {"success": True, "message": "已停止录制"}
 
