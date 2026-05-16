@@ -140,7 +140,7 @@ class ScreencastRecorder:
             _, pending = await asyncio.wait([t_sleep, t_stop], return_when=asyncio.FIRST_COMPLETED)
         elif duration <= 0 and stop_condition:
             await asyncio.sleep(1.0)
-            await page.wait_for_function(stop_condition)
+            await page.wait_for_function(stop_condition,timeout=0)
         for t in pending:
             t.cancel()
 

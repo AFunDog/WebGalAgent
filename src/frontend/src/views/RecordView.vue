@@ -69,7 +69,7 @@
             v-model.number="config.duration"
             type="number"
             class="form-input"
-            min="1"
+            min="0"
             max="300"
             step="0.5"
           />
@@ -86,10 +86,30 @@
         </div>
       </div>
 
+      <div class="form-row">
+        <div class="form-group" style="flex:1">
+          <label>视口宽度</label>
+          <input
+            v-model.number="config.viewport_width"
+            type="number"
+            class="form-input"
+          />
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>视口高度</label>
+          <input
+            v-model.number="config.viewport_height"
+            type="number"
+            class="form-input"
+          />
+        </div>
+      </div>
+
       <div class="form-group">
         <label>浏览器类型</label>
         <select v-model="config.browser_type" class="form-select">
           <option value="chromium">Chromium</option>
+          <option value="msedge">Edge</option>
           <option value="firefox">Firefox</option>
           <option value="webkit">WebKit</option>
         </select>
@@ -180,7 +200,8 @@
       <div class="result-info">
         <div class="result-row">
           <span class="result-label">消息:</span>
-          <span>{{ result.message }}</span>
+          <pre v-if="!result.success" class="error-msg">{{ result.message }}</pre>
+          <span v-else>{{ result.message }}</span>
         </div>
         <div v-if="result.output_path" class="result-row">
           <span class="result-label">输出路径:</span>
@@ -218,7 +239,8 @@
       <div class="progress-bar">
         <div class="progress-fill" :style="{ width: progress + '%' }"></div>
       </div>
-      <p style="text-align:center;margin-top:8px">{{ progress.toFixed(0) }}%</p>
+      <p v-if="config.duration > 0" style="text-align:center;margin-top:8px">{{ progress.toFixed(0) }}%</p>
+      <p v-else style="text-align:center;margin-top:8px">已录制 {{ progress }} 秒</p>
       <!-- 实时日志 -->
       <div v-if="logs.length" class="record-log">
         <div v-for="(line, i) in logs" :key="i" class="log-line">{{ line }}</div>
@@ -247,6 +269,8 @@ const config = reactive<{
   canvas_selector: string
   scene_path: string
   stop_condition: string
+  viewport_width: number
+  viewport_height: number
   browser_type: string
   headless: boolean
   executable_path: string
@@ -260,7 +284,9 @@ const config = reactive<{
   canvas_selector: 'div._MainStage_main_9enex_1',
   scene_path: 'index.txt',
   stop_condition: '',
-  browser_type: 'chromium',
+  viewport_width: 1920,
+  viewport_height: 1080,
+  browser_type: 'msedge',
   headless: false,
   executable_path: '',
   format: 'jpeg',
@@ -282,6 +308,8 @@ onMounted(async () => {
     if (serverConfig.stop_condition) config.stop_condition = serverConfig.stop_condition
     if (serverConfig.browser_type) config.browser_type = serverConfig.browser_type
     if (serverConfig.headless !== undefined) config.headless = serverConfig.headless
+    if (serverConfig.viewport_width) config.viewport_width = serverConfig.viewport_width
+    if (serverConfig.viewport_height) config.viewport_height = serverConfig.viewport_height
   } catch (e) {
     configError.value = e instanceof Error ? e.message : String(e)
     console.error('Failed to load record config:', e)
@@ -304,6 +332,10 @@ async function startRecord() {
       canvas_selector: config.canvas_selector,
       scene_path: config.scene_path,
       stop_condition: config.stop_condition || undefined,
+      browser_type: config.browser_type,
+      headless: config.headless,
+      viewport_width: config.viewport_width,
+      viewport_height: config.viewport_height,
       format: config.format,
       quality: config.quality,
     }
@@ -318,14 +350,20 @@ async function startRecord() {
 
     // 轮询状态直到完成
     let pollCount = 0
-    const maxPolls = Math.ceil(config.duration * 2) + 30
+    // duration=0 时仅靠 stop_condition 退出，不限轮询次数
+    const maxPolls = config.duration > 0
+      ? Math.ceil(config.duration * 2) + 30
+      : Infinity
     while (pollCount < maxPolls) {
       await new Promise(r => setTimeout(r, 1000))
       pollCount++
       const status = await api.getRecordStatus()
-      progress.value = Math.min(status.progress || (pollCount / maxPolls * 100), 100)
+      progress.value = status.progress || 0
+      // 无时长限制时只显示 elapsed 秒数
+      if (config.duration <= 0) {
+        progress.value = pollCount
+      }
 
-      // 实时更新日志
       if (status.logs) {
         logs.value = status.logs
       }
@@ -428,5 +466,14 @@ code {
   color: #8b949e;
   white-space: pre-wrap;
   word-break: break-all;
+}
+.error-msg {
+  color: #ff6b6b;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  font-size: 13px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 </style>

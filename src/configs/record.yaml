@@ -22,7 +22,7 @@ scene_path: "index.txt"
 canvas_selector: "div._MainStage_main_9enex_1"
 
 # 默认浏览器类型：chromium, firefox, webkit
-browser_type: chromium
+browser_type: msedge
 
 # 是否默认使用无头模式
 headless: false

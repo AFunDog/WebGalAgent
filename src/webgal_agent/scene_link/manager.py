@@ -134,11 +134,14 @@ class SceneLinkManager:
     def _create_symlink_win(self, target: str, link: str) -> None:
         """Windows 下创建目录符号链接。
 
-        使用 cmd /c mklink /D 命令创建符号链接。
+        使用 cmd /c mklink /D 命令创建符号链接。target 必须为绝对路径，
+        否则 Windows 会相对于 link 所在目录解析，导致指向错误位置。
         需要管理员权限或启用开发者模式。
         """
+        # mklink 的相对路径是相对于 link 的父目录，必须用绝对路径
+        target_abs = str(pathlib.Path(target).resolve())
         subprocess.run(
-            ["cmd", "/c", "mklink", "/D", link, target],
+            ["cmd", "/c", "mklink", "/D", link, target_abs],
             check=True,
             capture_output=True,
             text=True,

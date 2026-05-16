@@ -171,18 +171,27 @@ async def _wait_recording(proc: subprocess.Popen) -> None:
     try:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, proc.wait)
-        stdout, stderr = proc.communicate()
+
+        # 等待 stderr 读取线程完成
+        t = _recording_state.get("stderr_thread")
+        if t:
+            t.join(timeout=2)
+
+        # 读取 stdout（未被线程消费）
+        stdout = proc.stdout.read() if proc.stdout else ""
 
         if proc.returncode == 0:
-            # 解析 JSON 结果（最后一行）
             lines = stdout.strip().splitlines() if stdout else []
             if lines:
                 result = json.loads(lines[-1])
                 _recording_state["last_result"] = result
         else:
+            # 优先从日志中提取错误信息
+            logs = _recording_state.get("logs", [])
+            error_msg = "\n".join(logs[-10:]) if logs else ""
             _recording_state["last_result"] = {
                 "success": False,
-                "message": stderr.strip() if stderr else f"录制进程异常退出 (code={proc.returncode})",
+                "message": error_msg or f"录制进程异常退出 (code={proc.returncode})",
             }
     except Exception as e:
         _recording_state["last_result"] = {
