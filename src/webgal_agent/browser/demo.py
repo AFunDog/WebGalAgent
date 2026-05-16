@@ -1,21 +1,25 @@
-"""浏览器模块演示脚本。
+"""浏览器录制 CLI 工具。
 
 用法：
-    python -m webgal_agent.browser.demo
+    python -m webgal_agent.browser.demo record --url ... --output ... [--json]
 
 前置依赖：
     1. playwright install chromium（若使用默认 chromium）
     2. 系统路径中需有 ffmpeg
+
+--json 模式：
+    所有日志输出到 stderr，最终结果以 JSON 行输出到 stdout，供父进程解析。
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 
-# Windows: 必须在 import playwright 前设置 ProactorEventLoop，否则 asyncio.create_subprocess_exec 不可用
+# Windows: 必须在 import playwright 前设置 ProactorEventLoop
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
@@ -30,6 +34,14 @@ from webgal_agent.browser import (
     SelectorType,
 )
 from webgal_agent.browser.models import VideoConfig
+
+
+def _log(msg: str, *, json_mode: bool = False) -> None:
+    """json 模式下日志输出到 stderr，避免污染 stdout 的 JSON 结果。"""
+    if json_mode:
+        print(msg, file=sys.stderr)
+    else:
+        print(msg)
 
 
 async def demo_navigate(
@@ -82,8 +94,9 @@ async def demo_record(
     no_record: bool = False,
     save_frames: str | None = None,
     format: str = "jpeg",
-) -> None:
-    """演示：使用 CDP Screencast 从 compositor 直接拉帧 + ffmpeg 编码。"""
+    json_mode: bool = False,
+) -> dict | None:
+    """CDP Screencast 录制。json_mode=True 时返回结果 dict 而非直接打印。"""
     config = DefaultBrowserConfig(
         browser_type=browser_type,
         headless=headless,
@@ -100,28 +113,27 @@ async def demo_record(
     async with BrowserClient(config) as client:
         await client.new_context(context_id="default")
 
-        print("拦截脚本注入 (index-e1b3c40e.js)...")
+        _log("拦截脚本注入 (index-e1b3c40e.js)...", json_mode=json_mode)
         await client.add_script_injection(
             url_pattern="**/index-e1b3c40e.js",
             inject_code="window.changeScene = gCe;\nwindow.toggleAuto = wU;",
         )
 
-        print(f"正在使用 {browser_type} 导航到: {url}")
+        _log(f"正在使用 {browser_type} 导航到: {url}", json_mode=json_mode)
         try:
             await client.navigate(url, wait_until="load")
         except Exception as e:
-            print(f"导航超时，继续等待页面加载... ({e})")
+            _log(f"导航超时，继续等待页面加载... ({e})", json_mode=json_mode)
             await asyncio.sleep(5)
 
-        # 等待 changeScene 函数就绪并调用
-        print("等待 changeScene 函数就绪...")
+        _log("等待 changeScene 函数就绪...", json_mode=json_mode)
         page = await client.get_page()
         try:
             await page.wait_for_function(
                 "() => typeof window.changeScene === 'function' && typeof window.toggleAuto === 'function'",
                 timeout=10000,
             )
-            print("changeScene 已就绪，调用...")
+            _log("changeScene 已就绪，调用...", json_mode=json_mode)
             await page.evaluate("""
                 async () => {
                     window.changeScene("发布/AI剧场/爱素补作业/15/Scene1.txt", 1);
@@ -129,11 +141,10 @@ async def demo_record(
                     window.toggleAuto();
                 }
             """)
-            print("changeScene 调用完成")
+            _log("changeScene 调用完成", json_mode=json_mode)
         except Exception as e:
-            print(f"警告: changeScene 调用失败: {e}")
+            _log(f"警告: changeScene 调用失败: {e}", json_mode=json_mode)
 
-        # 等待目标元素可见（确认页面已渲染）
         if selector == "auto":
             for candidate in ("#root", "canvas"):
                 found = await client.wait_for(
@@ -142,43 +153,59 @@ async def demo_record(
                     timeout=3000,
                 )
                 if found:
-                    print(f"目标元素已就绪: {candidate}")
+                    _log(f"目标元素已就绪: {candidate}", json_mode=json_mode)
                     break
             else:
-                print("警告: 未找到 #root 或 canvas 元素，继续录制整个页面")
+                _log("警告: 未找到 #root 或 canvas 元素，继续录制整个页面", json_mode=json_mode)
         else:
-            print(f"等待目标元素出现: {selector}")
+            _log(f"等待目标元素出现: {selector}", json_mode=json_mode)
             found = await client.wait_for(
                 Selector(value=selector, type=SelectorType.CSS),
                 state="visible",
                 timeout=10000,
             )
             if not found:
-                print(f"错误: 未找到目标元素 {selector}")
-                return
+                msg = f"未找到目标元素 {selector}"
+                _log(f"错误: {msg}", json_mode=json_mode)
+                if json_mode:
+                    return {"success": False, "message": msg}
+                return None
 
         await asyncio.sleep(1)
 
         if no_record:
-            print(f"跳过录制，等待 {duration}s 观察页面状态...")
+            _log(f"跳过录制，等待 {duration}s 观察页面状态...", json_mode=json_mode)
             await asyncio.sleep(duration)
-            print("观察完成!")
-            return
+            _log("观察完成!", json_mode=json_mode)
+            return None
 
-        print(f"开始录制 {duration}s @ {fps} FPS (CDP Screencast)...")
-        print(f"输出: {output_path}")
+        _log(f"开始录制 {duration}s @ {fps} FPS (CDP Screencast)...", json_mode=json_mode)
+        _log(f"输出: {output_path}", json_mode=json_mode)
 
         recorder = ScreencastRecorder(
             client, video_cfg, screencast_quality=screencast_quality
         )
         result = await recorder.start(duration=duration, format=format, save_frames_dir=save_frames)
 
-        print("录制完成!")
-        print(f"  输出路径: {result.output_path}")
-        print(f"  源帧率: {result.source_fps:.1f} FPS → 输出帧率: {result.output_fps:.1f} FPS")
-        print(f"  总帧数: {result.total_frames}")
-        print(f"  时长: {result.duration:.1f}s")
-        print(f"  文件大小: {result.file_size_mb:.2f} MB")
+        _log("录制完成!", json_mode=json_mode)
+        _log(f"  输出路径: {result.output_path}", json_mode=json_mode)
+        _log(f"  源帧率: {result.source_fps:.1f} FPS → 输出帧率: {result.output_fps:.1f} FPS", json_mode=json_mode)
+        _log(f"  总帧数: {result.total_frames}", json_mode=json_mode)
+        _log(f"  时长: {result.duration:.1f}s", json_mode=json_mode)
+        _log(f"  文件大小: {result.file_size_mb:.2f} MB", json_mode=json_mode)
+
+        if json_mode:
+            return {
+                "success": True,
+                "message": "录制完成",
+                "output_path": str(result.output_path),
+                "total_frames": result.total_frames,
+                "duration": result.duration,
+                "source_fps": result.source_fps,
+                "output_fps": result.output_fps,
+                "file_size_mb": result.file_size_mb,
+            }
+        return None
 
 
 def main() -> None:
@@ -223,6 +250,12 @@ def main() -> None:
         default=None,
         help="浏览器可执行文件路径（如 chrome-headless-shell 路径）",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        dest="json_mode",
+        help="以 JSON 格式输出结果到 stdout（日志输出到 stderr）",
+    )
 
     args = parser.parse_args()
 
@@ -238,7 +271,7 @@ def main() -> None:
                 )
             )
         case "record":
-            asyncio.run(
+            result = asyncio.run(
                 demo_record(
                     url=args.url,
                     output_path=args.output,
@@ -253,8 +286,13 @@ def main() -> None:
                     no_record=args.no_record,
                     save_frames=args.save_frames,
                     format=args.format,
+                    json_mode=args.json_mode,
                 )
             )
+            if args.json_mode and result:
+                print(json.dumps(result, ensure_ascii=False))
+                if not result["success"]:
+                    sys.exit(1)
 
 
 if __name__ == "__main__":

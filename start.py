@@ -85,11 +85,9 @@ def start_dev(backend_host: str, backend_port: int) -> None:
 
     backend = subprocess.Popen(
         [
-            sys.executable, "-m", "uvicorn",
-            "webgal_agent.api.app:create_app",
+            sys.executable, "-m", "webgal_agent",
             "--host", backend_host,
             "--port", str(backend_port),
-            "--factory",
             "--reload",
         ],
         env=backend_env,
@@ -128,11 +126,9 @@ def start_backend(host: str, port: int, reload: bool) -> None:
         "WEBGAL_PROVIDERS_PATH": "src/configs/providers.yaml",
     }
     cmd = [
-        sys.executable, "-m", "uvicorn",
-        "webgal_agent.api.app:create_app",
+        sys.executable, "-m", "webgal_agent",
         "--host", host,
         "--port", str(port),
-        "--factory",
     ]
     if reload:
         cmd.append("--reload")

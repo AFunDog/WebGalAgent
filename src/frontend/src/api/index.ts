@@ -119,7 +119,18 @@ export const api = {
   stopRecord: () =>
     request<RecordResult>('/record/stop', { method: 'POST' }),
   getRecordStatus: () =>
-    request<{ recording: boolean; progress?: number }>('/record/status'),
+    request<{
+      recording: boolean
+      progress?: number
+      success?: boolean
+      message?: string
+      output_path?: string | null
+      total_frames?: number
+      duration?: number
+      source_fps?: number
+      output_fps?: number
+      file_size_mb?: number
+    }>('/record/status'),
   getRecordConfig: () =>
     request<RecordConfig>('/record/config'),
 }

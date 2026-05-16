@@ -256,13 +256,6 @@ async function startRecord() {
   progress.value = 0
   result.value = null
 
-  // 模拟进度
-  const progressTimer = setInterval(() => {
-    if (progress.value < 90) {
-      progress.value += Math.random() * 10
-    }
-  }, 500)
-
   try {
     const recordConfig: RecordConfig = {
       url: config.url,
@@ -273,7 +266,38 @@ async function startRecord() {
       format: config.format,
       quality: config.quality,
     }
-    result.value = await api.startRecord(recordConfig)
+
+    // 启动录制（立即返回）
+    const startRes = await api.startRecord(recordConfig)
+    if (!startRes.success) {
+      result.value = startRes
+      recording.value = false
+      return
+    }
+
+    // 轮询状态直到完成
+    let pollCount = 0
+    const maxPolls = Math.ceil(config.duration * 2) + 30  // 2x duration + 30s buffer
+    while (pollCount < maxPolls) {
+      await new Promise(r => setTimeout(r, 1000))
+      pollCount++
+      const status = await api.getRecordStatus()
+      progress.value = Math.min(status.progress || (pollCount / maxPolls * 100), 100)
+
+      if (!status.recording) {
+        result.value = {
+          success: status.success ?? false,
+          message: status.message || '录制完成',
+          output_path: status.output_path || null,
+          total_frames: status.total_frames || 0,
+          duration: status.duration || 0,
+          source_fps: status.source_fps || 0,
+          output_fps: status.output_fps || 0,
+          file_size_mb: status.file_size_mb || 0,
+        }
+        break
+      }
+    }
   } catch (e) {
     result.value = {
       success: false,
@@ -286,9 +310,8 @@ async function startRecord() {
       file_size_mb: 0,
     }
   } finally {
-    clearInterval(progressTimer)
-    progress.value = 100
     recording.value = false
+    progress.value = 100
   }
 }
 
