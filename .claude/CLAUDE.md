@@ -25,6 +25,9 @@ python -m webgal_agent
 # Frontend dev (port 5173, proxies API to :8000)
 cd src/frontend && npm run dev
 
+# Browser recording CLI
+python -m webgal_agent.browser.demo record --url <url> --duration 10 --fps 60
+
 # Run tests
 pytest
 
@@ -44,15 +47,18 @@ User Input → OutlineWriter → ScriptWriter → ScriptConverter → WebGal .tx
 - **`src/webgal_agent/agents/`** — Three thin agent subclasses; behavior defined by system prompts in `src/configs/prompts.yaml`
 - **`src/webgal_agent/workflows/pipeline.py`** — Sequential pipeline with cumulative context accumulation
 - **`src/webgal_agent/knowledge/`** — File-based knowledge store parsing `data/knowledge/**/*.md` with YAML frontmatter
-- **`src/webgal_agent/api/`** — FastAPI REST API (tasks, knowledge, workflow, providers, assets); frontend served from `api/static/`
+- **`src/webgal_agent/api/`** — FastAPI REST API (tasks, knowledge, workflow, providers, assets, scene_link, record); frontend served from `api/static/`
 - **`src/webgal_agent/tools/`** — Agent tools: file read/write, asset query, Live2D model.json reader
 - **`src/webgal_agent/config/`** — YAML-based config management (`default.yaml`, `providers.yaml`, `prompts.yaml`)
+- **`src/webgal_agent/browser/`** — Playwright browser automation + CDP Screencast video recording
+- **`src/webgal_agent/scene_link/`** — Scene link manager for connecting task outputs to WebGal game directories
 
 ## Configuration
 
-- `src/configs/default.yaml` — App defaults, game asset paths (hardcoded), LLM settings, agent model overrides
+- `src/configs/default.yaml` — App defaults, game asset paths, LLM settings, agent model overrides
 - `src/configs/providers.yaml` — LLM provider configs (API keys, base URLs, model names); not checked in
 - `src/configs/prompts.yaml` — System prompts per agent + knowledge category/tag filters
+- `src/configs/record.yaml` — Browser recording defaults (URL, fps, duration, selector, etc.)
 
 ## Code Conventions
 
@@ -62,16 +68,31 @@ User Input → OutlineWriter → ScriptWriter → ScriptConverter → WebGal .tx
 - Pydantic v2 models for all data structures
 - Agent tools extend `Tool` ABC with JSON Schema `parameters`
 
-## Browser Recording Notes
+## Windows Event Loop
 
-- Fixed-FPS browser recording now uses `CCapture.js` in `src/webgal_agent/browser/capture.py` and `recorder.py`.
-- Vendored browser assets live in `src/webgal_agent/browser/assets/`:
-  `CCapture.all.min.js` and `html2canvas.min.js`.
-- For WebGal pages, the real target is usually `div#root`, not a raw `canvas`.
-- In CLI/demo flows, prefer an auto-detect selector strategy: try `#root` first for WebGal, then fall back to `canvas` for generic animation demos.
-- `CCapture.js` is responsible for fixed-framerate time stepping and frame capture.
-- Because WebGal often renders the final scene as DOM under `#root`, the capture bridge rasterizes non-canvas targets with `html2canvas(...)` into a hidden mirror canvas, then hands that canvas to `CCapture`.
-- For native canvas targets, the bridge passes the source canvas directly to `CCapture` without the extra rasterization step.
-- The current backend writes browser-generated `webm` output. `VideoConfig.codec` should be `webm`.
-- Verified command for this repo:
-  `python -m webgal_agent.browser.demo record --url https://cl.yuzhes.com/demos/001-particles --output data/temp/output.webm --duration 3 --fps 30`
+On Windows, Playwright requires `WindowsProactorEventLoopPolicy`. All entry points set this before importing playwright/uvicorn:
+
+- **`src/webgal_agent/__main__.py`** — Set before `import uvicorn`; uvicorn.run uses `loop="asyncio"`
+- **`src/webgal_agent/browser/demo.py`** — Set before `from webgal_agent.browser import ...`
+- **`start.py`** — Uses `python -m webgal_agent` (routed through `__main__.py`) instead of `python -m uvicorn` directly
+
+**Never** set event loop policy in business code (`app.py`, `client.py`, `screencast.py`).
+
+## Browser Recording
+
+- **Recording approach**: CDP Screencast (`Page.startScreencast`) — pulls JPEG/PNG frames directly from Chromium compositor, completely bypassing Playwright's MediaRecorder (25fps limit). Frames are piped to ffmpeg for encoding.
+- **Key classes**:
+  - `ScreencastRecorder` (`src/webgal_agent/browser/screencast.py`) — main recorder using CDP + ffmpeg
+  - `BrowserClient` (`src/webgal_agent/browser/client.py`) — Playwright browser lifecycle, CDP session, script injection
+- **API integration**: `record.py` spawns the CLI (`python -m webgal_agent.browser.demo record --json`) as a **subprocess** — Playwright runs in its own process, fully isolated from FastAPI/Uvicorn event loop.
+- **Output**: mp4 (H.264 via libx264) or webm (VP9 via libvpx-vp9), auto-detected from file extension.
+- **Supported formats**: jpeg (faster, smaller) and png (lossless, best quality).
+- **Auto-detect selector**: `--selector auto` tries `#root` then `canvas`.
+- **Legacy**: `CanvasCapture` (CCapture.js) and `VideoRecorder` (HeadlessExperimental.beginFrame) are retained for special use cases.
+- **CLI verified command**:
+  ```bash
+  python -m webgal_agent.browser.demo record \
+    --url http://localhost:3001/games/MyGO3.0.0/ \
+    --output data/temp/output.mp4 --duration 10 --fps 60 \
+    --width 1920 --height 1080
+  ```

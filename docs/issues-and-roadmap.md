@@ -199,11 +199,25 @@
 | 全面审计                                                    | 对智能体信息流、知识库过滤、提示词质量进行完整审计，发现 15 个新问题并录入本文档                                                                                                     |
 | 未使用代码清理                                              | 删除 5 个冗余文件（settings.py/context.py/pipeline.py 等），清理 3 个未使用的方法/导入，移除 default.yaml 中旧 agent 配置                                                   |
 
+### ✅ 已完成 (2026-05 浏览器录制重构)
+
+| 变更 | 说明 |
+|------|------|
+| CDP Screencast 录制方案 | `ScreencastRecorder` 通过 `Page.startScreencast` 从 Chromium compositor 直拉帧，绕过 MediaRecorder 25fps 限制，可达 60fps+ |
+| FFmpeg 管道编码 | JPEG/PNG 帧通过 stdin 管道喂给 ffmpeg，支持 mp4 (libx264) 和 webm (libvpx-vp9)，CRF 17 高质量输出 |
+| 录制子进程隔离 | `record.py` API 通过 `subprocess.Popen` 调用 CLI (`python -m webgal_agent.browser.demo record --json`)，Playwright 在独立进程运行，与 FastAPI event loop 完全隔离 |
+| Windows event loop 修复 | `__main__.py` 和 `demo.py` 在 import uvicorn/playwright 前设置 `WindowsProactorEventLoopPolicy`；`start.py` 改用 `python -m webgal_agent` 路由 |
+| API 路由前缀修复 | `record.py` 和 `scene_link.py` 路由前缀补齐 `/api`（与其他路由一致），解决前端请求 404 问题 |
+| `RecordingResult` 扩展 | 新增 `source_fps`（源帧率）和 `output_fps`（输出帧率）字段，与 `actual_fps` 兼容 |
+| 浏览器 README | 新增完整的 `src/webgal_agent/browser/README.md` 模块文档 |
+| 前端轮询录制状态 | `RecordView.vue` 改为启动后轮询 `GET /api/record/status` 直到录制完成 |
+
 ### 🔄 待跟进
 
 - **LLM 重试与超时**：`max_retries` 仍未生效，timeout 仍硬编码（问题 #2, #3）
 - **路径解析统一**：`AssetQueryTool` 和 `ReadModelTool` 的 `resolve_game_dir()` 调用可合并到 `_paths.py`（问题 #11）
 - **知识库配置优化**：`_build_all_knowledge_contexts` 冗余（#12）、世界观背景多余（#13）、标签不一致（#14）
+- **录制源帧率与输出帧率不匹配**：Screencast 源帧率和 ffmpeg `-r` 输出帧率可能有重复帧/丢帧问题，考虑 `minterpolate` 运动插值方案
 
 ### ✅ 已完成（补充）
 
@@ -378,4 +392,4 @@
 
 ---
 
-*最后更新: 2026-05-14*
+*最后更新: 2026-05-16*
