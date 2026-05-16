@@ -6,7 +6,9 @@
       "WebFetch(domain:github.com)",
       "Bash(python3 -c \"import json, pathlib; p = pathlib.Path\\('D:/Program/WebGal_Terre/public/games/MyGO3.0.0/game/figure/anon/school_winter-2023/model.json'\\); d = json.loads\\(p.read_text\\(encoding='utf-8'\\)\\); motions = sorted\\(d.get\\('motions',{}\\).keys\\(\\)\\); exps = [e['name'] for e in d['expressions']] if isinstance\\(d.get\\('expressions'\\), list\\) else []; print\\('MOTIONS:'\\); [print\\(f'  {m}'\\) for m in motions[:5]]; print\\(f'  ... \\({len\\(motions\\)} total\\)'\\); print\\('EXPRESSIONS:'\\); [print\\(f'  {e}'\\) for e in exps[:5]]; print\\(f'  ... \\({len\\(exps\\)} total\\)'\\)\")",
       "Bash(ls -la /c/Users/Zeng/.claude/projects/d--GitRepository-WebGalAgent/memory/ 2>/dev/null || echo \"Directory empty or not found\")",
-      "Read(//c/Users/Zeng/.claude/projects/d--GitRepository-WebGalAgent/memory//**)"
+      "Read(//c/Users/Zeng/.claude/projects/d--GitRepository-WebGalAgent/memory//**)",
+      "Bash(\".venv/Scripts/python.exe\" -c \"from webgal_agent.browser.screencast import ScreencastRecorder; print\\('OK'\\)\")",
+      "Bash(\".venv/Scripts/python.exe\" -c \"from webgal_agent.browser.screencast import ScreencastRecorder; from webgal_agent.api.routes.record import router; print\\('OK'\\)\")"
     ]
   }
 }

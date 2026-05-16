@@ -130,6 +130,7 @@ export interface RecordConfig {
   fps?: number
   canvas_selector?: string
   scene_path?: string
+  stop_condition?: string
   browser_type?: string
   headless?: boolean
   format?: 'jpeg' | 'png'

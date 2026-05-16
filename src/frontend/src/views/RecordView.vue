@@ -37,6 +37,19 @@
       </div>
 
       <div class="form-group">
+        <label>停止条件（可选 JS 表达式）</label>
+        <input
+          v-model="config.stop_condition"
+          type="text"
+          class="form-input"
+          placeholder="window.sceneManager?.sceneData?.currentScene?.sceneUrl === './game/scene/start.txt'"
+        />
+        <small style="color:var(--text-muted);font-size:11px">
+          录制期间每 0.5 秒在页面求值，返回 truthy 时提前终止录制
+        </small>
+      </div>
+
+      <div class="form-group">
         <label>录制目标选择器</label>
         <input
           v-model="config.canvas_selector"
@@ -233,6 +246,7 @@ const config = reactive<{
   fps: number
   canvas_selector: string
   scene_path: string
+  stop_condition: string
   browser_type: string
   headless: boolean
   executable_path: string
@@ -241,10 +255,11 @@ const config = reactive<{
 }>({
   url: '',
   output_path: '',
-  duration: 5.0,
+  duration: 0,
   fps: 30,
   canvas_selector: 'div._MainStage_main_9enex_1',
   scene_path: 'index.txt',
+  stop_condition: '',
   browser_type: 'chromium',
   headless: false,
   executable_path: '',
@@ -264,6 +279,7 @@ onMounted(async () => {
     if (serverConfig.duration) config.duration = serverConfig.duration
     if (serverConfig.canvas_selector) config.canvas_selector = serverConfig.canvas_selector
     if (serverConfig.scene_path) config.scene_path = serverConfig.scene_path
+    if (serverConfig.stop_condition) config.stop_condition = serverConfig.stop_condition
     if (serverConfig.browser_type) config.browser_type = serverConfig.browser_type
     if (serverConfig.headless !== undefined) config.headless = serverConfig.headless
   } catch (e) {
@@ -287,6 +303,7 @@ async function startRecord() {
       fps: config.fps,
       canvas_selector: config.canvas_selector,
       scene_path: config.scene_path,
+      stop_condition: config.stop_condition || undefined,
       format: config.format,
       quality: config.quality,
     }

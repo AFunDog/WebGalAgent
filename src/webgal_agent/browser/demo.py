@@ -89,6 +89,7 @@ async def demo_record(
     height: int = 1080,
     selector: str = "auto",
     scene_path: str = "index.txt",
+    stop_condition: str | None = None,
     browser_type: str = "msedge",
     headless: bool = False,
     screencast_quality: int = 90,
@@ -117,7 +118,11 @@ async def demo_record(
         _log("拦截脚本注入 (index-e1b3c40e.js)...", json_mode=json_mode)
         await client.add_script_injection(
             url_pattern="**/index-e1b3c40e.js",
-            inject_code="window.changeScene = gCe;\nwindow.toggleAuto = wU;",
+            inject_code="""
+            window.changeScene = gCe;
+            window.toggleAuto = wU;
+            window.sceneManager = L.sceneManager;
+            """,
         )
 
         _log(f"正在使用 {browser_type} 导航到: {url}", json_mode=json_mode)
@@ -131,7 +136,11 @@ async def demo_record(
         page = await client.get_page()
         try:
             await page.wait_for_function(
-                "() => typeof window.changeScene === 'function' && typeof window.toggleAuto === 'function'",
+                """() => 
+                typeof window.changeScene === 'function' && 
+                typeof window.toggleAuto === 'function' &&
+                typeof window.sceneManager === 'object'
+                """,
                 timeout=10000,
             )
             _log("changeScene 已就绪，调用...", json_mode=json_mode)
@@ -187,7 +196,7 @@ async def demo_record(
         recorder = ScreencastRecorder(
             client, video_cfg, screencast_quality=screencast_quality
         )
-        result = await recorder.start(duration=duration, format=format, save_frames_dir=save_frames)
+        result = await recorder.start(duration=duration, format=format, save_frames_dir=save_frames, stop_condition=stop_condition)
 
         _log("录制完成!", json_mode=json_mode)
         _log(f"  输出路径: {result.output_path}", json_mode=json_mode)
@@ -219,7 +228,7 @@ def main() -> None:
     )
     parser.add_argument("--url", default="https://example.com", help="目标 URL")
     parser.add_argument("--output", default="data/temp/output.mp4", help="输出路径")
-    parser.add_argument("--duration", type=float, default=5.0, help="录制时长（秒）")
+    parser.add_argument("--duration", type=float, default=0, help="录制最大时长（秒），0 表示无限等待 --stop-on 条件")
     parser.add_argument("--fps", type=float, default=60.0, help="输出帧率（ffmpeg 转换）")
     parser.add_argument("--width", type=int, default=1920, help="录制分辨率宽度")
     parser.add_argument("--height", type=int, default=1080, help="录制分辨率高度")
@@ -230,6 +239,10 @@ def main() -> None:
     parser.add_argument(
         "--scene", default="index.txt", dest="scene_path",
         help="调用 changeScene 时传入的场景路径",
+    )
+    parser.add_argument(
+        "--stop-on", default=None, dest="stop_condition",
+        help="JS 表达式，录制期间每 0.5 秒求值一次，返回 truthy 时提前终止录制",
     )
     parser.add_argument(
         "--browser",
@@ -287,6 +300,7 @@ def main() -> None:
                     height=args.height,
                     selector=args.selector,
                     scene_path=args.scene_path,
+                    stop_condition=args.stop_condition,
                     browser_type=args.browser,
                     headless=args.headless,
                     screencast_quality=args.screencast_quality,

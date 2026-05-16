@@ -72,21 +72,26 @@ class ScreencastRecorder:
 
     async def start(
         self,
-        duration: float,
+        duration: float = 0,
         context_id: str = "default",
         format: str = "jpeg",
         save_frames_dir: str | Path | None = None,
+        stop_condition: str | None = None,
     ) -> RecordingResult:
         """开始录制，阻塞 duration 秒后停止并编码输出。
 
         Args:
-            duration: 录制时长（秒）。
+            duration: 录制最大时长（秒），传 0 且设置了 stop_condition 时无限等待。
             context_id: 浏览器上下文 ID。
             format: 截图格式，"jpeg"（有损，小文件）或 "png"（无损，画质最好）。
             save_frames_dir: 如果设置，会将原始帧保存到该目录用于调试。
+            stop_condition: 可选 JS 表达式，满足时触发停止。
+                与 duration 并发，duration=0 时唯一退出条件。
         """
         if format not in ("jpeg", "png"):
             raise ValueError(f"不支持的格式: {format}，支持 jpeg 和 png")
+        if duration <= 0 and not stop_condition:
+            raise ValueError("必须指定 duration > 0 或 stop_condition，否则录制无法退出")
 
         page = await self._client.get_page(context_id)
         cdp = await self._client.create_cdp_session(context_id)
@@ -120,7 +125,20 @@ class ScreencastRecorder:
 
         await cdp.send("Page.startScreencast", screencast_opts)
 
-        await asyncio.sleep(duration)
+        # 并发等待：最大时长 vs 停止条件，谁先完成就停止
+        page = await self._client.get_page(context_id)
+        tasks: list[asyncio.Task] = []
+        if duration > 0:
+            tasks.append(asyncio.create_task(asyncio.sleep(duration)))
+        if stop_condition:
+            tasks.append(asyncio.create_task(
+                page.wait_for_function(stop_condition, timeout=(duration * 1000) if duration > 0 else None)
+            ))
+        if not tasks:
+            raise RuntimeError("没有可用的等待任务")
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for t in pending:
+            t.cancel()
 
         await cdp.send("Page.stopScreencast")
         # 等待末尾帧的 ack 完成

@@ -50,10 +50,11 @@ def _record_defaults() -> dict:
 class RecordConfigRequest(BaseModel):
     url: str
     output_path: str | None = None
-    duration: float = 5.0
+    duration: float = 0
     fps: float = 30.0
     canvas_selector: str = "auto"
     scene_path: str = "index.txt"
+    stop_condition: str | None = None
     browser_type: str = "msedge"
     headless: bool = False
     viewport_width: int = 1920
@@ -93,17 +94,22 @@ def _build_cli_args(req: RecordConfigRequest, output_path: str) -> list[str]:
         sys.executable, "-m", "webgal_agent.browser.demo", "record",
         "--url", req.url,
         "--output", output_path,
-        "--duration", str(req.duration),
         "--fps", str(req.fps),
         "--width", str(req.viewport_width),
         "--height", str(req.viewport_height),
         "--selector", req.canvas_selector,
         "--scene", req.scene_path,
+    ]
+    if req.duration > 0:
+        args.extend(["--duration", str(req.duration)])
+    if req.stop_condition:
+        args.extend(["--stop-on", req.stop_condition])
+    args.extend([
         "--browser", req.browser_type,
         "--screencast-quality", str(req.quality),
         "--format", req.format,
         "--json",
-    ]
+    ])
     if req.headless:
         args.append("--headless")
     return args
@@ -233,6 +239,7 @@ async def get_record_config() -> dict:
         "duration": defaults.get("duration", 5.0),
         "canvas_selector": defaults.get("canvas_selector", "auto"),
         "scene_path": defaults.get("scene_path", "index.txt"),
+        "stop_condition": defaults.get("stop_condition", ""),
         "browser_type": defaults.get("browser_type", "msedge"),
         "headless": defaults.get("headless", False),
         "viewport_width": defaults.get("viewport_width", 1920),
