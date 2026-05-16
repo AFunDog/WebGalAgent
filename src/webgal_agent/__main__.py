@@ -3,6 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+import sys
+
+# Windows: 必须在 uvicorn 及 playwright 前设置 ProactorEventLoop
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 import uvicorn
 
 

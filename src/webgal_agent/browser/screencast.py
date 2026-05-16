@@ -10,8 +10,16 @@ from __future__ import annotations
 import asyncio
 import base64
 import shutil
+import sys
 import time
 from pathlib import Path
+
+# Windows: 确保 ProactorEventLoop 支持 subprocess（ffmpeg 管道编码必需）
+if sys.platform == "win32":
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from webgal_agent.browser.models import RecordingResult, VideoConfig
 

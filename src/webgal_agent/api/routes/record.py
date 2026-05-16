@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import yaml
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 
@@ -19,7 +20,36 @@ from webgal_agent.browser import (
     SelectorType,
 )
 
-router = APIRouter(prefix="/record", tags=["record"])
+router = APIRouter(prefix="/api/record", tags=["record"])
+
+# 加载配置文件 — 尝试多个可能的路径
+def _resolve_config_path() -> Path | None:
+    """解析录制配置文件路径。"""
+    candidates = [
+        Path("src/configs/record.yaml"),  # 从项目根目录运行
+        Path(__file__).parent.parent.parent / "configs" / "record.yaml",  # 绝对路径
+    ]
+    for p in candidates:
+        if p.exists():
+            return p
+    return None
+
+
+_CONFIG_PATH = _resolve_config_path()
+
+
+def _load_config() -> dict:
+    """加载录制配置文件。"""
+    if _CONFIG_PATH and _CONFIG_PATH.exists():
+        with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+
+# 模块导入时预加载，但 API 接口每次请求时都会重新读取
+def _record_defaults() -> dict:
+    """获取录制配置默认值（每次调用都重新读取文件）。"""
+    return _load_config()
 
 
 class RecordConfigRequest(BaseModel):
@@ -28,7 +58,7 @@ class RecordConfigRequest(BaseModel):
     url: str
     output_path: str | None = None
     duration: float = 5.0
-    fps: float = 60.0
+    fps: float = 30.0
     canvas_selector: str = "div._MainStage_main_9enex_1"
     browser_type: str = "chromium"
     headless: bool = False
@@ -36,6 +66,7 @@ class RecordConfigRequest(BaseModel):
     viewport_height: int = 1080
     channel: str | None = None
     format: str = "jpeg"
+    quality: int = 90
 
 
 class RecordResultResponse(BaseModel):
@@ -150,7 +181,7 @@ async def start_record(req: RecordConfigRequest, background_tasks: BackgroundTas
             recorder = ScreencastRecorder(
                 client,
                 video_cfg,
-                screencast_quality=90,
+                screencast_quality=req.quality,
             )
 
             result = await recorder.start(
@@ -194,3 +225,20 @@ async def get_record_status() -> RecordStatusResponse:
         recording=_recording_state["recording"],
         progress=_recording_state.get("progress"),
     )
+
+
+@router.get("/config")
+async def get_record_config() -> dict:
+    """获取录制配置默认值（每次请求都重新读取配置文件）。"""
+    defaults = _record_defaults()
+    return {
+        "format": defaults.get("format", "jpeg"),
+        "quality": defaults.get("quality", 90),
+        "fps": defaults.get("fps", 30),
+        "duration": defaults.get("duration", 5.0),
+        "canvas_selector": defaults.get("canvas_selector", "div._MainStage_main_9enex_1"),
+        "browser_type": defaults.get("browser_type", "chromium"),
+        "headless": defaults.get("headless", False),
+        "viewport_width": defaults.get("viewport_width", 1920),
+        "viewport_height": defaults.get("viewport_height", 1080),
+    }

@@ -15,6 +15,10 @@ import asyncio
 import sys
 from pathlib import Path
 
+# Windows: 必须在 import playwright 前设置 ProactorEventLoop，否则 asyncio.create_subprocess_exec 不可用
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 # 确保 src 路径在 sys.path 中
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 

@@ -2,6 +2,13 @@
   <div>
     <h2 class="page-title">浏览器录制</h2>
 
+    <!-- 配置加载状态 -->
+    <div v-if="configError" class="card" style="margin-bottom:16px; background: #3a1f1f;">
+      <div style="padding:12px; color: #ff6b6b;">
+        ⚠️ 配置加载失败: {{ configError }}
+      </div>
+    </div>
+
     <!-- 录制配置 -->
     <div class="card" style="margin-bottom:16px">
       <div class="card-header"><h3>录制配置</h3></div>
@@ -89,6 +96,19 @@
             <option value="jpeg">JPEG（有损，小文件）</option>
             <option value="png">PNG（无损，画质最好）</option>
           </select>
+        </div>
+        <div class="form-group" style="flex:1">
+          <label>截图质量</label>
+          <input
+            v-model.number="config.quality"
+            type="number"
+            class="form-input"
+            min="1"
+            max="100"
+          />
+          <small style="color:var(--text-muted);font-size:11px">
+            1-100，仅 JPEG 格式有效
+          </small>
         </div>
       </div>
 
@@ -178,13 +198,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { api } from '../api'
 import type { RecordConfig, RecordResult } from '../types'
 
 const recording = ref(false)
 const progress = ref(0)
 const result = ref<RecordResult | null>(null)
+const configLoaded = ref(false)
+const configError = ref('')
 
 const config = reactive<{
   url: string
@@ -196,6 +218,7 @@ const config = reactive<{
   headless: boolean
   executable_path: string
   format: 'jpeg' | 'png'
+  quality: number
 }>({
   url: '',
   output_path: '',
@@ -206,6 +229,25 @@ const config = reactive<{
   headless: false,
   executable_path: '',
   format: 'jpeg',
+  quality: 90,
+})
+
+// 页面加载时从后端获取配置默认值
+onMounted(async () => {
+  try {
+    const serverConfig = await api.getRecordConfig()
+    configLoaded.value = true
+    if (serverConfig.format) config.format = serverConfig.format
+    if (serverConfig.quality) config.quality = serverConfig.quality
+    if (serverConfig.fps) config.fps = serverConfig.fps
+    if (serverConfig.duration) config.duration = serverConfig.duration
+    if (serverConfig.canvas_selector) config.canvas_selector = serverConfig.canvas_selector
+    if (serverConfig.browser_type) config.browser_type = serverConfig.browser_type
+    if (serverConfig.headless !== undefined) config.headless = serverConfig.headless
+  } catch (e) {
+    configError.value = e instanceof Error ? e.message : String(e)
+    console.error('Failed to load record config:', e)
+  }
 })
 
 async function startRecord() {
@@ -229,6 +271,7 @@ async function startRecord() {
       fps: config.fps,
       canvas_selector: config.canvas_selector,
       format: config.format,
+      quality: config.quality,
     }
     result.value = await api.startRecord(recordConfig)
   } catch (e) {

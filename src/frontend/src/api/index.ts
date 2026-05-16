@@ -120,4 +120,6 @@ export const api = {
     request<RecordResult>('/record/stop', { method: 'POST' }),
   getRecordStatus: () =>
     request<{ recording: boolean; progress?: number }>('/record/status'),
+  getRecordConfig: () =>
+    request<RecordConfig>('/record/config'),
 }

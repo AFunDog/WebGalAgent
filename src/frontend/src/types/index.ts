@@ -124,13 +124,18 @@ export interface LinkStatus {
 // ===== 录制 =====
 
 export interface RecordConfig {
-  url: string
-  output_path: string
-  duration: number
-  fps: number
-  canvas_selector: string
+  url?: string
+  output_path?: string
+  duration?: number
+  fps?: number
+  canvas_selector?: string
+  browser_type?: string
+  headless?: boolean
   format?: 'jpeg' | 'png'
+  quality?: number
   channel?: string
+  viewport_width?: number
+  viewport_height?: number
 }
 
 export interface RecordResult {

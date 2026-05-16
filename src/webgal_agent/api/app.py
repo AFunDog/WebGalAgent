@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+# Windows: 必须在 import playwright 前设置 ProactorEventLoop
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles

@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from webgal_agent.scene_link import SceneLinkManager
 
-router = APIRouter(prefix="/scene-link", tags=["scene-link"])
+router = APIRouter(prefix="/api/scene-link", tags=["scene-link"])
 
 # 模块级单例
 _manager: SceneLinkManager | None = None

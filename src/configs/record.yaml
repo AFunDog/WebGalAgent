@@ -1,0 +1,28 @@
+# 浏览器录制配置
+
+# 截图格式：jpeg（有损，小文件）或 png（无损，画质最好）
+format: jpeg
+
+# 截图质量：1-100，仅 JPEG 格式有效
+quality: 95
+
+# 录制帧率
+fps: 60
+
+# 默认录制时长（秒）
+duration: 20.0
+
+# 默认目标选择器
+canvas_selector: "div._MainStage_main_9enex_1"
+
+# 默认浏览器类型：chromium, firefox, webkit
+browser_type: chromium
+
+# 是否默认使用无头模式
+headless: false
+
+# 默认视口宽度
+viewport_width: 1920
+
+# 默认视口高度
+viewport_height: 1080
