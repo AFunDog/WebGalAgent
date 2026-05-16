@@ -7,13 +7,13 @@ url: "http://localhost:3001/games/MyGO3.0.0/"
 format: jpeg
 
 # 截图质量：1-100，仅 JPEG 格式有效
-quality: 95
+quality: 90
 
 # 录制帧率
 fps: 60
 
 # 默认录制时长（秒）
-duration: 20.0
+duration: 0
 
 # changeScene 默认场景路径
 scene_path: "index.txt"
@@ -23,6 +23,9 @@ canvas_selector: "div._MainStage_main_9enex_1"
 
 # 默认浏览器类型：chromium, firefox, webkit
 browser_type: msedge
+
+# 停止条件（JS 表达式，满足时提前终止录制）
+stop_condition: "window.__webgal.sceneManager.sceneData.currentScene.sceneUrl === './game/scene/start.txt'"
 
 # 是否默认使用无头模式
 headless: false
