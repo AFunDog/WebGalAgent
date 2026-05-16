@@ -24,6 +24,16 @@ const router = createRouter({
       name: 'providers',
       component: () => import('../views/ProvidersView.vue'),
     },
+    {
+      path: '/scene-link',
+      name: 'scene-link',
+      component: () => import('../views/SceneLinkView.vue'),
+    },
+    {
+      path: '/record',
+      name: 'record',
+      component: () => import('../views/RecordView.vue'),
+    },
   ],
 })
 

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from webgal_agent.api.routes import assets, knowledge, provider, task, workflow
+from webgal_agent.api.routes import assets, knowledge, provider, task, workflow, scene_link, record
 from webgal_agent.config.provider_manager import ProviderConfigManager
 from webgal_agent.knowledge import FileKnowledgeStore
 
@@ -91,6 +91,13 @@ def create_app(
     app.include_router(provider.router)
     app.include_router(workflow.router)
     app.include_router(task.router)
+    # 初始化并注册软链接路由
+    scene_link.init_manager(
+        result_base_dir=os.getenv("WEBGAL_TASK_DIR", "data/tasks"),
+        link_root=os.getenv("WEBGAL_LINK_ROOT", r"D:\Data\WebGal"),
+    )
+    app.include_router(scene_link.router)
+    app.include_router(record.router)
 
     # 提供静态前端文件（必须放在最后 — 通配挂载）
     if _STATIC_DIR.exists():

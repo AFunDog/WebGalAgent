@@ -34,14 +34,18 @@ async def demo_navigate(
     browser_type: str = "chromium",
     headless: bool = False,
     executable_path: str | None = None,
+    viewport_width: int = 1920,
+    viewport_height: int = 1080,
+    browser_channel: str | None = None,
 ) -> None:
     """演示：导航并截图。"""
     config = DefaultBrowserConfig(
         browser_type=browser_type,
         headless=headless,
-        viewport_width=1280,
-        viewport_height=720,
+        viewport_width=viewport_width,
+        viewport_height=viewport_height,
         executable_path=executable_path,
+        channel=browser_channel,
     )
 
     async with BrowserClient(config) as client:
@@ -69,12 +73,15 @@ async def demo_record(
     url: str,
     output_path: str,
     duration: float = 5.0,
-    fps: float = 30.0,
+    fps: float = 60.0,
     canvas_selector: str = "div._MainStage_main_9enex_1",
     browser_type: str = "chromium",
     headless: bool = False,
     no_record: bool = False,
     executable_path: str | None = None,
+    viewport_width: int = 1920,
+    viewport_height: int = 1080,
+    browser_channel: str | None = None,
 ) -> None:
     """演示：使用 CDP 虚拟时间 + FFmpeg 逐帧确定性录制。"""
 
@@ -96,10 +103,11 @@ async def demo_record(
     config = DefaultBrowserConfig(
         browser_type=browser_type,
         headless=headless,
-        viewport_width=1280,
-        viewport_height=720,
+        viewport_width=viewport_width,
+        viewport_height=viewport_height,
         executable_path=executable_path,
         launch_args=deterministic_args,
+        channel=browser_channel,
     )
 
     async with BrowserClient(config) as client:
@@ -231,8 +239,8 @@ def main() -> None:
     parser.add_argument("--canvas", dest="selector_legacy", default=None, help="兼容旧参数：等同于 --selector")
     parser.add_argument(
         "--browser",
-        default="chromium",
-        choices=["chromium", "firefox", "webkit"],
+        default="msedge",
+        choices=["chromium", "firefox", "webkit", "msedge"],
         help="浏览器类型",
     )
     parser.add_argument(
@@ -240,14 +248,22 @@ def main() -> None:
         default=None,
         help="浏览器可执行文件路径（如 chrome-headless-shell 路径）",
     )
+    parser.add_argument(
+        "--browser-channel",
+        default=None,
+        dest="browser_channel",
+        help="浏览器 channel（如 msedge）",
+    )
     parser.add_argument("--headless", action="store_true", help="无头模式")
     parser.add_argument("--no-record", action="store_true", help="不录制，仅等待 duration 时间观察页面")
+    parser.add_argument("--width", type=int, default=1920, help="浏览器视口宽度 (默认: 1920)")
+    parser.add_argument("--height", type=int, default=1080, help="浏览器视口高度 (默认: 1080)")
 
     args = parser.parse_args()
 
     match args.mode:
         case "navigate":
-            asyncio.run(demo_navigate(args.url, args.browser, args.headless, args.executable))
+            asyncio.run(demo_navigate(args.url, args.browser, args.headless, args.executable, args.width, args.height))
         case "record":
             asyncio.run(
                 demo_record(
@@ -256,10 +272,13 @@ def main() -> None:
                     duration=args.duration,
                     fps=args.fps,
                     canvas_selector=args.selector_legacy or args.selector,
-                    browser_type=args.browser,
+                    browser_type="chromium",  # 始终使用 chromium 引擎，通过 channel 切换浏览器
                     headless=args.headless,
                     no_record=args.no_record,
                     executable_path=args.executable,
+                    viewport_width=args.width,
+                    viewport_height=args.height,
+                    browser_channel=args.browser_channel,
                 )
             )
 

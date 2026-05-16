@@ -103,3 +103,39 @@ export interface ProviderPresets {
     [key: string]: unknown
   }
 }
+
+// ===== 软链接 =====
+
+export interface LinkResponse {
+  success: boolean
+  message: string
+  link_path: string | null
+  target_path: string | null
+}
+
+export interface LinkStatus {
+  path: string
+  exists: boolean
+  is_symlink: boolean
+  target: string | null
+  valid: boolean
+}
+
+// ===== 录制 =====
+
+export interface RecordConfig {
+  url: string
+  output_path: string
+  duration: number
+  fps: number
+  canvas_selector: string
+}
+
+export interface RecordResult {
+  success: boolean
+  message: string
+  output_path: string | null
+  total_frames: number
+  duration: number
+  file_size_mb: number
+}

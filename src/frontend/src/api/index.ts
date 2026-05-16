@@ -8,6 +8,10 @@ import type {
   ProviderData,
   ProviderPresets,
   ProviderConfig,
+  LinkResponse,
+  LinkStatus,
+  RecordConfig,
+  RecordResult,
 } from '../types'
 
 const BASE = '/api'
@@ -87,4 +91,33 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(config),
     }),
+
+  // ----- 软链接 -----
+  getLinkStatus: (linkPath?: string) =>
+    request<LinkStatus>(`/scene-link/status${linkPath ? '?link_path=' + encodeURIComponent(linkPath) : ''}`),
+  createLink: (taskId: string, linkPath?: string, force?: boolean) =>
+    request<LinkResponse>('/scene-link/create', {
+      method: 'POST',
+      body: JSON.stringify({
+        task_id: taskId,
+        link_path: linkPath,
+        force: force ?? false,
+      }),
+    }),
+  removeLink: (linkPath?: string) =>
+    request<LinkResponse>(`/scene-link/remove${linkPath ? '?link_path=' + encodeURIComponent(linkPath) : ''}`, {
+      method: 'POST',
+    }),
+  listTasks: () => request<string[]>('/scene-link/tasks'),
+
+  // ----- 录制 -----
+  startRecord: (config: RecordConfig) =>
+    request<RecordResult>('/record/start', {
+      method: 'POST',
+      body: JSON.stringify(config),
+    }),
+  stopRecord: () =>
+    request<RecordResult>('/record/stop', { method: 'POST' }),
+  getRecordStatus: () =>
+    request<{ recording: boolean; progress?: number }>('/record/status'),
 }

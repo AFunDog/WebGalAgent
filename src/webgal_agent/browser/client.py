@@ -125,6 +125,7 @@ class DefaultBrowserConfig:
     ignore_https_errors: bool = True
     executable_path: str | None = None
     launch_args: list[str] | None = None
+    channel: str | None = None  # e.g. "msedge"
 
 
 class BrowserClient:
@@ -167,7 +168,8 @@ class BrowserClient:
         }
         if self._config.executable_path:
             launch_kwargs["executable_path"] = self._config.executable_path
-            launch_kwargs.pop("channel", None)  # executable_path 和 channel 互斥
+        if self._config.channel:
+            launch_kwargs["channel"] = self._config.channel
         if self._config.launch_args:
             launch_kwargs["args"] = self._config.launch_args
 
