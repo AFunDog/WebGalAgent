@@ -9,7 +9,8 @@
       "Read(//c/Users/Zeng/.claude/projects/d--GitRepository-WebGalAgent/memory//**)",
       "Bash(\".venv/Scripts/python.exe\" -c \"from webgal_agent.browser.screencast import ScreencastRecorder; print\\('OK'\\)\")",
       "Bash(\".venv/Scripts/python.exe\" -c \"from webgal_agent.browser.screencast import ScreencastRecorder; from webgal_agent.api.routes.record import router; print\\('OK'\\)\")",
-      "Bash(.venv/Scripts/python.exe -c ' *)"
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(ruff check *)"
     ]
   }
 }

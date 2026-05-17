@@ -102,6 +102,68 @@ _TIME_CONTROL_SOURCE = """
 
 _TIME_CONTROL_SCRIPT = f"() => {{ {_TIME_CONTROL_SOURCE} }}"
 
+# WebAudio 全局捕获：Hook AudioNode.prototype.connect，将所有输出到 destination
+# 的音频节点同步复制到 MediaStreamDestination，供 MediaRecorder 录制。
+_WEBAUDIO_CAPTURE_SOURCE = """
+(() => {
+    const NativeAudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!NativeAudioContext) return;
+
+    const contexts = new Set();
+
+    function patchContext(ctx) {
+        if (ctx.__patched_for_capture__) return;
+        ctx.__patched_for_capture__ = true;
+
+        const mediaDest = ctx.createMediaStreamDestination();
+        ctx.__mediaStreamDest__ = mediaDest;
+
+        const originalConnect = AudioNode.prototype.connect;
+
+        AudioNode.prototype.connect = function(...args) {
+            const target = args[0];
+            try {
+                if (target === ctx.destination && this !== mediaDest) {
+                    try {
+                        originalConnect.call(this, mediaDest);
+                    } catch(e) {}
+                }
+            } catch(e) {}
+            return originalConnect.apply(this, args);
+        };
+    }
+
+    const OriginalAC = NativeAudioContext;
+
+    window.AudioContext = function(...args) {
+        const ctx = new OriginalAC(...args);
+        contexts.add(ctx);
+        patchContext(ctx);
+        return ctx;
+    };
+
+    window.AudioContext.prototype = OriginalAC.prototype;
+
+    if (window.webkitAudioContext) {
+        window.webkitAudioContext = window.AudioContext;
+    }
+
+    window.__getCapturedStream = () => {
+        const tracks = [];
+        for (const ctx of contexts) {
+            const stream = ctx.__mediaStreamDest__?.stream;
+            if (!stream) continue;
+            for (const track of stream.getAudioTracks()) {
+                tracks.push(track);
+            }
+        }
+        return new MediaStream(tracks);
+    };
+
+    console.log("[WebAudio Capture] Patched AudioNode.prototype.connect");
+})();
+"""
+
 
 @dataclass
 class BrowserInstance:
@@ -306,6 +368,21 @@ class BrowserClient:
             script=f"window.__targetFPS = {float(fps)!r};"
         )
         return await self.enable_time_control(fps=fps)
+
+    async def prepare_webaudio_capture(self, context_id: str = "default") -> bool:
+        """为上下文注入 WebAudio 全局捕获脚本。
+
+        必须在 navigate 之前调用，确保 AudioContext 构造函数在页面脚本执行前被 patch。
+        所有连接到 AudioContext.destination 的音频节点都会被同步复制到
+        MediaStreamDestination，可通过 window.__getCapturedStream() 获取合并后的
+        MediaStream 用于 MediaRecorder 录制。
+        """
+        if context_id not in self._instances:
+            await self.new_context(context_id)
+
+        instance = self._instances[context_id]
+        await instance.context.add_init_script(script=_WEBAUDIO_CAPTURE_SOURCE)
+        return True
 
     async def advance_frame(self, frame_count: int = 1) -> None:
         """推进虚拟时间（逐帧控制，无真实等待）。必须在 enable_time_control 后调用。"""

@@ -7,7 +7,7 @@ url: "http://localhost:3001/games/MyGO3.0.0/"
 format: jpeg
 
 # 截图质量：1-100，仅 JPEG 格式有效
-quality: 90
+quality: 80
 
 # 录制帧率
 fps: 60
@@ -26,6 +26,9 @@ browser_type: msedge
 
 # 停止条件（JS 表达式，满足时提前终止录制）
 stop_condition: "window.__webgal.sceneManager.sceneData.currentScene.sceneUrl === './game/scene/start.txt'"
+
+# 是否录制 WebAudio 音频（Hook AudioNode.prototype.connect）
+record_audio: true
 
 # 是否默认使用无头模式
 headless: false

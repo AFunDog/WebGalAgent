@@ -96,6 +96,7 @@ async def demo_record(
     no_record: bool = False,
     save_frames: str | None = None,
     format: str = "jpeg",
+    record_audio: bool = False,
     json_mode: bool = False,
 ) -> dict | None:
     """CDP Screencast 录制。json_mode=True 时返回结果 dict 而非直接打印。"""
@@ -115,12 +116,17 @@ async def demo_record(
     async with BrowserClient(config) as client:
         await client.new_context(context_id="default")
 
+        if record_audio:
+            _log("注入 WebAudio 全局捕获 (AudioNode.prototype.connect Hook)...", json_mode=json_mode)
+            await client.prepare_webaudio_capture()
+
         _log("拦截脚本注入 (index-e1b3c40e.js)...", json_mode=json_mode)
         await client.add_script_injection(
             url_pattern="**/index-e1b3c40e.js",
             inject_code="""
             window.changeScene = gCe;
             window.toggleAuto = wU;
+            window.__webgal = L;
             window.hideInfo = () => {
                 const el = document.querySelector(`.${ke.main}`);
                 el.style.visibility = 'hidden';
@@ -143,6 +149,7 @@ async def demo_record(
                 """() =>
                 typeof window.changeScene === 'function' &&
                 typeof window.toggleAuto === 'function' &&
+                typeof window.__webgal === 'object' &&
                 typeof window.hideInfo === 'function'
                 """,
                 timeout=10000,
@@ -199,7 +206,7 @@ async def demo_record(
         _log(f"输出: {output_path}", json_mode=json_mode)
 
         recorder = ScreencastRecorder(
-            client, video_cfg, screencast_quality=screencast_quality
+            client, video_cfg, screencast_quality=screencast_quality, record_audio=record_audio
         )
         result = await recorder.start(duration=duration, format=format, save_frames_dir=save_frames, stop_condition=stop_condition)
 
@@ -220,6 +227,7 @@ async def demo_record(
                 "source_fps": result.source_fps,
                 "output_fps": result.output_fps,
                 "file_size_mb": result.file_size_mb,
+                "has_audio": result.has_audio,
             }
         return None
 
@@ -275,6 +283,12 @@ def main() -> None:
         help="浏览器可执行文件路径（如 chrome-headless-shell 路径）",
     )
     parser.add_argument(
+        "--record-audio",
+        action="store_true",
+        default=False,
+        help="录制 WebAudio 音频输出（Hook AudioNode.prototype.connect，捕获后与视频合流）",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         dest="json_mode",
@@ -312,6 +326,7 @@ def main() -> None:
                     no_record=args.no_record,
                     save_frames=args.save_frames,
                     format=args.format,
+                    record_audio=args.record_audio,
                     json_mode=args.json_mode,
                 )
             )

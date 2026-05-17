@@ -61,6 +61,7 @@ class RecordConfigRequest(BaseModel):
     viewport_height: int = 1080
     format: str = "jpeg"
     quality: int = 90
+    record_audio: bool = False
 
 
 class RecordResultResponse(BaseModel):
@@ -72,6 +73,7 @@ class RecordResultResponse(BaseModel):
     source_fps: float = 0.0
     output_fps: float = 0.0
     file_size_mb: float = 0.0
+    has_audio: bool = False
 
 
 _recording_state: dict[str, Any] = {
@@ -112,6 +114,8 @@ def _build_cli_args(req: RecordConfigRequest, output_path: str) -> list[str]:
     ])
     if req.headless:
         args.append("--headless")
+    if req.record_audio:
+        args.append("--record-audio")
     return args
 
 
@@ -253,4 +257,5 @@ async def get_record_config() -> dict:
         "headless": defaults.get("headless", False),
         "viewport_width": defaults.get("viewport_width", 1920),
         "viewport_height": defaults.get("viewport_height", 1080),
+        "record_audio": defaults.get("record_audio", False),
     }
