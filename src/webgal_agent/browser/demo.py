@@ -121,7 +121,11 @@ async def demo_record(
             inject_code="""
             window.changeScene = gCe;
             window.toggleAuto = wU;
-            window.__webgal = L;
+            window.hideInfo = () => {
+                const el = document.querySelector(`.${ke.main}`);
+                el.style.visibility = 'hidden';
+            };
+
             """,
         )
 
@@ -139,7 +143,7 @@ async def demo_record(
                 """() =>
                 typeof window.changeScene === 'function' &&
                 typeof window.toggleAuto === 'function' &&
-                typeof window.__webgal === 'object'
+                typeof window.hideInfo === 'function'
                 """,
                 timeout=10000,
             )
@@ -149,6 +153,7 @@ async def demo_record(
                     window.changeScene(path, 1);
                     await new Promise(r => setTimeout(r, 500));
                     window.toggleAuto();
+                    window.hideInfo();
                 }""",
                 scene_path,
             )
