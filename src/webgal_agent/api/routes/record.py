@@ -62,6 +62,7 @@ class RecordConfigRequest(BaseModel):
     format: str = "jpeg"
     quality: int = 90
     record_audio: bool = False
+    game_config: dict[str, int] | None = None
 
 
 class RecordResultResponse(BaseModel):
@@ -116,6 +117,8 @@ def _build_cli_args(req: RecordConfigRequest, output_path: str) -> list[str]:
         args.append("--headless")
     if req.record_audio:
         args.append("--record-audio")
+    if req.game_config:
+        args.extend(["--game-config", json.dumps(req.game_config)])
     return args
 
 
@@ -258,4 +261,5 @@ async def get_record_config() -> dict:
         "viewport_width": defaults.get("viewport_width", 1920),
         "viewport_height": defaults.get("viewport_height", 1080),
         "record_audio": defaults.get("record_audio", False),
+        "game_config": defaults.get("game_config", {}),
     }

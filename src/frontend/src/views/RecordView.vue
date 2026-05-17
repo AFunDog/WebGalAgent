@@ -129,6 +129,37 @@
         </label>
       </div>
 
+      <fieldset style="border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:16px">
+        <legend style="color:var(--text-muted);font-size:13px">游戏配置覆盖（IndexedDB 注入，可选）</legend>
+        <div class="form-row">
+          <div class="form-group" style="flex:1">
+            <label>自动播放速度 (autoSpeed)</label>
+            <input
+              v-model.number="config.game_autoSpeed"
+              type="number"
+              class="form-input"
+              min="1"
+              max="100"
+              placeholder="不修改"
+            />
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>文字显示速度 (textSpeed)</label>
+            <input
+              v-model.number="config.game_textSpeed"
+              type="number"
+              class="form-input"
+              min="1"
+              max="100"
+              placeholder="不修改"
+            />
+          </div>
+        </div>
+        <small style="color:var(--text-muted);font-size:11px">
+          修改后通过 IndexedDB 注入，调用 loadConfig() 生效。留空则不修改
+        </small>
+      </fieldset>
+
       <div class="form-group">
         <label>浏览器可执行文件路径（可选）</label>
         <input
@@ -287,6 +318,8 @@ const config = reactive<{
   browser_type: string
   headless: boolean
   record_audio: boolean
+  game_autoSpeed: number | null
+  game_textSpeed: number | null
   executable_path: string
   format: 'jpeg' | 'png'
   quality: number
@@ -303,6 +336,8 @@ const config = reactive<{
   browser_type: 'msedge',
   headless: false,
   record_audio: false,
+  game_autoSpeed: null,
+  game_textSpeed: null,
   executable_path: '',
   format: 'jpeg',
   quality: 90,
@@ -324,6 +359,11 @@ onMounted(async () => {
     if (serverConfig.browser_type) config.browser_type = serverConfig.browser_type
     if (serverConfig.headless !== undefined) config.headless = serverConfig.headless
     if (serverConfig.record_audio !== undefined) config.record_audio = serverConfig.record_audio
+    if (serverConfig.game_config) {
+      const gc = serverConfig.game_config as Record<string, number>
+      if (gc['optionData.autoSpeed'] != null) config.game_autoSpeed = gc['optionData.autoSpeed']
+      if (gc['optionData.textSpeed'] != null) config.game_textSpeed = gc['optionData.textSpeed']
+    }
     if (serverConfig.viewport_width) config.viewport_width = serverConfig.viewport_width
     if (serverConfig.viewport_height) config.viewport_height = serverConfig.viewport_height
   } catch (e) {
@@ -340,6 +380,11 @@ async function startRecord() {
   logs.value = []
 
   try {
+    // 构建 game_config（仅包含非空字段）
+    const gameCfg: Record<string, number> = {}
+    if (config.game_autoSpeed != null) gameCfg['optionData.autoSpeed'] = config.game_autoSpeed
+    if (config.game_textSpeed != null) gameCfg['optionData.textSpeed'] = config.game_textSpeed
+
     const recordConfig: RecordConfig = {
       url: config.url,
       output_path: config.output_path || '',
@@ -351,6 +396,7 @@ async function startRecord() {
       browser_type: config.browser_type,
       headless: config.headless,
       record_audio: config.record_audio,
+      game_config: Object.keys(gameCfg).length > 0 ? gameCfg : undefined,
       viewport_width: config.viewport_width,
       viewport_height: config.viewport_height,
       format: config.format,

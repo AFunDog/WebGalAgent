@@ -139,6 +139,7 @@ export interface RecordConfig {
   viewport_width?: number
   viewport_height?: number
   record_audio?: boolean
+  game_config?: Record<string, number>
 }
 
 export interface RecordResult {

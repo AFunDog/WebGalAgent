@@ -44,71 +44,79 @@ def _log(msg: str, *, json_mode: bool = False) -> None:
         print(msg)
 
 
-async def _apply_game_config(
-    page, overrides: dict[str, int], *, json_mode: bool = False
-) -> None:
-    """通过 IndexedDB 修改游戏配置并调用 loadConfig 使其生效。
+async def _apply_game_config(cdp, overrides: dict[str, int], *, json_mode: bool = False) -> None:
+    """通过 CDP Runtime.evaluate 修改 IndexedDB 游戏配置。
 
-    直接操作 localforage 的 keyvaluepairs store，修改后调用
-    window.loadConfig() 将新配置注入游戏运行时。
+    流程：saveConfig()（持久化）→ 修改 IndexedDB → loadConfig()（重新加载）
+    使用 CDP 而非 page.evaluate，避免页面导航导致 Execution context 销毁。
     """
     config_json = json.dumps(overrides)
     _log(f"修改游戏配置: {overrides}", json_mode=json_mode)
-    await page.evaluate(
-        """(configJson) => {
-            return new Promise((resolve, reject) => {
-                const overrides = JSON.parse(configJson);
-                const req = indexedDB.open('_localforage');
+    resp = await cdp.send("Runtime.evaluate", {
+        "expression": f"""
+        (async () => {{
+            const overrides = {config_json};
 
-                req.onsuccess = (e) => {
-                    const db = e.target.result;
-                    const tx = db.transaction('keyvaluepairs', 'readwrite');
-                    const store = tx.objectStore('keyvaluepairs');
-                    const getReq = store.get('MyGO');
+            return new Promise((resolve, reject) => {{
+                function doModify() {{
+                    const req = indexedDB.open('_localforage');
 
-                    getReq.onsuccess = () => {
-                        const data = getReq.result;
-                        if (!data) {
-                            console.log('[GameConfig] MyGO not found');
-                            return resolve(false);
-                        }
-                        // 合并配置覆盖
-                        for (const [key, val] of Object.entries(overrides)) {
-                            const [obj, field] = key.split('.');
-                            if (data[obj]) {
-                                data[obj][field] = val;
-                            }
-                        }
-                        const putReq = store.put(data, 'MyGO');
-                        putReq.onsuccess = () => {
-                            console.log('[GameConfig] updated:', overrides);
-                            // 重新加载配置到游戏运行时
-                            if (typeof window.loadConfig === 'function') {
-                                window.loadConfig();
-                            }
-                            resolve(true);
-                        };
-                        putReq.onerror = (err) => {
-                            console.error('[GameConfig] put failed:', err);
+                    req.onsuccess = (e) => {{
+                        const db = e.target.result;
+                        const tx = db.transaction('keyvaluepairs', 'readwrite');
+                        const store = tx.objectStore('keyvaluepairs');
+                        const getReq = store.get('MyGO');
+
+                        getReq.onsuccess = () => {{
+                            const data = getReq.result;
+                            if (!data) {{
+                                console.log('[GameConfig] MyGO not found');
+                                return resolve(false);
+                            }}
+                            for (const [key, val] of Object.entries(overrides)) {{
+                                const [obj, field] = key.split('.');
+                                if (data[obj]) {{
+                                    data[obj][field] = val;
+                                }}
+                            }}
+                            const putReq = store.put(data, 'MyGO');
+                            putReq.onsuccess = () => {{
+                                console.log('[GameConfig] updated:', overrides);
+                                if (typeof window.loadConfig === 'function') {{
+                                    window.loadConfig();
+                                }}
+                                resolve(true);
+                            }};
+                            putReq.onerror = (err) => {{
+                                console.error('[GameConfig] put failed:', err);
+                                reject(err);
+                            }};
+                        }};
+
+                        getReq.onerror = (err) => {{
+                            console.error('[GameConfig] get failed:', err);
                             reject(err);
-                        };
-                    };
+                        }};
+                    }};
 
-                    getReq.onerror = (err) => {
-                        console.error('[GameConfig] get failed:', err);
+                    req.onerror = (err) => {{
+                        console.error('[GameConfig] db open failed:', err);
                         reject(err);
-                    };
-                };
+                    }};
+                }}
 
-                req.onerror = (err) => {
-                    console.error('[GameConfig] db open failed:', err);
-                    reject(err);
-                };
-            });
-        }""",
-        config_json,
-    )
-    _log("游戏配置已更新", json_mode=json_mode)
+                if (typeof window.saveConfig === 'function') {{
+                    window.saveConfig();
+                }}
+                setTimeout(doModify, 300);
+            }});
+        }})()
+        """,
+        "returnByValue": True,
+        "awaitPromise": True,
+    })
+    success = resp.get("result", {}).get("value")
+    _log(f"游戏配置{'已更新' if success else '更新失败'}", json_mode=json_mode)
 
 
 async def demo_navigate(
@@ -203,6 +211,7 @@ async def demo_record(
             inject_code="""
             window.changeScene = gCe;
             window.toggleAuto = wU;
+            window.saveConfig = _r;
             window.loadConfig = Vh;
             window.__webgal = L;
             window.hideInfo = () => {
@@ -220,8 +229,17 @@ async def demo_record(
             _log(f"导航超时，继续等待页面加载... ({e})", json_mode=json_mode)
             await asyncio.sleep(5)
 
-        _log("等待 changeScene 函数就绪...", json_mode=json_mode)
         page = await client.get_page()
+
+        # 注入游戏配置覆盖（走 CDP Runtime.evaluate，绕过 page 对象失活问题）
+        if game_config:
+            try:
+                cdp = await client.create_cdp_session()
+                await _apply_game_config(cdp, game_config, json_mode=json_mode)
+            except Exception as e:
+                _log(f"警告: 游戏配置修改失败: {e}", json_mode=json_mode)
+
+        _log("等待 changeScene 函数就绪...", json_mode=json_mode)
         try:
             await page.wait_for_function(
                 """() =>
@@ -232,11 +250,7 @@ async def demo_record(
                 """,
                 timeout=10000,
             )
-            _log(f"changeScene 已就绪，调用 changeScene(\"{scene_path}\", 1)...", json_mode=json_mode)
-
-            # 注入游戏配置覆盖（通过 IndexedDB + loadConfig）
-            if game_config:
-                await _apply_game_config(page, game_config, json_mode=json_mode)
+            _log(f'changeScene 已就绪，调用 changeScene("{scene_path}", 1)...', json_mode=json_mode)
 
             await page.evaluate(
                 """async (path) => {
@@ -291,11 +305,19 @@ async def demo_record(
         recorder = ScreencastRecorder(
             client, video_cfg, screencast_quality=screencast_quality, record_audio=record_audio
         )
-        result = await recorder.start(duration=duration, format=format, save_frames_dir=save_frames, stop_condition=stop_condition)
+        result = await recorder.start(
+            duration=duration,
+            format=format,
+            save_frames_dir=save_frames,
+            stop_condition=stop_condition,
+        )
 
         _log("录制完成!", json_mode=json_mode)
         _log(f"  输出路径: {result.output_path}", json_mode=json_mode)
-        _log(f"  源帧率: {result.source_fps:.1f} FPS → 输出帧率: {result.output_fps:.1f} FPS", json_mode=json_mode)
+        _log(
+            f"  源帧率: {result.source_fps:.1f} FPS → 输出帧率: {result.output_fps:.1f} FPS",
+            json_mode=json_mode,
+        )
         _log(f"  总帧数: {result.total_frames}", json_mode=json_mode)
         _log(f"  时长: {result.duration:.1f}s", json_mode=json_mode)
         _log(f"  文件大小: {result.file_size_mb:.2f} MB", json_mode=json_mode)
@@ -324,20 +346,30 @@ def main() -> None:
     )
     parser.add_argument("--url", default="https://example.com", help="目标 URL")
     parser.add_argument("--output", default="data/temp/output.mp4", help="输出路径")
-    parser.add_argument("--duration", type=float, default=0, help="录制最大时长（秒），0 表示无限等待 --stop-on 条件")
+    parser.add_argument(
+        "--duration",
+        type=float,
+        default=0,
+        help="录制最大时长（秒），0 表示无限等待 --stop-on 条件",
+    )
     parser.add_argument("--fps", type=float, default=60.0, help="输出帧率（ffmpeg 转换）")
     parser.add_argument("--width", type=int, default=1920, help="录制分辨率宽度")
     parser.add_argument("--height", type=int, default=1080, help="录制分辨率高度")
     parser.add_argument(
-        "--selector", default="auto",
+        "--selector",
+        default="auto",
         help="等待的目标元素 CSS 选择器；auto 会优先尝试 #root，再回退到 canvas",
     )
     parser.add_argument(
-        "--scene", default="index.txt", dest="scene_path",
+        "--scene",
+        default="index.txt",
+        dest="scene_path",
         help="调用 changeScene 时传入的场景路径",
     )
     parser.add_argument(
-        "--stop-on", default=None, dest="stop_condition",
+        "--stop-on",
+        default=None,
+        dest="stop_condition",
         help="JS 表达式，录制期间每 0.5 秒求值一次，返回 truthy 时提前终止录制",
     )
     parser.add_argument(
@@ -347,8 +379,12 @@ def main() -> None:
         help="浏览器类型",
     )
     parser.add_argument("--headless", action="store_true", help="无头模式")
-    parser.add_argument("--no-record", action="store_true", help="不录制，仅等待 duration 时间观察页面")
-    parser.add_argument("--screencast-quality", type=int, default=90, help="Screencast JPEG 质量 (0-100)")
+    parser.add_argument(
+        "--no-record", action="store_true", help="不录制，仅等待 duration 时间观察页面"
+    )
+    parser.add_argument(
+        "--screencast-quality", type=int, default=90, help="Screencast JPEG 质量 (0-100)"
+    )
     parser.add_argument(
         "--save-frames",
         default=None,

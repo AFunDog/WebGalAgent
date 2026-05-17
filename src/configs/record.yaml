@@ -38,3 +38,8 @@ viewport_width: 1920
 
 # 默认视口高度
 viewport_height: 1080
+
+# 游戏 IndexedDB 配置覆盖（通过 localforage 注入，在 changeScene 前生效）
+game_config:
+  "optionData.autoSpeed": 40
+  "optionData.textSpeed": 50
