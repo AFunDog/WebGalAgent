@@ -1,276 +1,177 @@
 # browser 模块
 
-基于 Playwright 的浏览器自动化与视频录制模块，为 WebGal Agent 提供页面操控、脚本注入和高帧率视频录制能力。
+WebGalAgent 的浏览器自动化与录制子系统。
 
-## 架构概览
+## 当前模块组成
 
-```
+```text
 browser/
-├── __init__.py       # 模块导出
-├── client.py         # BrowserClient — 浏览器生命周期与页面操作
-├── models.py         # Pydantic 数据模型（配置、状态、结果）
-├── screencast.py     # ScreencastRecorder — CDP Screencast + FFmpeg 录制
-├── recorder.py       # VideoRecorder — CDP beginFrame 确定性录制（遗留）
-├── capture.py        # CanvasCapture — CCapture.js 录制（遗留）
-├── tools.py          # Agent 工具封装（navigate/click/fill/screenshot/get_text/wait_for）
-└── demo.py           # 命令行演示入口
+├── __init__.py
+├── client.py
+├── demo.py
+├── models.py
+├── screencast.py
+├── tools.py
+└── README.md
 ```
 
-### 录制方案对比
+当前仓库里没有旧版 `recorder.py` 或 `capture.py` 文件，文档与实现应以这里的实际文件为准。
 
-| 方案 | 文件 | 原理 | 帧率 | 适用场景 |
-|------|------|------|------|----------|
-| **ScreencastRecorder** | `screencast.py` | CDP `Page.startScreencast` | 可达 60fps+ | **推荐**：通用录制，普通 Chromium/Edge |
-| VideoRecorder | `recorder.py` | CDP `HeadlessExperimental.beginFrame` | 精确可控 | 确定性录制，需 chrome-headless-shell |
-| CanvasCapture | `capture.py` | CCapture.js 浏览器内录制 | 30fps | 遗留，特定元素录制 |
+## 主要职责
 
-### 核心流程（ScreencastRecorder）
-
-```
-BrowserClient
-  │
-  ├── add_script_injection()   ← 页面加载前拦截 JS，注入自定义代码
-  ├── new_context()            ← 创建浏览器上下文
-  ├── navigate()               ← 导航到目标页面
-  ├── wait_for() / click() ... ← 页面交互
-  │
-  └── ScreencastRecorder
-        │
-        ├── create_cdp_session()                  ← 创建 CDP Session
-        ├── Page.startScreencast()                ← 启动 CDP Screencast
-        │     │
-        │     └── JPEG/PNG 帧（从 compositor 直拉）
-        │
-        ├── 缓冲帧到内存
-        │
-        └── FFmpeg stdin 管道                     ← 编码输出
-              │
-              └── 输出 MP4 (libx264) / WebM (libvpx-vp9)
-```
-
-### 架构：独立子进程隔离
-
-Web UI 录制通过独立子进程执行，与 FastAPI 完全隔离：
-
-```
-FastAPI/Uvicorn (record.py)
-  │
-  └── subprocess.Popen ──────────────────────────┐
-        │                                         │
-        └── python -m webgal_agent.browser.demo   │
-              record --json --url ...             │
-              │                                   │
-              ├── set_event_loop_policy(Proactor) │ ← 独立 event loop
-              ├── BrowserClient                   │
-              ├── ScreencastRecorder              │
-              └── stdout: JSON 结果                │
-                                                  │
-  ←── 轮询 GET /api/record/status ←──────────────┘
-```
+- 启动和管理 Playwright 浏览器
+- 页面导航、等待、点击、截图
+- 拦截脚本并注入 WebGal 调试辅助代码
+- 通过 CDP Screencast 录制页面
+- 可选捕获 WebAudio 音频
 
 ## 关键组件
 
-### 1. BrowserClient (`client.py`)
+### `client.py`
 
-Playwright 浏览器的异步封装，核心能力：
+`BrowserClient` 负责：
 
-| 方法 | 说明 |
-|---|---|
-| `new_context()` | 创建浏览器上下文 |
-| `add_script_injection()` | 拦截指定 URL 的响应，在 JS 文件末尾注入代码 |
-| `create_cdp_session()` | 创建 CDP Session 用于底层协议操作 |
-| `navigate()` | 导航到 URL，支持 `wait_until` 参数 |
-| `click()` / `fill()` / `get_text()` | 元素交互 |
-| `screenshot()` | 页面截图 |
-| `wait_for()` | 等待元素状态变化 |
-| `prepare_time_control()` | 预装虚拟时间控制脚本（确定性渲染） |
-| `advance_frame()` | 逐帧推进虚拟时间 |
+- `new_context()`
+- `navigate()`
+- `add_script_injection()`
+- `create_cdp_session()`
+- `wait_for()`
+- `click()` / `fill()` / `get_text()`
+- `prepare_time_control()`
+- `prepare_webaudio_capture()`
 
-### 2. ScreencastRecorder (`screencast.py`)
+### `demo.py`
 
-**CDP Screencast + FFmpeg** 录制方案：
+命令行入口，支持：
 
-1. 通过 `Page.startScreencast` 从浏览器 compositor 拉取帧
-2. 帧缓冲到内存，按时间戳排序
-3. 通过 FFmpeg stdin 管道编码为 MP4/WebM
+- `navigate`
+- `record`
 
-特点：
-- **高帧率**：帧率由 compositor 决定，可达显示器刷新率（通常 60fps）
-- **兼容性**：普通 Chromium/Edge 即可，无需特殊 Chrome 版本
-- **高质量**：libx264 CRF 17 + preset slower
-- **调试支持**：`save_frames_dir` 可保存原始帧
-- **格式可选**：jpeg（有损，文件小）或 png（无损，画质最好）
+也是当前 Web UI 录制能力的真实执行端。API 路由不会直接跑 Playwright，而是通过子进程调用这里。
 
-### 3. 脚本拦截注入 (`add_script_injection`)
+### `screencast.py`
 
-通过 Playwright `page.route()` 拦截匹配的 JS 请求，在原始响应末尾追加自定义代码：
+`ScreencastRecorder` 的当前实现：
+
+1. `Page.startScreencast`
+2. 收到的 JPEG/PNG 帧写入 `data/temp/webgal_screencast_*`
+3. 可选抓取 PCM 音频并落地为 WAV
+4. 录制结束后调用 FFmpeg 离线编码
+
+这不是“实时管道编码到 ffmpeg stdin”的实现，文档不要再写旧架构。
+
+## 当前录制流程
+
+```text
+demo.py
+  -> BrowserClient.new_context()
+  -> 可选 prepare_webaudio_capture()
+  -> add_script_injection()
+  -> navigate()
+  -> 可选 WebGal scene/config 操作
+  -> ScreencastRecorder.start()
+       -> Page.startScreencast
+       -> 帧写磁盘
+       -> 可选音频增量拉取
+       -> Page.stopScreencast
+       -> ffmpeg 离线编码
+```
+
+## Web UI 与子进程隔离
+
+`src/webgal_agent/api/routes/record.py` 通过子进程调用：
+
+```powershell
+.\.venv\Scripts\python.exe -m webgal_agent.browser.demo record --json ...
+```
+
+这样做的原因：
+
+- Playwright 与 FastAPI/Uvicorn event loop 隔离
+- 录制崩溃不会直接拖垮 API 进程
+- stdout/stderr 可单独采集
+
+## WebGal 相关注入规则
+
+当前 `demo.py` 中录制 WebGal 页面时，会注入辅助符号，例如：
+
+- `window.changeScene`
+- `window.toggleAuto`
+- `window.saveConfig`
+- `window.loadConfig`
+- `window.__webgal`
+- `window.hideInfo`
+
+### 配置注入结论
+
+已确认的实现细节：
+
+- IndexedDB 数据库名是 `localforage`
+- 配置记录 key 当前按 `MyGO` 读取/写回
+- `window.saveConfig()` 本身会触发异步数据库写入
+- 如果紧跟着访问同一个 IndexedDB store，会与其内部异步写入发生冲突
+- 因此 `saveConfig()` 后应先留一个短延迟，再执行自定义写入
+
+这条规则比“脚本看起来是否同步”更重要。
+
+## 命令示例
+
+导航测试：
+
+```powershell
+.\.venv\Scripts\python.exe -m webgal_agent.browser.demo navigate --url https://example.com
+```
+
+录制：
+
+```powershell
+.\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
+  --url http://localhost:3001/games/MyGO3.0.0/ `
+  --output data/temp/output.mp4 `
+  --fps 60 --width 1920 --height 1080 `
+  --format jpeg --record-audio
+```
+
+无固定时长，依赖停止条件：
+
+```powershell
+.\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
+  --url http://localhost:3001/games/MyGO3.0.0/ `
+  --duration 0 `
+  --stop-on "window.__webgal.sceneManager.sceneData.currentScene.sceneUrl === './game/scene/start.txt'"
+```
+
+## 常用参数
+
+| 参数 | 说明 |
+|------|------|
+| `--url` | 页面地址 |
+| `--output` | 输出文件路径 |
+| `--duration` | 最大录制时长；`0` 表示依赖 `--stop-on` |
+| `--stop-on` | JS 表达式，truthy 时结束 |
+| `--fps` | 输出帧率 |
+| `--width` / `--height` | 视口大小 |
+| `--selector` | `auto` 或指定 CSS |
+| `--format` | `jpeg` / `png` |
+| `--record-audio` | 开启音频捕获 |
+| `--game-config` | 注入游戏配置 JSON |
+| `--json` | 机器可读输出模式 |
+
+## Windows 注意事项
+
+在 Windows 上，`demo.py` 必须在导入 Playwright 之前设置：
 
 ```python
-await client.add_script_injection(
-    url_pattern="**/index-e1b3c40e.js",
-    inject_code="window.changeScene = gCe;\nwindow.toggleAuto = wU;",
-)
+asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 ```
 
-- 在 `navigate()` 之前调用
-- 支持 glob 模式匹配（如 `**/*.js`）
-- 拦截失败时自动降级放行原始请求
+不要把这个设置挪到 `client.py`、`screencast.py` 或 API 业务层。
 
-## 使用方式
+## 当前文档约束
 
-### 前置依赖
+更新 browser 文档时，必须与以下事实保持一致：
 
-```bash
-# 1. 安装 Playwright 浏览器
-playwright install chromium
-
-# 2. 确保 FFmpeg 在系统 PATH 中
-ffmpeg -version
-```
-
-### 命令行演示
-
-```bash
-# 录制模式（默认 msedge，60fps，1920x1080）
-python -m webgal_agent.browser.demo record \
-    --url http://localhost:3000 \
-    --duration 10 --fps 60
-
-# 使用 chromium + headless
-python -m webgal_agent.browser.demo record \
-    --url http://localhost:3000 \
-    --browser chromium --headless
-
-# PNG 无损录制（画质最好）
-python -m webgal_agent.browser.demo record \
-    --url http://localhost:3000 \
-    --format png
-
-# 自定义分辨率
-python -m webgal_agent.browser.demo record \
-    --url http://localhost:3000 \
-    --width 1280 --height 720
-
-# 保存原始帧用于调试
-python -m webgal_agent.browser.demo record \
-    --url http://localhost:3000 \
-    --save-frames data/temp/frames
-
-# 仅观察页面，不录制
-python -m webgal_agent.browser.demo record \
-    --url http://localhost:3000 \
-    --no-record --duration 5
-
-# JSON 输出模式（供父进程解析）
-python -m webgal_agent.browser.demo record \
-    --url http://localhost:3000 --json
-```
-
-### 命令行参数
-
-| 参数 | 默认值 | 说明 |
-|---|---|---|
-| `mode` | 必填 | `navigate` 或 `record` |
-| `--url` | `https://example.com` | 目标 URL |
-| `--output` | `data/temp/output.mp4` | 输出路径 |
-| `--duration` | `5.0` | 录制时长（秒） |
-| `--fps` | `60.0` | 输出帧率 |
-| `--width` | `1920` | 视口宽度 |
-| `--height` | `1080` | 视口高度 |
-| `--selector` | `auto` | 录制目标 CSS 选择器，`auto` 自动检测 |
-| `--browser` | `msedge` | 浏览器引擎：chromium / firefox / webkit / msedge |
-| `--headless` | `False` | 无头模式 |
-| `--no-record` | `False` | 跳过录制，仅等待观察 |
-| `--screencast-quality` | `90` | Screencast JPEG 质量 (0-100) |
-| `--format` | `jpeg` | 截图格式：jpeg / png |
-| `--save-frames` | 无 | 保存原始帧到指定目录 |
-| `--json` | `False` | JSON 输出模式（日志到 stderr，结果到 stdout） |
-
-### 编程接口
-
-```python
-import asyncio
-from webgal_agent.browser import (
-    BrowserClient,
-    DefaultBrowserConfig,
-    ScreencastRecorder,
-    Selector,
-    SelectorType,
-)
-from webgal_agent.browser.models import VideoConfig
-
-
-async def main():
-    config = DefaultBrowserConfig(
-        browser_type="msedge",
-        headless=False,
-        viewport_width=1920,
-        viewport_height=1080,
-        channel="msedge",
-    )
-
-    async with BrowserClient(config) as client:
-        await client.new_context(context_id="default")
-
-        # 注入脚本（在导航前）
-        await client.add_script_injection(
-            url_pattern="**/index-e1b3c40e.js",
-            inject_code="window.changeScene = gCe;\nwindow.toggleAuto = wU;",
-        )
-
-        await client.navigate("http://localhost:3000", wait_until="load")
-
-        # 录制
-        video_cfg = VideoConfig(output_path="output.mp4", fps=60)
-        recorder = ScreencastRecorder(client, video_cfg)
-        result = await recorder.start(
-            duration=10.0,
-            format="jpeg",              # jpeg 或 png
-            save_frames_dir=None,       # 可选：保存原始帧
-        )
-
-        print(f"录制完成: {result.total_frames} 帧, "
-              f"源帧率 {result.source_fps:.1f} FPS, "
-              f"输出帧率 {result.output_fps:.1f} FPS, "
-              f"文件大小 {result.file_size_mb:.2f} MB")
-
-asyncio.run(main())
-```
-
-### RecordingResult 字段
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `output_path` | `Path` | 输出文件路径 |
-| `total_frames` | `int` | 总帧数 |
-| `duration` | `float` | 实际录制时长（秒） |
-| `source_fps` | `float` | 源帧率（捕获的实际帧率） |
-| `output_fps` | `float` | 输出帧率（ffmpeg 转换后的帧率） |
-| `file_size_mb` | `float` | 文件大小（MB） |
-| `actual_fps` | `float` | 向后兼容字段 |
-
-### Agent 工具
-
-`tools.py` 将浏览器操作封装为 Agent 可调用的 Tool：
-
-| 工具 | 说明 |
-|---|---|
-| `NavigateTool` | 导航到 URL |
-| `ClickTool` | 点击元素 |
-| `FillTool` | 填写表单 |
-| `GetTextTool` | 获取元素文本 |
-| `ScreenshotTool` | 页面截图 |
-| `WaitForTool` | 等待元素状态 |
-
-## 选择器自动检测
-
-`--selector auto` 模式按优先级检测可录制目标：
-
-1. `#root` — WebGal 根元素
-2. `canvas` — Canvas 元素
-
-首个可见元素将被选为录制目标。未找到时继续录制整个页面。
-
-## Windows 事件循环
-
-在 Windows 上，Playwright 需要 `WindowsProactorEventLoopPolicy`。`demo.py` 在 `from webgal_agent.browser import ...` 之前设置此 policy。Web UI 录制通过独立子进程执行，自带独立 event loop，不受 FastAPI/Uvicorn 影响。
+- 当前录制器是 `ScreencastRecorder`
+- 当前帧缓存策略是“写临时目录后离线编码”
+- 当前 API 录制模式是“子进程调用 demo CLI”
+- 当前 WebGal 配置注入依赖 `saveConfig()` 后短延迟
