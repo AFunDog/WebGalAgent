@@ -236,8 +236,8 @@ class ScreencastRecorder:
 
         if total_frames == 0:
             shutil.rmtree(frames_dir, ignore_errors=True)
-            if audio_path:
-                audio_path.unlink(missing_ok=True)
+            if audio_path and audio_path.exists():
+                print(f"[ScreencastRecorder] 音频文件保留: {audio_path}")
             if stop_condition:
                 return RecordingResult(
                     output_path=self._output_path,
@@ -275,8 +275,9 @@ class ScreencastRecorder:
             print(f"[ScreencastRecorder] 已保留帧目录: {keep_dir}")
         else:
             shutil.rmtree(frames_dir, ignore_errors=True)
-        if audio_path:
-            audio_path.unlink(missing_ok=True)
+        if audio_path and audio_path.exists():
+            print(f"[ScreencastRecorder] 音频文件保留: {audio_path} "
+                  f"({audio_path.stat().st_size / 1024:.1f}KB)")
 
         output_exists = self._output_path.exists()
         file_size = self._output_path.stat().st_size / (1024 * 1024) if output_exists else 0
@@ -423,6 +424,9 @@ class ScreencastRecorder:
         pcm_bytes = bytes(self._audio_buffer)
         self._audio_buffer = bytearray()
 
+        # 诊断：检查 PCM 信号是否真的有振幅
+        await self._diagnose_audio_signal(cdp, pcm_bytes)
+
         sr = self._audio_meta.get("sampleRate", 48000)
         ch = self._audio_meta.get("channels", 2)
 
@@ -434,6 +438,40 @@ class ScreencastRecorder:
         print(f"[ScreencastRecorder] WAV已保存: {audio_path} "
               f"({len(pcm_bytes) / 1024:.1f}KB, sr={sr}, ch={ch})")
         return audio_path
+
+    async def _diagnose_audio_signal(self, cdp, pcm_bytes: bytes) -> None:
+        """打印音频信号诊断信息：振幅统计 + AudioContext 状态 + audio 元素数。"""
+        # 本地 PCM 振幅检查（采样前 4000 个 float 避免全量扫描）
+        sample_count = min(len(pcm_bytes) // 4, 4000)
+        max_abs = 0.0
+        sum_abs = 0.0
+        for i in range(0, sample_count * 4, 4):
+            val = abs(struct.unpack_from("<f", pcm_bytes, i)[0])
+            sum_abs += val
+            if val > max_abs:
+                max_abs = val
+        mean_abs = sum_abs / sample_count if sample_count > 0 else 0.0
+        print(f"[ScreencastRecorder] 信号诊断 (本地PCM, 前{sample_count}采样): "
+              f"max={max_abs:.6f}, mean={mean_abs:.6f}, "
+              f"{'有信号' if max_abs > 1e-4 else '静音'}")
+
+        # 页面端诊断
+        try:
+            resp = await cdp.send("Runtime.evaluate", {
+                "expression": "window.__checkAudioSignal ? window.__checkAudioSignal() : null",
+                "returnByValue": True,
+            })
+            diag = resp.get("result", {}).get("value")
+            if diag:
+                print(f"[ScreencastRecorder] 信号诊断 (页面): "
+                      f"status={diag.get('status')}, "
+                      f"max={diag.get('maxAmplitude', 0):.6f}, "
+                      f"mean={diag.get('meanAmplitude', 0):.6f}, "
+                      f"samples={diag.get('sampleCount', 0)}, "
+                      f"ctxStates={diag.get('audioContextStates', [])}, "
+                      f"audioElements={diag.get('routedAudioElements', 0)}")
+        except Exception as e:
+            print(f"[ScreencastRecorder] 页面诊断失败: {e}")
 
     # ── FFmpeg 编码 ────────────────────────────────────────────────
 

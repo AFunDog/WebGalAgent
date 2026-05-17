@@ -261,7 +261,79 @@ _WEBAUDIO_CAPTURE_SOURCE = """
         return true;
     };
 
-    console.log('[WebAudio Capture] masterGain graph installed');
+    // ── HTMLAudioElement 劫持：将 <audio> 播放强制路由到 WebAudio ─
+
+    function getOrCreateCaptureCtx() {
+        for (const ctx of contexts) {
+            if (ctx.state === 'running' || ctx.state === 'suspended') {
+                return ctx;
+            }
+        }
+        return new AudioContext();
+    }
+
+    const _origPlay = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function(...args) {
+        if (!this.__webAudioRouted) {
+            this.__webAudioRouted = true;
+            try {
+                const ctx = getOrCreateCaptureCtx();
+                const src = ctx.createMediaElementSource(this);
+                const connectFn = _originalConnect || AudioNode.prototype.connect;
+                connectFn.call(src, ctx.__masterGain__ || ctx.destination);
+                this.__srcNode = src;
+                console.log('[WebAudio Capture] routed <audio> to masterGain');
+            } catch(e) {
+                // 可能已有 MediaElementSource（游戏已自行接入 WebAudio）
+                // connect hook 会覆盖，不需要额外处理
+                console.log('[WebAudio Capture] <audio> already in WebAudio graph');
+            }
+        }
+        return _origPlay.apply(this, args);
+    };
+
+    // ── 信号诊断 ──────────────────────────────────────────────
+
+    window.__checkAudioSignal = () => {
+        const chunks = window.__audioPcmChunks;
+        if (!chunks || chunks.length === 0) {
+            const ctxStates = [];
+            for (const ctx of contexts) {
+                ctxStates.push(ctx.state);
+            }
+            return {
+                status: 'no_data',
+                audioContextStates: ctxStates,
+                routedAudioElements: document.querySelectorAll('audio').length
+            };
+        }
+
+        let maxAbs = 0, sumAbs = 0, count = 0;
+        for (const c of chunks) {
+            for (let i = 0; i < c.length; i++) {
+                const abs = Math.abs(c[i]);
+                sumAbs += abs;
+                if (abs > maxAbs) maxAbs = abs;
+                count++;
+            }
+        }
+
+        const ctxStates = [];
+        for (const ctx of contexts) {
+            ctxStates.push(ctx.state);
+        }
+
+        return {
+            status: maxAbs > 1e-6 ? 'signal_detected' : 'silent',
+            maxAmplitude: maxAbs,
+            meanAmplitude: count > 0 ? sumAbs / count : 0,
+            sampleCount: count,
+            audioContextStates: ctxStates,
+            routedAudioElements: document.querySelectorAll('audio').length
+        };
+    };
+
+    console.log('[WebAudio Capture] graph + HTMLAudio hook installed');
 })();
 """
 
