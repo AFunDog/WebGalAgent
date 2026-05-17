@@ -102,37 +102,83 @@ _TIME_CONTROL_SOURCE = """
 
 _TIME_CONTROL_SCRIPT = f"() => {{ {_TIME_CONTROL_SOURCE} }}"
 
-# WebAudio 全局捕获：Hook AudioNode.prototype.connect，将所有输出到 destination
-# 的音频节点同步复制到 MediaStreamDestination，供 MediaRecorder 录制。
+# WebAudio 全局捕获：masterGain 汇聚点方案。
+#
+# 所有 AudioNode 的 connect 调用都会被强制额外连接到 masterGain，
+# masterGain → destination（扬声器）+ mediaStreamDestination（录制），
+# 无论原始 audio graph 如何路由，信号都会进入 capture stream。
 _WEBAUDIO_CAPTURE_SOURCE = """
 (() => {
     const NativeAudioContext = window.AudioContext || window.webkitAudioContext;
     if (!NativeAudioContext) return;
 
     const contexts = new Set();
+    let _originalConnect = null;
+
+    function setupMasterGain(ctx) {
+        if (ctx.__masterGain__) return;
+
+        const masterGain = ctx.createGain();
+        const mediaDest = ctx.createMediaStreamDestination();
+        const connectFn = _originalConnect || AudioNode.prototype.connect;
+
+        // masterGain → destination（扬声器）+ mediaStreamDestination（录制）
+        connectFn.call(masterGain, ctx.destination);
+        connectFn.call(masterGain, mediaDest);
+
+        // 静音 oscillator：防止 Chrome 将"无声 graph"优化掉导致 PCM 全零
+        const osc = ctx.createOscillator();
+        const silentGain = ctx.createGain();
+        silentGain.gain.value = 0;
+        osc.connect(silentGain);
+        connectFn.call(silentGain, masterGain);
+        osc.start();
+
+        ctx.__masterGain__ = masterGain;
+        ctx.__mediaStreamDest__ = mediaDest;
+
+        // 强制 resume，绕过 Chrome autoplay policy
+        if (ctx.state === 'suspended') {
+            ctx.resume();
+        }
+
+        console.log('[WebAudio Capture] masterGain + silent osc ready, state=' + ctx.state);
+    }
+
+    function patchConnect() {
+        if (_originalConnect) return;
+        _originalConnect = AudioNode.prototype.connect;
+
+        AudioNode.prototype.connect = function(...args) {
+            const target = args[0];
+            const ctx = this.context;
+
+            // 先执行原始 connect
+            const result = _originalConnect.apply(this, args);
+
+            // 强制 this → masterGain，除非：
+            // - this 就是 masterGain（避免循环）
+            // - target 就是 masterGain（已经连过去了）
+            // - 没有 context 或 masterGain 尚未建立
+            if (ctx && ctx.__masterGain__ && this !== ctx.__masterGain__ && target !== ctx.__masterGain__) {
+                try {
+                    _originalConnect.call(this, ctx.__masterGain__);
+                } catch(e) {}
+            }
+
+            return result;
+        };
+    }
 
     function patchContext(ctx) {
         if (ctx.__patched_for_capture__) return;
         ctx.__patched_for_capture__ = true;
 
-        const mediaDest = ctx.createMediaStreamDestination();
-        ctx.__mediaStreamDest__ = mediaDest;
-
-        const originalConnect = AudioNode.prototype.connect;
-
-        AudioNode.prototype.connect = function(...args) {
-            const target = args[0];
-            try {
-                if (target === ctx.destination && this !== mediaDest) {
-                    try {
-                        originalConnect.call(this, mediaDest);
-                    } catch(e) {}
-                }
-            } catch(e) {}
-            return originalConnect.apply(this, args);
-        };
+        patchConnect();
+        setupMasterGain(ctx);
     }
 
+    // Hook AudioContext 构造函数
     const OriginalAC = NativeAudioContext;
 
     window.AudioContext = function(...args) {
@@ -148,6 +194,9 @@ _WEBAUDIO_CAPTURE_SOURCE = """
         window.webkitAudioContext = window.AudioContext;
     }
 
+    // 全局预装 hook（处理 init script 之前已存在的 AudioContext）
+    patchConnect();
+
     window.__getCapturedStream = () => {
         const tracks = [];
         for (const ctx of contexts) {
@@ -160,7 +209,7 @@ _WEBAUDIO_CAPTURE_SOURCE = """
         return new MediaStream(tracks);
     };
 
-    console.log("[WebAudio Capture] Patched AudioNode.prototype.connect");
+    console.log('[WebAudio Capture] masterGain graph installed');
 })();
 """
 

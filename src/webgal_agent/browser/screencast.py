@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import shutil
 import time
 import uuid
@@ -142,26 +143,33 @@ class ScreencastRecorder:
 
         await cdp.send("Page.startScreencast", screencast_opts)
 
-        # 录制等待：手动交替轮询停止条件 + 音频拉取
+        # 录制等待：停止条件检查（主循环）+ 音频拉取（异步 task，不阻塞主循环）
         deadline = time.monotonic() + duration if duration > 0 else float("inf")
         last_pull = time.monotonic()
+        pull_task: asyncio.Task | None = None
         try:
             while True:
                 now = time.monotonic()
                 # 超时检查
                 if now >= deadline:
                     break
-                # 音频增量拉取（每秒一次）
-                if has_audio and now - last_pull >= 1.0:
-                    await self._pull_audio_chunks(page)
+                # 音频增量拉取：启动异步 task（fire-and-forget），不阻塞停止条件检查
+                if has_audio and now - last_pull >= 1.0 and pull_task is None:
+                    pull_task = asyncio.create_task(self._pull_audio_chunks(cdp))
                     last_pull = now
-                # 停止条件检查（参数化传值，避免注入风险）
+                # 检查上次拉取是否完成
+                if pull_task is not None and pull_task.done():
+                    with contextlib.suppress(Exception):
+                        await pull_task
+                    pull_task = None
+                # 停止条件检查（走 CDP Runtime.evaluate，绕过已失活的 page 对象）
                 if stop_condition:
                     try:
-                        result = await page.evaluate(
-                            "(expr) => !!eval(expr)", stop_condition
-                        )
-                        if result:
+                        resp = await cdp.send("Runtime.evaluate", {
+                            "expression": f"!!({stop_condition})",
+                            "returnByValue": True,
+                        })
+                        if resp.get("result", {}).get("value"):
                             break
                     except Exception as e:
                         print(f"[ScreencastRecorder] 录制过程异常: {e}")
@@ -176,6 +184,10 @@ class ScreencastRecorder:
                     await asyncio.sleep(0.5)
         except Exception as e:
             print(f"[ScreencastRecorder] 录制过程异常: {e}")
+        # 等待未完成的拉取任务
+        if pull_task is not None:
+            with contextlib.suppress(Exception):
+                await pull_task
 
         # 安全停止 screencast（页面可能已导航，忽略 target closed 错误）
         try:
@@ -186,7 +198,7 @@ class ScreencastRecorder:
 
         # 停止音频轮询并完成录制
         if has_audio:
-            audio_path = await self._stop_audio_recording(page)
+            audio_path = await self._stop_audio_recording(cdp)
             if audio_path:
                 print(f"[ScreencastRecorder] 音频已保存: {audio_path}")
             else:
@@ -300,54 +312,18 @@ class ScreencastRecorder:
             print(f"[ScreencastRecorder] 音频录制启动失败: {e}")
             return False
 
-    async def _pull_audio_chunks(self, page) -> None:
-        """从页面拉取一次 audio chunk 到本地 buffer。
+    async def _pull_audio_chunks(self, cdp) -> None:
+        """通过 CDP Runtime.evaluate 从页面拉取一次 audio chunk 到本地 buffer。
 
         由录制主循环每秒调用一次，单次拉取，不包含循环逻辑。
         """
         try:
-            new_bytes = await page.evaluate("""
-            async () => {
-                const chunks = window.__audioChunks;
-                if (!chunks || chunks.length === 0) return [];
-                window.__audioChunks = [];
-
-                const allBytes = [];
-                for (const blob of chunks) {
-                    const ab = await blob.arrayBuffer();
-                    const view = new Uint8Array(ab);
-                    for (let i = 0; i < view.length; i++) {
-                        allBytes.push(view[i]);
-                    }
-                }
-                return allBytes;
-            }
-            """)
-            if new_bytes:
-                self._audio_buffer.extend(new_bytes)
-                kb = len(new_bytes) / 1024
-                total_kb = len(self._audio_buffer) / 1024
-                print(f"[ScreencastRecorder] 音频拉取: +{kb:.1f}KB, buffer 累计 {total_kb:.1f}KB")
-        except Exception as e:
-            print(f"[ScreencastRecorder] 音频拉取失败: {e}")
-
-    async def _stop_audio_recording(self, page) -> Path | None:
-        """停止 MediaRecorder，合并本地 buffer 与页面残留数据，写入 webm 文件。
-
-        优先从页面拉取最后一波数据（如果页面还活着），再合并本地 buffer，
-        最后写入完整的 webm 文件。
-        """
-        # 尝试从页面拉取残留数据（页面可能已关闭）
-        try:
-            result = await page.evaluate("""
-            async () => {
-                const recorder = window.__audioRecorder;
-                if (!recorder || recorder.state === 'inactive') {
-                    // recorder 已停止，只返回残留 chunk
-                    const chunks = window.__audioChunks || [];
-                    window.__audioChunks = null;
-                    window.__audioRecorder = null;
-                    if (chunks.length === 0) return [];
+            resp = await cdp.send("Runtime.evaluate", {
+                "expression": """
+                (async () => {
+                    const chunks = window.__audioChunks;
+                    if (!chunks || chunks.length === 0) return [];
+                    window.__audioChunks = [];
 
                     const allBytes = [];
                     for (const blob of chunks) {
@@ -358,14 +334,32 @@ class ScreencastRecorder:
                         }
                     }
                     return allBytes;
-                }
+                })()
+                """,
+                "returnByValue": True,
+                "awaitPromise": True,
+            })
+            new_bytes = resp.get("result", {}).get("value")
+            if new_bytes:
+                self._audio_buffer.extend(new_bytes)
+                kb = len(new_bytes) / 1024
+                total_kb = len(self._audio_buffer) / 1024
+                print(f"[ScreencastRecorder] 音频拉取: +{kb:.1f}KB, buffer 累计 {total_kb:.1f}KB")
+        except Exception as e:
+            print(f"[ScreencastRecorder] 音频拉取失败: {e}")
 
-                return new Promise(resolve => {
-                    recorder.onstop = async () => {
+    async def _stop_audio_recording(self, cdp) -> Path | None:
+        """通过 CDP Runtime.evaluate 停止 MediaRecorder，合并本地 buffer 写入 webm。"""
+        try:
+            resp = await cdp.send("Runtime.evaluate", {
+                "expression": """
+                (async () => {
+                    const recorder = window.__audioRecorder;
+                    if (!recorder || recorder.state === 'inactive') {
                         const chunks = window.__audioChunks || [];
                         window.__audioChunks = null;
                         window.__audioRecorder = null;
-
+                        if (chunks.length === 0) return [];
                         const allBytes = [];
                         for (const blob of chunks) {
                             const ab = await blob.arrayBuffer();
@@ -374,12 +368,31 @@ class ScreencastRecorder:
                                 allBytes.push(view[i]);
                             }
                         }
-                        resolve(allBytes);
-                    };
-                    recorder.stop();
-                });
-            }
-            """)
+                        return allBytes;
+                    }
+                    return new Promise(resolve => {
+                        recorder.onstop = async () => {
+                            const chunks = window.__audioChunks || [];
+                            window.__audioChunks = null;
+                            window.__audioRecorder = null;
+                            const allBytes = [];
+                            for (const blob of chunks) {
+                                const ab = await blob.arrayBuffer();
+                                const view = new Uint8Array(ab);
+                                for (let i = 0; i < view.length; i++) {
+                                    allBytes.push(view[i]);
+                                }
+                            }
+                            resolve(allBytes);
+                        };
+                        recorder.stop();
+                    });
+                })()
+                """,
+                "returnByValue": True,
+                "awaitPromise": True,
+            })
+            result = resp.get("result", {}).get("value")
             if result:
                 self._audio_buffer.extend(result)
         except Exception as e:

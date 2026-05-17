@@ -100,12 +100,17 @@ async def demo_record(
     json_mode: bool = False,
 ) -> dict | None:
     """CDP Screencast 录制。json_mode=True 时返回结果 dict 而非直接打印。"""
+    launch_args = None
+    if record_audio:
+        launch_args = ["--autoplay-policy=no-user-gesture-required"]
+
     config = DefaultBrowserConfig(
         browser_type=browser_type,
         headless=headless,
         viewport_width=width,
         viewport_height=height,
         channel="msedge" if browser_type == "msedge" else None,
+        launch_args=launch_args,
     )
 
     video_cfg = VideoConfig(
@@ -117,7 +122,7 @@ async def demo_record(
         await client.new_context(context_id="default")
 
         if record_audio:
-            _log("注入 WebAudio 全局捕获 (AudioNode.prototype.connect Hook)...", json_mode=json_mode)
+            _log("注入 WebAudio 全局捕获 (masterGain 方案)...", json_mode=json_mode)
             await client.prepare_webaudio_capture()
 
         _log("拦截脚本注入 (index-e1b3c40e.js)...", json_mode=json_mode)
