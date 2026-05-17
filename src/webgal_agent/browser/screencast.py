@@ -12,6 +12,7 @@ import asyncio
 import base64
 import contextlib
 import shutil
+import struct
 import time
 import uuid
 from pathlib import Path
@@ -31,6 +32,25 @@ def _codec_from_ext(output_path: Path) -> tuple[str, str]:
     if suffix == ".webm":
         return "webm", "libvpx-vp9"
     return "mp4", "libx264"
+
+
+def _write_wav_header(f, data_size: int, sample_rate: int, channels: int) -> None:
+    """写入 WAV header (IEEE float32)，为 PCM 数据提供完整时间轴。"""
+    byte_rate = sample_rate * channels * 4
+    block_align = channels * 4
+    f.write(b"RIFF")
+    f.write(struct.pack("<I", 36 + data_size))
+    f.write(b"WAVE")
+    f.write(b"fmt ")
+    f.write(struct.pack("<I", 16))          # chunk size
+    f.write(struct.pack("<H", 3))           # WAVE_FORMAT_IEEE_FLOAT
+    f.write(struct.pack("<H", channels))
+    f.write(struct.pack("<I", sample_rate))
+    f.write(struct.pack("<I", byte_rate))
+    f.write(struct.pack("<H", block_align))
+    f.write(struct.pack("<H", 32))          # bits per sample
+    f.write(b"data")
+    f.write(struct.pack("<I", data_size))
 
 
 class ScreencastRecorder:
@@ -331,8 +351,7 @@ class ScreencastRecorder:
             })
             result = resp.get("result", {}).get("value")
             if result and result.get("pcm_b64"):
-                import base64 as b64
-                pcm_bytes = b64.b64decode(result["pcm_b64"])
+                pcm_bytes = base64.b64decode(result["pcm_b64"])
                 self._audio_buffer.extend(pcm_bytes)
 
                 meta = result.get("meta", {})
@@ -385,8 +404,7 @@ class ScreencastRecorder:
             })
             result = resp.get("result", {}).get("value")
             if result and result.get("pcm_b64"):
-                import base64 as b64
-                pcm_bytes = b64.b64decode(result["pcm_b64"])
+                pcm_bytes = base64.b64decode(result["pcm_b64"])
                 self._audio_buffer.extend(pcm_bytes)
 
                 meta = result.get("meta", {})
@@ -405,13 +423,16 @@ class ScreencastRecorder:
         pcm_bytes = bytes(self._audio_buffer)
         self._audio_buffer = bytearray()
 
-        audio_path = Path("data/temp") / f"webgal_audio_{uuid.uuid4().hex[:8]}.pcm"
+        sr = self._audio_meta.get("sampleRate", 48000)
+        ch = self._audio_meta.get("channels", 2)
+
+        audio_path = Path("data/temp") / f"webgal_audio_{uuid.uuid4().hex[:8]}.wav"
         audio_path.parent.mkdir(parents=True, exist_ok=True)
-        audio_path.write_bytes(pcm_bytes)
-        print(f"[ScreencastRecorder] PCM已保存: {audio_path} "
-              f"({len(pcm_bytes) / 1024:.1f}KB, "
-              f"sr={self._audio_meta.get('sampleRate', '?')}, "
-              f"ch={self._audio_meta.get('channels', '?')})")
+        with open(audio_path, "wb") as f:
+            _write_wav_header(f, len(pcm_bytes), sr, ch)
+            f.write(pcm_bytes)
+        print(f"[ScreencastRecorder] WAV已保存: {audio_path} "
+              f"({len(pcm_bytes) / 1024:.1f}KB, sr={sr}, ch={ch})")
         return audio_path
 
     # ── FFmpeg 编码 ────────────────────────────────────────────────
@@ -437,13 +458,9 @@ class ScreencastRecorder:
         ]
 
         if audio_path and audio_path.exists():
-            sr = self._audio_meta.get("sampleRate", 48000)
-            ch = self._audio_meta.get("channels", 2)
             args.extend([
-                "-f", "f32le",
-                "-ar", str(sr),
-                "-ac", str(ch),
                 "-i", str(audio_path),
+                "-af", "aresample=async=1:first_pts=0",
             ])
 
         args.extend([
