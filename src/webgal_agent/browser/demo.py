@@ -44,6 +44,73 @@ def _log(msg: str, *, json_mode: bool = False) -> None:
         print(msg)
 
 
+async def _apply_game_config(
+    page, overrides: dict[str, int], *, json_mode: bool = False
+) -> None:
+    """通过 IndexedDB 修改游戏配置并调用 loadConfig 使其生效。
+
+    直接操作 localforage 的 keyvaluepairs store，修改后调用
+    window.loadConfig() 将新配置注入游戏运行时。
+    """
+    config_json = json.dumps(overrides)
+    _log(f"修改游戏配置: {overrides}", json_mode=json_mode)
+    await page.evaluate(
+        """(configJson) => {
+            return new Promise((resolve, reject) => {
+                const overrides = JSON.parse(configJson);
+                const req = indexedDB.open('_localforage');
+
+                req.onsuccess = (e) => {
+                    const db = e.target.result;
+                    const tx = db.transaction('keyvaluepairs', 'readwrite');
+                    const store = tx.objectStore('keyvaluepairs');
+                    const getReq = store.get('MyGO');
+
+                    getReq.onsuccess = () => {
+                        const data = getReq.result;
+                        if (!data) {
+                            console.log('[GameConfig] MyGO not found');
+                            return resolve(false);
+                        }
+                        // 合并配置覆盖
+                        for (const [key, val] of Object.entries(overrides)) {
+                            const [obj, field] = key.split('.');
+                            if (data[obj]) {
+                                data[obj][field] = val;
+                            }
+                        }
+                        const putReq = store.put(data, 'MyGO');
+                        putReq.onsuccess = () => {
+                            console.log('[GameConfig] updated:', overrides);
+                            // 重新加载配置到游戏运行时
+                            if (typeof window.loadConfig === 'function') {
+                                window.loadConfig();
+                            }
+                            resolve(true);
+                        };
+                        putReq.onerror = (err) => {
+                            console.error('[GameConfig] put failed:', err);
+                            reject(err);
+                        };
+                    };
+
+                    getReq.onerror = (err) => {
+                        console.error('[GameConfig] get failed:', err);
+                        reject(err);
+                    };
+                };
+
+                req.onerror = (err) => {
+                    console.error('[GameConfig] db open failed:', err);
+                    reject(err);
+                };
+            });
+        }""",
+        config_json,
+    )
+    _log("游戏配置已更新", json_mode=json_mode)
+
+
 async def demo_navigate(
     url: str,
     browser_type: str = "chromium",
@@ -97,9 +164,14 @@ async def demo_record(
     save_frames: str | None = None,
     format: str = "jpeg",
     record_audio: bool = False,
+    game_config: dict[str, int] | None = None,
     json_mode: bool = False,
 ) -> dict | None:
-    """CDP Screencast 录制。json_mode=True 时返回结果 dict 而非直接打印。"""
+    """CDP Screencast 录制。json_mode=True 时返回结果 dict 而非直接打印。
+
+    Args:
+        game_config: 可选的 IndexedDB 游戏配置覆盖，如 {"optionData.autoSpeed": 50}
+    """
     launch_args = None
     if record_audio:
         launch_args = ["--autoplay-policy=no-user-gesture-required"]
@@ -131,6 +203,7 @@ async def demo_record(
             inject_code="""
             window.changeScene = gCe;
             window.toggleAuto = wU;
+            window.loadConfig = Vh;
             window.__webgal = L;
             window.hideInfo = () => {
                 const el = document.querySelector(`.${ke.main}`);
@@ -160,6 +233,11 @@ async def demo_record(
                 timeout=10000,
             )
             _log(f"changeScene 已就绪，调用 changeScene(\"{scene_path}\", 1)...", json_mode=json_mode)
+
+            # 注入游戏配置覆盖（通过 IndexedDB + loadConfig）
+            if game_config:
+                await _apply_game_config(page, game_config, json_mode=json_mode)
+
             await page.evaluate(
                 """async (path) => {
                     window.changeScene(path, 1);
@@ -294,6 +372,11 @@ def main() -> None:
         help="录制页面音频输出（WebAudio + HTMLAudio 全局捕获，与视频合流）",
     )
     parser.add_argument(
+        "--game-config",
+        default=None,
+        help='游戏 IndexedDB 配置覆盖 (JSON), 如 {"optionData.autoSpeed":50}',
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         dest="json_mode",
@@ -301,6 +384,10 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    game_config: dict[str, int] | None = None
+    if getattr(args, "game_config", None):
+        game_config = json.loads(args.game_config)
 
     match args.mode:
         case "navigate":
@@ -314,27 +401,38 @@ def main() -> None:
                 )
             )
         case "record":
-            result = asyncio.run(
-                demo_record(
-                    url=args.url,
-                    output_path=args.output,
-                    duration=args.duration,
-                    fps=args.fps,
-                    width=args.width,
-                    height=args.height,
-                    selector=args.selector,
-                    scene_path=args.scene_path,
-                    stop_condition=args.stop_condition,
-                    browser_type=args.browser,
-                    headless=args.headless,
-                    screencast_quality=args.screencast_quality,
-                    no_record=args.no_record,
-                    save_frames=args.save_frames,
-                    format=args.format,
-                    record_audio=args.record_audio,
-                    json_mode=args.json_mode,
+            # json_mode 下将 stdout 重定向到 stderr，避免 ScreencastRecorder
+            # 的 print() 填满子进程管道缓冲区导致死锁
+            saved_stdout = None
+            if args.json_mode:
+                saved_stdout = sys.stdout
+                sys.stdout = sys.stderr
+            try:
+                result = asyncio.run(
+                    demo_record(
+                        url=args.url,
+                        output_path=args.output,
+                        duration=args.duration,
+                        fps=args.fps,
+                        width=args.width,
+                        height=args.height,
+                        selector=args.selector,
+                        scene_path=args.scene_path,
+                        stop_condition=args.stop_condition,
+                        browser_type=args.browser,
+                        headless=args.headless,
+                        screencast_quality=args.screencast_quality,
+                        no_record=args.no_record,
+                        save_frames=args.save_frames,
+                        format=args.format,
+                        record_audio=args.record_audio,
+                        game_config=game_config,
+                        json_mode=args.json_mode,
+                    )
                 )
-            )
+            finally:
+                if saved_stdout is not None:
+                    sys.stdout = saved_stdout
             if args.json_mode and result:
                 print(json.dumps(result, ensure_ascii=False))
                 if not result["success"]:
