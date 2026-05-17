@@ -44,78 +44,85 @@ def _log(msg: str, *, json_mode: bool = False) -> None:
         print(msg)
 
 
-async def _apply_game_config(cdp, overrides: dict[str, int], *, json_mode: bool = False) -> None:
-    """通过 CDP Runtime.evaluate 修改 IndexedDB 游戏配置。
-
-    流程：saveConfig()（持久化）→ 修改 IndexedDB → loadConfig()（重新加载）
-    使用 CDP 而非 page.evaluate，避免页面导航导致 Execution context 销毁。
-    """
-    config_json = json.dumps(overrides)
+async def _apply_game_config(page, overrides: dict[str, int], *, json_mode: bool = False) -> None:
+    """通过 page.evaluate 执行 IndexedDB 游戏配置修改脚本。"""
     _log(f"修改游戏配置: {overrides}", json_mode=json_mode)
-    resp = await cdp.send("Runtime.evaluate", {
-        "expression": f"""
-        (async () => {{
-            const overrides = {config_json};
+    success = await page.evaluate(
+        """async (overrides) => {
+            const setNestedValue = (obj, path, value) => {
+                const parts = path.split('.');
+                let current = obj;
+                for (let i = 0; i < parts.length - 1; i += 1) {
+                    const key = parts[i];
+                    if (!current || typeof current !== 'object' || !(key in current)) {
+                        return false;
+                    }
+                    current = current[key];
+                }
+                const lastKey = parts[parts.length - 1];
+                if (!current || typeof current !== 'object') {
+                    return false;
+                }
+                current[lastKey] = value;
+                return true;
+            };
 
-            return new Promise((resolve, reject) => {{
-                function doModify() {{
-                    const req = indexedDB.open('_localforage');
+            if (typeof window.saveConfig !== 'function') {
+                throw new Error('saveConfig is not available');
+            }
+            if (typeof window.loadConfig !== 'function') {
+                throw new Error('loadConfig is not available');
+            }
+            if (!window.indexedDB) {
+                throw new Error('indexedDB is not available');
+            }
 
-                    req.onsuccess = (e) => {{
-                        const db = e.target.result;
-                        const tx = db.transaction('keyvaluepairs', 'readwrite');
-                        const store = tx.objectStore('keyvaluepairs');
-                        const getReq = store.get('MyGO');
+            window.saveConfig();
+            await new Promise((resolve) => setTimeout(resolve, 200));
 
-                        getReq.onsuccess = () => {{
-                            const data = getReq.result;
-                            if (!data) {{
-                                console.log('[GameConfig] MyGO not found');
-                                return resolve(false);
-                            }}
-                            for (const [key, val] of Object.entries(overrides)) {{
-                                const [obj, field] = key.split('.');
-                                if (data[obj]) {{
-                                    data[obj][field] = val;
-                                }}
-                            }}
-                            const putReq = store.put(data, 'MyGO');
-                            putReq.onsuccess = () => {{
-                                console.log('[GameConfig] updated:', overrides);
-                                if (typeof window.loadConfig === 'function') {{
-                                    window.loadConfig();
-                                }}
-                                resolve(true);
-                            }};
-                            putReq.onerror = (err) => {{
-                                console.error('[GameConfig] put failed:', err);
-                                reject(err);
-                            }};
-                        }};
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open('localforage');
 
-                        getReq.onerror = (err) => {{
-                            console.error('[GameConfig] get failed:', err);
-                            reject(err);
-                        }};
-                    }};
+                req.onsuccess = (event) => {
+                    const db = event.target.result;
+                    const tx = db.transaction('keyvaluepairs', 'readwrite');
+                    const store = tx.objectStore('keyvaluepairs');
+                    const getReq = store.get('MyGO');
 
-                    req.onerror = (err) => {{
-                        console.error('[GameConfig] db open failed:', err);
-                        reject(err);
-                    }};
-                }}
+                    getReq.onsuccess = () => {
+                        const data = getReq.result;
+                        if (!data) {
+                            resolve(false);
+                            return;
+                        }
 
-                if (typeof window.saveConfig === 'function') {{
-                    window.saveConfig();
-                }}
-                setTimeout(doModify, 300);
-            }});
-        }})()
-        """,
-        "returnByValue": True,
-        "awaitPromise": True,
-    })
-    success = resp.get("result", {}).get("value")
+                        let changed = false;
+                        for (const [key, value] of Object.entries(overrides)) {
+                            changed = setNestedValue(data, key, value) || changed;
+                        }
+
+                        if (!changed) {
+                            resolve(false);
+                            return;
+                        }
+
+                        const putReq = store.put(data, 'MyGO');
+                        putReq.onsuccess = () => {
+                            window.loadConfig();
+                            resolve(true);
+                        };
+                        putReq.onerror = () => reject(putReq.error || new Error('put failed'));
+                    };
+
+                    getReq.onerror = () => reject(getReq.error || new Error('get failed'));
+                    tx.onerror = () => reject(tx.error || new Error('transaction failed'));
+                };
+
+                req.onerror = () => reject(req.error || new Error('indexedDB open failed'));
+            });
+        }""",
+        overrides,
+    )
     _log(f"游戏配置{'已更新' if success else '更新失败'}", json_mode=json_mode)
 
 
@@ -231,39 +238,37 @@ async def demo_record(
 
         page = await client.get_page()
 
-        # 注入游戏配置覆盖（走 CDP Runtime.evaluate，绕过 page 对象失活问题）
-        if game_config:
-            try:
-                cdp = await client.create_cdp_session()
-                await _apply_game_config(cdp, game_config, json_mode=json_mode)
-            except Exception as e:
-                _log(f"警告: 游戏配置修改失败: {e}", json_mode=json_mode)
-
         _log("等待 changeScene 函数就绪...", json_mode=json_mode)
-        try:
-            await page.wait_for_function(
-                """() =>
-                typeof window.changeScene === 'function' &&
-                typeof window.toggleAuto === 'function' &&
-                typeof window.__webgal === 'object' &&
-                typeof window.hideInfo === 'function'
-                """,
-                timeout=10000,
-            )
-            _log(f'changeScene 已就绪，调用 changeScene("{scene_path}", 1)...', json_mode=json_mode)
+        await page.wait_for_function(
+            """() =>
+            typeof window.changeScene === 'function' &&
+            typeof window.toggleAuto === 'function' &&
+            typeof window.__webgal === 'object' &&
+            typeof window.hideInfo === 'function'
+            """,
+            timeout=10000,
+        )
+        _log(f'changeScene 已就绪，调用 changeScene("{scene_path}", 1)...', json_mode=json_mode)
 
-            await page.evaluate(
-                """async (path) => {
-                    window.changeScene(path, 1);
-                    await new Promise(r => setTimeout(r, 500));
-                    window.toggleAuto();
-                    window.hideInfo();
-                }""",
-                scene_path,
-            )
-            _log("changeScene 调用完成", json_mode=json_mode)
-        except Exception as e:
-            _log(f"警告: changeScene 调用失败: {e}", json_mode=json_mode)
+        await page.evaluate(
+            """async (path) => {
+                window.changeScene(path, 1);
+            }""",
+            scene_path,
+        )
+        _log("changeScene 调用完成", json_mode=json_mode)
+
+        if game_config:
+            _log("场景切换后注入游戏配置...", json_mode=json_mode)
+            await _apply_game_config(page, game_config, json_mode=json_mode)
+
+        await page.evaluate(
+            """async () => {
+                await new Promise(r => setTimeout(r, 300));
+                window.toggleAuto();
+                window.hideInfo();
+            }"""
+        )
 
         if selector == "auto":
             for candidate in ("#root", "canvas"):

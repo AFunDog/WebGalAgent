@@ -27,6 +27,9 @@ The system combines:
 ## Key Commands
 
 ```bash
+# use the project virtualenv python by default
+.venv\Scripts\python.exe start.py
+
 # start full app
 python start.py
 
@@ -48,6 +51,11 @@ ruff check .
 # browser recording CLI
 python -m webgal_agent.browser.demo record --url <url> --duration 10 --fps 60
 ```
+
+## Environment Rule
+
+- Prefer the project virtualenv Python for all Python commands: `.venv\Scripts\python.exe`
+- Do not assume `python` on PATH points at the correct interpreter
 
 ## Repository Map
 
@@ -85,6 +93,7 @@ python -m webgal_agent.browser.demo record --url <url> --duration 10 --fps 60
 - API route `src/webgal_agent/api/routes/record.py` should call the demo CLI as a subprocess instead of embedding Playwright directly in the FastAPI event loop.
 - Output format is inferred from file extension, typically `.mp4` or `.webm`.
 - `--selector auto` should try `#root` then `canvas`.
+- In WebGal config injection, `window.saveConfig()` is effectively an async IndexedDB write even if called like a normal function. Do not touch the same IndexedDB store immediately afterward; leave a short delay first to avoid write conflicts.
 
 ## Windows Event Loop Rule
 
