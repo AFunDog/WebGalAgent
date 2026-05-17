@@ -102,11 +102,17 @@ _TIME_CONTROL_SOURCE = """
 
 _TIME_CONTROL_SCRIPT = f"() => {{ {_TIME_CONTROL_SOURCE} }}"
 
-# WebAudio 全局捕获：masterGain 汇聚点方案。
+# WebAudio 全局捕获：masterGain 汇聚点 + MediaStreamTrackProcessor PCM 提取。
 #
-# 所有 AudioNode 的 connect 调用都会被强制额外连接到 masterGain，
-# masterGain → destination（扬声器）+ mediaStreamDestination（录制），
-# 无论原始 audio graph 如何路由，信号都会进入 capture stream。
+# 架构：
+#   WebAudio Graph → masterGain → MediaStreamDestination
+#                                → destination（扬声器）
+#   MediaStreamDestination.stream → MediaStreamTrackProcessor → AudioData → PCM buffer
+#
+# 优势：
+#   - 不依赖 MediaRecorder（消除 silent/chunk 丢失问题）
+#   - 直接提取 PCM，无需 webm 容器中间层
+#   - 与 screencast 帧通过 monotonic clock 对齐
 _WEBAUDIO_CAPTURE_SOURCE = """
 (() => {
     const NativeAudioContext = window.AudioContext || window.webkitAudioContext;
@@ -115,6 +121,8 @@ _WEBAUDIO_CAPTURE_SOURCE = """
     const contexts = new Set();
     let _originalConnect = null;
 
+    // ── masterGain 汇聚 ──────────────────────────────────────
+
     function setupMasterGain(ctx) {
         if (ctx.__masterGain__) return;
 
@@ -122,11 +130,10 @@ _WEBAUDIO_CAPTURE_SOURCE = """
         const mediaDest = ctx.createMediaStreamDestination();
         const connectFn = _originalConnect || AudioNode.prototype.connect;
 
-        // masterGain → destination（扬声器）+ mediaStreamDestination（录制）
         connectFn.call(masterGain, ctx.destination);
         connectFn.call(masterGain, mediaDest);
 
-        // 静音 oscillator：防止 Chrome 将"无声 graph"优化掉导致 PCM 全零
+        // 静音 oscillator 保持 graph active，防 Chrome 优化为 PCM 全零
         const osc = ctx.createOscillator();
         const silentGain = ctx.createGain();
         silentGain.gain.value = 0;
@@ -137,13 +144,12 @@ _WEBAUDIO_CAPTURE_SOURCE = """
         ctx.__masterGain__ = masterGain;
         ctx.__mediaStreamDest__ = mediaDest;
 
-        // 强制 resume，绕过 Chrome autoplay policy
         if (ctx.state === 'suspended') {
             ctx.resume();
         }
-
-        console.log('[WebAudio Capture] masterGain + silent osc ready, state=' + ctx.state);
     }
+
+    // ── connect hook：所有节点强制过 masterGain ──────────────
 
     function patchConnect() {
         if (_originalConnect) return;
@@ -152,20 +158,11 @@ _WEBAUDIO_CAPTURE_SOURCE = """
         AudioNode.prototype.connect = function(...args) {
             const target = args[0];
             const ctx = this.context;
-
-            // 先执行原始 connect
             const result = _originalConnect.apply(this, args);
 
-            // 强制 this → masterGain，除非：
-            // - this 就是 masterGain（避免循环）
-            // - target 就是 masterGain（已经连过去了）
-            // - 没有 context 或 masterGain 尚未建立
             if (ctx && ctx.__masterGain__ && this !== ctx.__masterGain__ && target !== ctx.__masterGain__) {
-                try {
-                    _originalConnect.call(this, ctx.__masterGain__);
-                } catch(e) {}
+                try { _originalConnect.call(this, ctx.__masterGain__); } catch(e) {}
             }
-
             return result;
         };
     }
@@ -173,12 +170,12 @@ _WEBAUDIO_CAPTURE_SOURCE = """
     function patchContext(ctx) {
         if (ctx.__patched_for_capture__) return;
         ctx.__patched_for_capture__ = true;
-
         patchConnect();
         setupMasterGain(ctx);
     }
 
-    // Hook AudioContext 构造函数
+    // ── AudioContext 构造 hook ────────────────────────────────
+
     const OriginalAC = NativeAudioContext;
 
     window.AudioContext = function(...args) {
@@ -187,15 +184,13 @@ _WEBAUDIO_CAPTURE_SOURCE = """
         patchContext(ctx);
         return ctx;
     };
-
     window.AudioContext.prototype = OriginalAC.prototype;
-
     if (window.webkitAudioContext) {
         window.webkitAudioContext = window.AudioContext;
     }
-
-    // 全局预装 hook（处理 init script 之前已存在的 AudioContext）
     patchConnect();
+
+    // ── 合并多 context 的 stream ──────────────────────────────
 
     window.__getCapturedStream = () => {
         const tracks = [];
@@ -207,6 +202,63 @@ _WEBAUDIO_CAPTURE_SOURCE = """
             }
         }
         return new MediaStream(tracks);
+    };
+
+    // ── MediaStreamTrackProcessor：PCM 提取 ───────────────────
+
+    window.__startTrackProcessor = () => {
+        if (window.__trackProcessorStarted) return true;
+        if (!window.MediaStreamTrackProcessor) {
+            console.warn('[WebAudio Capture] MediaStreamTrackProcessor unavailable');
+            return false;
+        }
+
+        const stream = window.__getCapturedStream();
+        const track = stream.getAudioTracks()[0];
+        if (!track) return false;
+
+        const processor = new MediaStreamTrackProcessor({ track });
+        const reader = processor.readable.getReader();
+
+        const settings = track.getSettings();
+        window.__audioPcmMeta = {
+            sampleRate: settings.sampleRate || 48000,
+            channels: settings.channelCount || 2
+        };
+        window.__audioPcmChunks = [];
+
+        // 后台 reader loop：持续读取 AudioData → 交错 PCM Float32Array
+        (async () => {
+            try {
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    const nFrames = value.numberOfFrames;
+                    const nChannels = value.numberOfChannels;
+                    const interleaved = new Float32Array(nFrames * nChannels);
+
+                    for (let ch = 0; ch < nChannels; ch++) {
+                        const plane = new Float32Array(nFrames);
+                        value.copyTo(plane, { planeIndex: ch });
+                        for (let i = 0; i < nFrames; i++) {
+                            interleaved[i * nChannels + ch] = plane[i];
+                        }
+                    }
+
+                    window.__audioPcmChunks.push(interleaved);
+                    value.close();
+                }
+            } catch (e) {
+                console.warn('[WebAudio Capture] reader loop ended:', e.message);
+            }
+        })();
+
+        window.__trackProcessorStarted = true;
+        console.log('[WebAudio Capture] TrackProcessor started, '
+            + window.__audioPcmMeta.sampleRate + 'Hz '
+            + window.__audioPcmMeta.channels + 'ch');
+        return true;
     };
 
     console.log('[WebAudio Capture] masterGain graph installed');

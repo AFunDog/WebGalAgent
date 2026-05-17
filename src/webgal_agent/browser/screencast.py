@@ -72,6 +72,7 @@ class ScreencastRecorder:
         self._quality = screencast_quality
         self._record_audio = record_audio
         self._audio_buffer = bytearray()
+        self._audio_meta: dict[str, int] = {}
 
     async def start(
         self,
@@ -139,7 +140,7 @@ class ScreencastRecorder:
         if self._record_audio:
             has_audio = await self._start_audio_recording(page)
             if has_audio:
-                print("[ScreencastRecorder] WebAudio 捕获已启动 (MediaRecorder + 增量轮询)")
+                print("[ScreencastRecorder] WebAudio 捕获已启动 (TrackProcessor + PCM)")
 
         await cdp.send("Page.startScreencast", screencast_opts)
 
@@ -274,140 +275,143 @@ class ScreencastRecorder:
     # ── 音频录制辅助 ──────────────────────────────────────────────
 
     async def _start_audio_recording(self, page) -> bool:
-        """启动 WebAudio 捕获的 MediaRecorder，返回是否有音频轨道可录制。
+        """启动 MediaStreamTrackProcessor PCM 提取。
 
-        MediaRecorder 将 chunk 写入 page 内存（window.__audioChunks），
-        由后台轮询任务 _poll_audio_chunks 定期拉取到本地 buffer，
-        避免页面崩溃时丢失全部数据。
+        调用注入脚本中的 __startTrackProcessor()，创建 TrackProcessor
+        reader loop，持续从 MediaStreamTrack 读取 AudioData → PCM。
         """
         try:
             result = await page.evaluate("""
             () => {
-                const stream = window.__getCapturedStream();
-                if (!stream || stream.getAudioTracks().length === 0) {
-                    return false;
-                }
-
-                let mimeType = 'audio/webm;codecs=opus';
-                if (!MediaRecorder.isTypeSupported(mimeType)) {
-                    mimeType = 'audio/webm';
-                }
-
-                const chunks = [];
-                const recorder = new MediaRecorder(stream, { mimeType });
-
-                recorder.ondataavailable = e => {
-                    if (e.data.size > 0) chunks.push(e.data);
-                };
-
-                window.__audioRecorder = recorder;
-                window.__audioChunks = chunks;
-
-                recorder.start(100);
-                return true;
+                if (!window.__startTrackProcessor) return false;
+                return window.__startTrackProcessor();
             }
             """)
             return bool(result)
         except Exception as e:
-            print(f"[ScreencastRecorder] 音频录制启动失败: {e}")
+            print(f"[ScreencastRecorder] 音频捕获启动失败: {e}")
             return False
 
     async def _pull_audio_chunks(self, cdp) -> None:
-        """通过 CDP Runtime.evaluate 从页面拉取一次 audio chunk 到本地 buffer。
-
-        由录制主循环每秒调用一次，单次拉取，不包含循环逻辑。
-        """
+        """通过 CDP 拉取累积的 PCM 数据（base64 编码的 Float32 原始字节）。"""
         try:
             resp = await cdp.send("Runtime.evaluate", {
                 "expression": """
-                (async () => {
-                    const chunks = window.__audioChunks;
-                    if (!chunks || chunks.length === 0) return [];
-                    window.__audioChunks = [];
+                (() => {
+                    const chunks = window.__audioPcmChunks;
+                    if (!chunks || chunks.length === 0) return null;
+                    window.__audioPcmChunks = [];
 
-                    const allBytes = [];
-                    for (const blob of chunks) {
-                        const ab = await blob.arrayBuffer();
-                        const view = new Uint8Array(ab);
-                        for (let i = 0; i < view.length; i++) {
-                            allBytes.push(view[i]);
-                        }
+                    // 拼接所有 Float32Array
+                    let totalLen = 0;
+                    for (const c of chunks) totalLen += c.length;
+                    const combined = new Float32Array(totalLen);
+                    let offset = 0;
+                    for (const c of chunks) {
+                        combined.set(c, offset);
+                        offset += c.length;
                     }
-                    return allBytes;
+
+                    // Float32 → Uint8 → base64
+                    const bytes = new Uint8Array(combined.buffer);
+                    const chunkSize = 0x8000;
+                    const parts = [];
+                    for (let i = 0; i < bytes.length; i += chunkSize) {
+                        parts.push(String.fromCharCode.apply(
+                            null, bytes.subarray(i, i + chunkSize)
+                        ));
+                    }
+                    return {
+                        pcm_b64: btoa(parts.join('')),
+                        meta: window.__audioPcmMeta || {}
+                    };
                 })()
                 """,
                 "returnByValue": True,
-                "awaitPromise": True,
-            })
-            new_bytes = resp.get("result", {}).get("value")
-            if new_bytes:
-                self._audio_buffer.extend(new_bytes)
-                kb = len(new_bytes) / 1024
-                total_kb = len(self._audio_buffer) / 1024
-                print(f"[ScreencastRecorder] 音频拉取: +{kb:.1f}KB, buffer 累计 {total_kb:.1f}KB")
-        except Exception as e:
-            print(f"[ScreencastRecorder] 音频拉取失败: {e}")
-
-    async def _stop_audio_recording(self, cdp) -> Path | None:
-        """通过 CDP Runtime.evaluate 停止 MediaRecorder，合并本地 buffer 写入 webm。"""
-        try:
-            resp = await cdp.send("Runtime.evaluate", {
-                "expression": """
-                (async () => {
-                    const recorder = window.__audioRecorder;
-                    if (!recorder || recorder.state === 'inactive') {
-                        const chunks = window.__audioChunks || [];
-                        window.__audioChunks = null;
-                        window.__audioRecorder = null;
-                        if (chunks.length === 0) return [];
-                        const allBytes = [];
-                        for (const blob of chunks) {
-                            const ab = await blob.arrayBuffer();
-                            const view = new Uint8Array(ab);
-                            for (let i = 0; i < view.length; i++) {
-                                allBytes.push(view[i]);
-                            }
-                        }
-                        return allBytes;
-                    }
-                    return new Promise(resolve => {
-                        recorder.onstop = async () => {
-                            const chunks = window.__audioChunks || [];
-                            window.__audioChunks = null;
-                            window.__audioRecorder = null;
-                            const allBytes = [];
-                            for (const blob of chunks) {
-                                const ab = await blob.arrayBuffer();
-                                const view = new Uint8Array(ab);
-                                for (let i = 0; i < view.length; i++) {
-                                    allBytes.push(view[i]);
-                                }
-                            }
-                            resolve(allBytes);
-                        };
-                        recorder.stop();
-                    });
-                })()
-                """,
-                "returnByValue": True,
-                "awaitPromise": True,
             })
             result = resp.get("result", {}).get("value")
-            if result:
-                self._audio_buffer.extend(result)
+            if result and result.get("pcm_b64"):
+                import base64 as b64
+                pcm_bytes = b64.b64decode(result["pcm_b64"])
+                self._audio_buffer.extend(pcm_bytes)
+
+                meta = result.get("meta", {})
+                if meta and not self._audio_meta:
+                    self._audio_meta = {
+                        "sampleRate": meta.get("sampleRate", 48000),
+                        "channels": meta.get("channels", 2),
+                    }
+
+                kb = len(pcm_bytes) / 1024
+                total_kb = len(self._audio_buffer) / 1024
+                print(f"[ScreencastRecorder] PCM拉取: +{kb:.1f}KB, buffer {total_kb:.1f}KB")
         except Exception as e:
-            print(f"[ScreencastRecorder] 音频残留数据拉取失败（页面可能已关闭）: {e}")
+            print(f"[ScreencastRecorder] PCM拉取失败: {e}")
+
+    async def _stop_audio_recording(self, cdp) -> Path | None:
+        """拉取残留 PCM，写入 raw f32le 文件供 ffmpeg 编码。"""
+        try:
+            resp = await cdp.send("Runtime.evaluate", {
+                "expression": """
+                (() => {
+                    const chunks = window.__audioPcmChunks;
+                    if (!chunks || chunks.length === 0) return null;
+                    window.__audioPcmChunks = [];
+
+                    let totalLen = 0;
+                    for (const c of chunks) totalLen += c.length;
+                    const combined = new Float32Array(totalLen);
+                    let offset = 0;
+                    for (const c of chunks) {
+                        combined.set(c, offset);
+                        offset += c.length;
+                    }
+
+                    const bytes = new Uint8Array(combined.buffer);
+                    const chunkSize = 0x8000;
+                    const parts = [];
+                    for (let i = 0; i < bytes.length; i += chunkSize) {
+                        parts.push(String.fromCharCode.apply(
+                            null, bytes.subarray(i, i + chunkSize)
+                        ));
+                    }
+                    return {
+                        pcm_b64: btoa(parts.join('')),
+                        meta: window.__audioPcmMeta || {}
+                    };
+                })()
+                """,
+                "returnByValue": True,
+            })
+            result = resp.get("result", {}).get("value")
+            if result and result.get("pcm_b64"):
+                import base64 as b64
+                pcm_bytes = b64.b64decode(result["pcm_b64"])
+                self._audio_buffer.extend(pcm_bytes)
+
+                meta = result.get("meta", {})
+                if meta and not self._audio_meta:
+                    self._audio_meta = {
+                        "sampleRate": meta.get("sampleRate", 48000),
+                        "channels": meta.get("channels", 2),
+                    }
+        except Exception as e:
+            print(f"[ScreencastRecorder] PCM残留拉取失败: {e}")
 
         if len(self._audio_buffer) == 0:
             self._audio_buffer = bytearray()
             return None
 
-        audio_bytes = bytes(self._audio_buffer)
+        pcm_bytes = bytes(self._audio_buffer)
         self._audio_buffer = bytearray()
 
-        audio_path = Path("data/temp") / f"webgal_audio_{uuid.uuid4().hex[:8]}.webm"
+        audio_path = Path("data/temp") / f"webgal_audio_{uuid.uuid4().hex[:8]}.pcm"
         audio_path.parent.mkdir(parents=True, exist_ok=True)
-        audio_path.write_bytes(audio_bytes)
+        audio_path.write_bytes(pcm_bytes)
+        print(f"[ScreencastRecorder] PCM已保存: {audio_path} "
+              f"({len(pcm_bytes) / 1024:.1f}KB, "
+              f"sr={self._audio_meta.get('sampleRate', '?')}, "
+              f"ch={self._audio_meta.get('channels', '?')})")
         return audio_path
 
     # ── FFmpeg 编码 ────────────────────────────────────────────────
@@ -420,7 +424,7 @@ class ScreencastRecorder:
         output_fps: int,
         audio_path: Path | None = None,
     ) -> None:
-        """从帧目录批量编码视频（录制完成后离线执行），可选融合音频。"""
+        """从帧目录批量编码视频（录制完成后离线执行），可选融合 PCM 音频。"""
         ffmpeg = _find_ffmpeg()
         fmt, encoder = _codec_from_ext(self._output_path)
 
@@ -433,7 +437,14 @@ class ScreencastRecorder:
         ]
 
         if audio_path and audio_path.exists():
-            args.extend(["-i", str(audio_path)])
+            sr = self._audio_meta.get("sampleRate", 48000)
+            ch = self._audio_meta.get("channels", 2)
+            args.extend([
+                "-f", "f32le",
+                "-ar", str(sr),
+                "-ac", str(ch),
+                "-i", str(audio_path),
+            ])
 
         args.extend([
             "-vf", f"tmix=2:weights='1 1',fps={output_fps}",
