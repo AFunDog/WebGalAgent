@@ -2,7 +2,7 @@
 
 录制流程：
 1. Page.startScreencast → 帧保存到临时目录（磁盘 I/O，无编码压力）
-2. 可选：WebAudio 捕获（Hook AudioNode.prototype.connect）→ MediaRecorder → 音频 webm
+2. 可选：WebAudio 捕获（masterGain + MediaStreamTrackProcessor）→ PCM → WAV
 3. 录制结束后 ffmpeg 批量编码（不受实时帧率限制），如有音频则合流
 """
 
@@ -59,9 +59,8 @@ class ScreencastRecorder:
     通过 Chrome DevTools Protocol 的 Page.startScreencast 从 Chromium
     compositor 直接拉取帧，保存到磁盘后再用 ffmpeg 批量编码为视频。
 
-    支持 WebAudio 全局捕获：通过 Hook AudioNode.prototype.connect，
-    将所有输出到 AudioContext.destination 的音频同步复制到
-    MediaStreamDestination，再用 MediaRecorder 录制，最终与视频合流。
+    支持 WebAudio + HTMLAudio 全局捕获：通过 masterGain 汇聚点 +
+    MediaStreamTrackProcessor 提取 PCM，最终以 WAV 形式与视频合流。
 
     与 VideoRecorder（基于 HeadlessExperimental.beginFrame）的区别：
     - 无需 chrome-headless-shell，普通 Chromium/Edge 即可

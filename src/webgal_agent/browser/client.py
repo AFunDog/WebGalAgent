@@ -543,12 +543,10 @@ class BrowserClient:
         return await self.enable_time_control(fps=fps)
 
     async def prepare_webaudio_capture(self, context_id: str = "default") -> bool:
-        """为上下文注入 WebAudio 全局捕获脚本。
+        """为上下文注入 WebAudio + HTMLAudio 全局捕获脚本。
 
-        必须在 navigate 之前调用，确保 AudioContext 构造函数在页面脚本执行前被 patch。
-        所有连接到 AudioContext.destination 的音频节点都会被同步复制到
-        MediaStreamDestination，可通过 window.__getCapturedStream() 获取合并后的
-        MediaStream 用于 MediaRecorder 录制。
+        必须在 navigate 之前调用，注入 masterGain 汇聚点、AudioNode.connect hook、
+        HTMLMediaElement.play hook 及 MediaStreamTrackProcessor PCM 提取。
         """
         if context_id not in self._instances:
             await self.new_context(context_id)

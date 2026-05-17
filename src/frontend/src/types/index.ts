@@ -138,6 +138,7 @@ export interface RecordConfig {
   channel?: string
   viewport_width?: number
   viewport_height?: number
+  record_audio?: boolean
 }
 
 export interface RecordResult {
@@ -149,4 +150,5 @@ export interface RecordResult {
   source_fps: number
   output_fps: number
   file_size_mb: number
+  has_audio?: boolean
 }

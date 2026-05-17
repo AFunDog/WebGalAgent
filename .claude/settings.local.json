@@ -10,7 +10,8 @@
       "Bash(\".venv/Scripts/python.exe\" -c \"from webgal_agent.browser.screencast import ScreencastRecorder; print\\('OK'\\)\")",
       "Bash(\".venv/Scripts/python.exe\" -c \"from webgal_agent.browser.screencast import ScreencastRecorder; from webgal_agent.api.routes.record import router; print\\('OK'\\)\")",
       "Bash(.venv/Scripts/python.exe -c ' *)",
-      "Bash(ruff check *)"
+      "Bash(ruff check *)",
+      "Bash(npx vue-tsc *)"
     ]
   }
 }

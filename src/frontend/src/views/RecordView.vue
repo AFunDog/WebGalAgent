@@ -123,6 +123,13 @@
       </div>
 
       <div class="form-group">
+        <label>
+          <input v-model="config.record_audio" type="checkbox" />
+          录制音频（WebAudio + HTMLAudio 全局捕获）
+        </label>
+      </div>
+
+      <div class="form-group">
         <label>浏览器可执行文件路径（可选）</label>
         <input
           v-model="config.executable_path"
@@ -227,6 +234,12 @@
           <span class="result-label">输出帧率:</span>
           <span>{{ result.output_fps.toFixed(2) }} FPS</span>
         </div>
+        <div v-if="result.has_audio !== undefined" class="result-row">
+          <span class="result-label">音频:</span>
+          <span :style="{ color: result.has_audio ? '#4caf50' : '#ff6b6b' }">
+            {{ result.has_audio ? '已捕获' : '无音频' }}
+          </span>
+        </div>
       </div>
       <button v-if="result.success && result.output_path" class="btn" @click="openFile(result.output_path)">
         在资源管理器中打开
@@ -273,6 +286,7 @@ const config = reactive<{
   viewport_height: number
   browser_type: string
   headless: boolean
+  record_audio: boolean
   executable_path: string
   format: 'jpeg' | 'png'
   quality: number
@@ -288,6 +302,7 @@ const config = reactive<{
   viewport_height: 1080,
   browser_type: 'msedge',
   headless: false,
+  record_audio: false,
   executable_path: '',
   format: 'jpeg',
   quality: 90,
@@ -308,6 +323,7 @@ onMounted(async () => {
     if (serverConfig.stop_condition) config.stop_condition = serverConfig.stop_condition
     if (serverConfig.browser_type) config.browser_type = serverConfig.browser_type
     if (serverConfig.headless !== undefined) config.headless = serverConfig.headless
+    if (serverConfig.record_audio !== undefined) config.record_audio = serverConfig.record_audio
     if (serverConfig.viewport_width) config.viewport_width = serverConfig.viewport_width
     if (serverConfig.viewport_height) config.viewport_height = serverConfig.viewport_height
   } catch (e) {
@@ -334,6 +350,7 @@ async function startRecord() {
       stop_condition: config.stop_condition || undefined,
       browser_type: config.browser_type,
       headless: config.headless,
+      record_audio: config.record_audio,
       viewport_width: config.viewport_width,
       viewport_height: config.viewport_height,
       format: config.format,
@@ -378,6 +395,7 @@ async function startRecord() {
           source_fps: status.source_fps || 0,
           output_fps: status.output_fps || 0,
           file_size_mb: status.file_size_mb || 0,
+          has_audio: (status as any).has_audio ?? false,
         }
         break
       }

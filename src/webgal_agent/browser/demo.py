@@ -291,7 +291,7 @@ def main() -> None:
         "--record-audio",
         action="store_true",
         default=False,
-        help="录制 WebAudio 音频输出（Hook AudioNode.prototype.connect，捕获后与视频合流）",
+        help="录制页面音频输出（WebAudio + HTMLAudio 全局捕获，与视频合流）",
     )
     parser.add_argument(
         "--json",
