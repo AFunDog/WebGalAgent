@@ -36,8 +36,6 @@ async def create_browser(
     await client.__aenter__()
     return client
 
-_TIME_CONTROL_SOURCE = load_browser_script("time_control.js")
-_TIME_CONTROL_SCRIPT = f"() => {{ {_TIME_CONTROL_SOURCE} }}"
 _WEBAUDIO_CAPTURE_SOURCE = load_browser_script("webaudio_capture.js")
 
 
@@ -76,7 +74,6 @@ class BrowserClient:
         self._config = config or DefaultBrowserConfig()
         self._playwright = None
         self._instances: dict[str, BrowserInstance] = {}
-        self._time_control_prepared: set[str] = set()
 
     async def __aenter__(self) -> "BrowserClient":
         """异步上下文管理器入口。"""
@@ -133,7 +130,7 @@ class BrowserClient:
     # ---- 脚本拦截注入 ----
 
     async def create_cdp_session(self, context_id: str = "default") -> Any:
-        """为当前页面创建 CDP Session，用于底层协议操作（如虚拟时间控制）。"""
+        """为当前页面创建 CDP Session，用于底层协议操作。"""
         if context_id not in self._instances:
             await self.new_context(context_id)
         instance = self._instances[context_id]
@@ -200,51 +197,6 @@ class BrowserClient:
         await page.goto(url, wait_until=wait_until, timeout=self._config.timeout)
         return await self.get_page_state(context_id)
 
-    # ---- 时间控制 ----
-
-    async def enable_time_control(self, fps: float = 30.0) -> bool:
-        """为当前页面启用虚拟时间控制。若要完全确定性，请在导航前先 prepare_time_control。"""
-        page = await self.get_page()
-
-        # 先注入时间控制脚本
-        await page.evaluate(_TIME_CONTROL_SCRIPT)
-
-        # 设置 FPS（通过 evaluate 参数传递，不走 f-string 插值）
-        await page.evaluate(
-            "(f) => { window.__targetFPS = f; }",
-            fps,
-        )
-
-        # 验证注入是否成功
-        result = await page.evaluate(
-            "() => typeof window.__advanceFrame"
-        )
-        if result != "function":
-            raise RuntimeError(
-                f"时间控制脚本注入失败: __advanceFrame type={result}。"
-                "页面可能不支持或被重写了 window 对象。"
-            )
-        return True
-
-    async def prepare_time_control(
-        self,
-        fps: float = 30.0,
-        context_id: str = "default",
-    ) -> bool:
-        """为上下文预装时间控制脚本，确保后续导航在页面脚本执行前接管 RAF。"""
-        if context_id not in self._instances:
-            await self.new_context(context_id)
-
-        instance = self._instances[context_id]
-        if context_id not in self._time_control_prepared:
-            await instance.context.add_init_script(script=_TIME_CONTROL_SOURCE)
-            self._time_control_prepared.add(context_id)
-
-        await instance.context.add_init_script(
-            script=f"window.__targetFPS = {float(fps)!r};"
-        )
-        return await self.enable_time_control(fps=fps)
-
     async def prepare_webaudio_capture(self, context_id: str = "default") -> bool:
         """为上下文注入 WebAudio + HTMLAudio 全局捕获脚本。
 
@@ -257,56 +209,6 @@ class BrowserClient:
         instance = self._instances[context_id]
         await instance.context.add_init_script(script=_WEBAUDIO_CAPTURE_SOURCE)
         return True
-
-    async def advance_frame(self, frame_count: int = 1) -> None:
-        """推进虚拟时间（逐帧控制，无真实等待）。必须在 enable_time_control 后调用。"""
-        page = await self.get_page()
-        await page.evaluate("(count) => window.__advanceFrame(count)", frame_count)
-
-    async def disable_time_control(self) -> None:
-        """停止时间控制，恢复原生时间函数。"""
-        page = await self.get_page()
-        await page.evaluate("() => window.__disableTimeControl && window.__disableTimeControl()")
-
-    async def verify_time_control(
-        self,
-        fps: float = 30.0,
-        frames: int = 3,
-        context_id: str = "default",
-    ) -> bool:
-        """验证 RAF hook 与逐帧推进是否按预期生效。"""
-        await self.enable_time_control(fps=fps)
-        page = await self.get_page(context_id)
-        result = await page.evaluate(
-            """async ({ fps, frames }) => {
-                const frameTime = 1000 / fps;
-                const seen = [];
-
-                function step(ts) {
-                    seen.push(ts);
-                    if (seen.length < frames) {
-                        requestAnimationFrame(step);
-                    }
-                }
-
-                requestAnimationFrame(step);
-                await window.__advanceFrame(frames);
-
-                const expected = Array.from(
-                    { length: frames },
-                    (_, index) => frameTime * (index + 1),
-                );
-
-                return (
-                    seen.length === frames &&
-                    seen.every((value, index) => Math.abs(value - expected[index]) < 0.001)
-                );
-            }""",
-            {"fps": fps, "frames": frames},
-        )
-        return bool(result)
-
-    # --------------------
 
     async def get_page_state(self, context_id: str = "default") -> PageState:
         """获取当前页面状态。"""

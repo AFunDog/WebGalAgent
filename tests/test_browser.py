@@ -58,8 +58,6 @@ def test_sync_debug_helpers_are_current() -> None:
 
 
 def test_browser_scripts_load_from_js_directory() -> None:
-    time_control = load_browser_script("time_control.js")
     webaudio_capture = load_browser_script("webaudio_capture.js")
 
-    assert "window.__timeControlReady" in time_control
     assert "window.__startTrackProcessor" in webaudio_capture

@@ -39,14 +39,12 @@ browser/
 - `create_cdp_session()`
 - `wait_for()`
 - `click()` / `fill()` / `get_text()`
-- `prepare_time_control()`
 - `prepare_webaudio_capture()`
 
 ### `js/` 与 `script_loader.py`
 
 复杂的页面注入脚本已拆到独立 `.js` 文件中，当前包括：
 
-- `js/time_control.js`
 - `js/webaudio_capture.js`
 - `js/sync_marker.js`
 
