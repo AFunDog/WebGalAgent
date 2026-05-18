@@ -304,6 +304,7 @@ const result = ref<RecordResult | null>(null)
 const logs = ref<string[]>([])
 const configError = ref('')
 
+// 这里维护的是表单态；真正的默认值来源仍以后端 /api/record/config 为准。
 const config = reactive<{
   url: string
   output_path: string
@@ -342,7 +343,7 @@ const config = reactive<{
   quality: 90,
 })
 
-// 页面加载时从后端获取配置默认值
+// 页面加载时从后端获取配置默认值，保证前端表单与 CLI/API 的默认配置一致。
 onMounted(async () => {
   try {
     const serverConfig = await api.getRecordConfig()
@@ -371,6 +372,7 @@ onMounted(async () => {
   }
 })
 
+// 录制页只负责“提交配置 + 轮询状态”，浏览器录制真正执行在后端子进程里。
 async function startRecord() {
   if (!config.url) return
   recording.value = true
@@ -411,7 +413,7 @@ async function startRecord() {
       return
     }
 
-    // 轮询状态直到完成
+    // 轮询状态直到完成。duration=0 时只依赖 stop_condition 退出，因此不设上限。
     let pollCount = 0
     // duration=0 时仅靠 stop_condition 退出，不限轮询次数
     const maxPolls = config.duration > 0

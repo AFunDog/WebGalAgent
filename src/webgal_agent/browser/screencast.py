@@ -25,8 +25,11 @@ from webgal_agent.browser.audio_capture import (
 from webgal_agent.browser.ffmpeg_encoder import encode_from_dir
 from webgal_agent.browser.models import RecordingResult, VideoConfig
 from webgal_agent.browser.script_loader import load_browser_script
+
 SYNC_MARKER_JS = load_browser_script("sync_marker.js")
 
+
+# ---- 同步调试辅助 ---------------------------------------------------------
 
 def _default_sync_debug_path(output_path: Path) -> Path:
     """为同步调试输出构造默认 JSON 路径。"""
@@ -148,6 +151,8 @@ class ScreencastRecorder:
         self._audio_buffer = bytearray()
         self._audio_meta: dict[str, int] = {}
 
+    # ---- 主录制流程 -------------------------------------------------------
+
     async def start(
         self,
         duration: float = 0,
@@ -249,6 +254,7 @@ class ScreencastRecorder:
         if debug_sync:
             mark_timing("sync_marker_requested")
             try:
+                # marker 只用于人工校对音画起始偏移；正常录制不注入任何额外元素/音频。
                 sync_marker = await page.evaluate(SYNC_MARKER_JS)
             except Exception as exc:
                 sync_marker = {"error": str(exc)}

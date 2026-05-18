@@ -61,6 +61,8 @@ class TaskManager:
         # 运行中任务对应的 task_id，用于取消时定位 agent
         self._running_task_id: str | None = None
 
+    # ---- 元数据与依赖装配 -------------------------------------------------
+
     @property
     def workflow_types(self) -> list[str]:
         return ["pipeline"]
@@ -91,6 +93,7 @@ class TaskManager:
         """
         start_step = max(0, min(start_step, len(PIPELINE_ORDER) - 1))
 
+        # 任务创建阶段只做状态初始化与持久化，不直接触发任何 agent。
         task_id = uuid.uuid4().hex[:12]
         task = TaskInfo(task_id=task_id, content=content)
 
@@ -120,6 +123,8 @@ class TaskManager:
         self._tasks[task_id] = task
         save_task_to_disk(task, self._task_dir)
         return task
+
+    # ---- 运行与后台编排 ---------------------------------------------------
 
     async def run_step(self, task_id: str) -> TaskInfo:
         """启动任务的下一步执行（后台异步）。
@@ -224,6 +229,8 @@ class TaskManager:
             self._running_task = None
             save_task_to_disk(task, self._task_dir)
 
+    # ---- 手工编辑与查询 ---------------------------------------------------
+
     def update_step_result(self, task_id: str, step_index: int, content: str) -> TaskInfo:
         """更新某一步的结果内容（用于手动修改中间结果）。"""
         task = self._tasks.get(task_id)
@@ -248,6 +255,8 @@ class TaskManager:
 
     def get_task(self, task_id: str) -> TaskInfo | None:
         return self._tasks.get(task_id)
+
+    # ---- 取消与状态视图 ---------------------------------------------------
 
     async def cancel_task(self, task_id: str) -> bool:
         """取消正在运行的任务。
@@ -281,6 +290,8 @@ class TaskManager:
 
     def list_tasks(self) -> list[TaskInfo]:
         return list(self._tasks.values())
+
+    # ---- 工作流说明 -------------------------------------------------------
 
     def get_workflow_info(self) -> WorkflowInfoDict:
         """返回流水线工作流信息。"""

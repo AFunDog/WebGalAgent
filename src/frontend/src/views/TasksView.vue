@@ -152,6 +152,7 @@ const editContent = ref('')
 const tokenSummary = ref<TokenSummary | null>(null)
 const { startMultiTaskPolling, stopAllMultiPolling } = useTaskPolling()
 
+// 任务历史页与流水线页共享同一套步骤定义，避免展示层自己维护流程顺序。
 const pipelineSteps = PIPELINE_STEPS
 
 const reversedTasks = computed(() => [...tasks.value].reverse())
@@ -202,6 +203,7 @@ async function loadTokenSummary() {
   }
 }
 
+// 历史页允许并发观察多个运行中的任务，因此使用 multi-task polling 管理器。
 async function runStep(taskId: string) {
   runningTasks.value.add(taskId)
   try {
@@ -232,6 +234,7 @@ async function cancelTask(taskId: string) {
 }
 
 onMounted(async () => {
+  // 初次进入时先拉快照，再只为真正 running 的任务挂轮询。
   await Promise.all([loadTasks(), loadTokenSummary()])
   for (const t of tasks.value) {
     if (t.status === 'running') {
@@ -244,6 +247,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  // 离开页面时统一停掉所有轮询，避免旧页面继续写回响应式状态。
   stopAllMultiPolling()
 })
 </script>

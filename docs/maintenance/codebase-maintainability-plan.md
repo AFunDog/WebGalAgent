@@ -35,9 +35,39 @@
 
 ### P0
 
-- 为 `screencast.py`、`task_manager.py`、前端大页面补结构性注释。
-- 补 `TaskManager`、录制 CLI、前端关键交互的最小保护测试。
-- 收敛仍然分散的录制配置来源与步骤元数据说明。
+截至 2026-05-18，本轮 P0 已完成：
+
+- 已为 `screencast.py`、`task_manager.py`、`PipelineView.vue`、`TasksView.vue`、`RecordView.vue` 补结构性注释。
+- 已补最小保护测试：
+  - `tests/api/test_task_manager_unit.py`
+  - `tests/browser/test_demo_cli_unit.py`
+  - `tests/frontend/test_view_contracts.py`
+- 已补“权威来源”说明，减少后续继续重复维护相同配置的概率。
+
+当前建议保留为维护约束，而不是继续作为待办：
+
+- 大文件继续变复杂时，优先先补结构注释和契约测试，再拆组件或模块。
+- 新增录制参数或流程步骤时，同步更新下文列出的权威来源文件。
+
+## 当前权威来源
+
+### 流水线步骤元数据
+
+- 后端执行顺序与依赖定义：`src/webgal_agent/api/workflow_definition.py`
+- 前端展示标签与依赖镜像：`src/frontend/src/constants/pipeline.ts`
+- 任务输入拼接规则：`src/webgal_agent/api/task_context.py`
+
+这里仍然存在“前后端各保留一份展示定义”的现实，但当前已经集中到了单文件级别，不再散落在多个页面和路由里。
+
+### 录制配置来源
+
+- 默认值文件：`src/configs/record.yaml`
+- API 请求/响应模型：`src/webgal_agent/api/routes/record.py`
+- CLI 参数入口：`src/webgal_agent/browser/demo_cli.py`
+- 浏览器录制会话参数落点：`src/webgal_agent/browser/demo_session.py`
+- 前端表单类型与提交结构：`src/frontend/src/types/index.ts`、`src/frontend/src/views/RecordView.vue`
+
+后续如果新增录制参数，至少要同时检查这五处，而不是只改其中一层。
 
 ### P1
 

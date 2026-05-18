@@ -176,8 +176,10 @@ const startStep = ref(0)
 const stepInputs = ref<Record<string, string>>({})
 const { startSingleTaskPolling } = useTaskPolling()
 
+// 流水线静态定义来自共享常量；页面只负责交互，不再重复维护步骤元数据。
 const pipelineSteps = PIPELINE_STEPS
 
+// 当用户选择从中间步骤开始时，只要求填写当前步骤真正依赖的前序结果。
 const requiredPrevStepIndices = computed(() => {
   if (startStep.value === 0) return []
   const step = pipelineSteps[startStep.value]
@@ -244,6 +246,7 @@ async function saveEdit(idx: number) {
   }
 }
 
+// 创建任务阶段只做参数校验与预填充，不会自动开始运行步骤。
 async function createTask() {
   const content = newTaskContent.value.trim()
   if (!content) return
@@ -297,6 +300,7 @@ async function runStep() {
   try {
     const updated = await api.runStep(activeTask.value.id)
     activeTask.value = updated
+    // 轮询只在后台步骤真正开始后接管，避免页面自己维护额外状态机。
     if (updated.status === 'running') {
       startSingleTaskPolling(updated.id, task => {
         activeTask.value = task
@@ -320,6 +324,7 @@ async function cancelTask() {
 }
 
 onMounted(async () => {
+  // 页面初始化分两段：先拉静态流水线信息，再恢复最近一个未完成任务。
   try {
     const info = await api.getPipeline()
     agentDefs.value = info.agents
