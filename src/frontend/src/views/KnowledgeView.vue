@@ -2,7 +2,7 @@
   <div>
     <h2 class="page-title">知识库</h2>
 
-    <!-- 智能体知识需求 -->
+    <!-- 智能体知识需求：保留系统视角，方便核对知识路由 -->
     <div v-if="requirements.length > 0" class="card" style="margin-bottom:20px">
       <div class="card-header"><h3>智能体知识需求</h3></div>
       <div class="agent-req-grid">
@@ -38,7 +38,7 @@
       </div>
     </div>
 
-    <!-- 筛选工具栏 -->
+    <!-- 筛选工具栏：保留底层 category/tag 过滤，但主浏览方式改为人类可读分组 -->
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
       <select v-model="filterCategory" class="form-select" style="width:auto">
         <option value="">全部分类</option>
@@ -70,35 +70,113 @@
       >{{ tag }}</span>
     </div>
 
-    <!-- 知识条目列表 -->
+    <!-- 顶层导航：角色 / 世界观 / 技能 -->
+    <div class="knowledge-tabs">
+      <button
+        v-for="section in visibleSections"
+        :key="section.key"
+        class="knowledge-tab"
+        :class="{ active: activeSection === section.key }"
+        @click="activeSection = section.key"
+      >
+        <span>{{ section.label }}</span>
+        <span class="knowledge-tab-count">{{ section.count }}</span>
+      </button>
+    </div>
+
+    <!-- 分组后的知识条目 -->
     <div style="margin-top:16px">
       <div v-if="entries.length === 0" class="empty-state">
         <p>暂无知识条目</p>
       </div>
-      <div v-for="entry in entries" :key="entry.id" class="knowledge-card" @click="toggle(entry.id)">
-        <div class="knowledge-card-header">
-          <div class="knowledge-card-title">
-            <span class="knowledge-expand-icon" :class="{ expanded: expandedIds.has(entry.id) }">▶</span>
-            <h3>{{ entry.title }}</h3>
+
+      <!-- 角色：按角色目录聚合角色信息与立绘资料 -->
+      <div v-else-if="activeSection === 'character'" class="knowledge-section-stack">
+        <div v-if="characterGroups.length === 0" class="empty-state">
+          <p>当前筛选下没有角色资料</p>
+        </div>
+        <div v-for="group in characterGroups" :key="group.key" class="knowledge-group">
+          <div class="knowledge-group-header">
+            <div>
+              <h3>{{ group.label }}</h3>
+              <p>{{ group.entries.length }} 份文档</p>
+            </div>
           </div>
-          <div class="knowledge-card-meta">
-            <span class="tag tag-clickable" @click.stop="filterByCategory(entry.category)">
-              {{ entry.category }}
-            </span>
-            <span
-              v-for="tag in entry.tags"
-              :key="tag"
-              class="tag tag-clickable tag-accent"
-              :class="{ 'tag-active': filterTags.includes(tag) }"
-              @click.stop="filterByTag(tag)"
-            >{{ tag }}</span>
+          <div class="knowledge-group-body">
+            <div
+              v-for="entry in group.entries"
+              :key="entry.id"
+              class="knowledge-card"
+              @click="toggle(entry.id)"
+            >
+              <div class="knowledge-card-header">
+                <div class="knowledge-card-title">
+                  <span class="knowledge-expand-icon" :class="{ expanded: expandedIds.has(entry.id) }">▶</span>
+                  <h3>{{ getEntryDisplayTitle(entry) }}</h3>
+                </div>
+                <div class="knowledge-card-meta">
+                  <span class="tag tag-clickable" @click.stop="filterByCategory(entry.category)">
+                    {{ entry.category }}
+                  </span>
+                  <span
+                    v-for="tag in entry.tags"
+                    :key="tag"
+                    class="tag tag-clickable tag-accent"
+                    :class="{ 'tag-active': filterTags.includes(tag) }"
+                    @click.stop="filterByTag(tag)"
+                  >{{ tag }}</span>
+                </div>
+              </div>
+              <div class="knowledge-card-subtitle">{{ entry.title }}</div>
+              <div v-if="!expandedIds.has(entry.id)" class="knowledge-card-preview">
+                {{ getPreview(entry.body) }}
+              </div>
+              <div v-else class="knowledge-card-body">
+                <div class="knowledge-card-source">{{ entry.source }}</div>
+                <pre>{{ entry.body }}</pre>
+              </div>
+            </div>
           </div>
         </div>
-        <div v-if="!expandedIds.has(entry.id)" class="knowledge-card-preview">
-          {{ getPreview(entry.body) }}
+      </div>
+
+      <!-- 世界观 / 技能：按文档展示 -->
+      <div v-else class="knowledge-section-stack">
+        <div v-if="activeEntries.length === 0" class="empty-state">
+          <p>当前筛选下没有相关文档</p>
         </div>
-        <div v-else class="knowledge-card-body">
-          <pre>{{ entry.body }}</pre>
+        <div
+          v-for="entry in activeEntries"
+          :key="entry.id"
+          class="knowledge-card"
+          @click="toggle(entry.id)"
+        >
+          <div class="knowledge-card-header">
+            <div class="knowledge-card-title">
+              <span class="knowledge-expand-icon" :class="{ expanded: expandedIds.has(entry.id) }">▶</span>
+              <h3>{{ entry.title }}</h3>
+            </div>
+            <div class="knowledge-card-meta">
+              <span class="tag tag-clickable" @click.stop="filterByCategory(entry.category)">
+                {{ entry.category }}
+              </span>
+              <span
+                v-for="tag in entry.tags"
+                :key="tag"
+                class="tag tag-clickable tag-accent"
+                :class="{ 'tag-active': filterTags.includes(tag) }"
+                @click.stop="filterByTag(tag)"
+              >{{ tag }}</span>
+            </div>
+          </div>
+          <div class="knowledge-card-subtitle">{{ getEntrySubtitle(entry) }}</div>
+          <div v-if="!expandedIds.has(entry.id)" class="knowledge-card-preview">
+            {{ getPreview(entry.body) }}
+          </div>
+          <div v-else class="knowledge-card-body">
+            <div class="knowledge-card-source">{{ entry.source }}</div>
+            <pre>{{ entry.body }}</pre>
+          </div>
         </div>
       </div>
     </div>
@@ -106,14 +184,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { api } from '../api'
-import type { KnowledgeEntry, AgentKnowledgeRequirements } from '../types'
+import type { AgentKnowledgeRequirements, KnowledgeEntry } from '../types'
+
+type KnowledgeSectionKey = 'character' | 'world' | 'skill' | 'other'
 
 const AGENT_LABELS: Record<string, string> = {
   outline_writer: 'A: 剧本大纲编写',
   script_writer: 'B: 章节剧本生成',
   script_converter: 'C: WebGal 脚本转换',
+}
+
+const SECTION_LABELS: Record<KnowledgeSectionKey, string> = {
+  character: '角色',
+  world: '世界观',
+  skill: '技能',
+  other: '其他',
 }
 
 const entries = ref<KnowledgeEntry[]>([])
@@ -125,6 +212,7 @@ const filterCategory = ref('')
 const filterKeyword = ref('')
 const filterTags = ref<string[]>([])
 const expandedIds = ref<Set<string>>(new Set())
+const activeSection = ref<KnowledgeSectionKey>('character')
 
 function toggle(id: string) {
   const next = new Set(expandedIds.value)
@@ -137,10 +225,97 @@ function toggle(id: string) {
 }
 
 function getPreview(body: string): string {
-  const firstLine = body.split('\n').find(l => l.trim()) ?? ''
-  const preview = firstLine.length > 80 ? firstLine.slice(0, 80) + '…' : firstLine
-  return preview
+  const firstLine = body.split('\n').find(line => line.trim()) ?? ''
+  return firstLine.length > 80 ? firstLine.slice(0, 80) + '…' : firstLine
 }
+
+function getSectionKey(entry: KnowledgeEntry): KnowledgeSectionKey {
+  const normalized = entry.source.replace(/\\/g, '/')
+  if (normalized.startsWith('characters/')) return 'character'
+  if (normalized.startsWith('settings/')) return 'world'
+  if (normalized.startsWith('skills/')) return 'skill'
+  if (entry.category === 'character' || entry.category === 'world' || entry.category === 'skill') {
+    return entry.category
+  }
+  return 'other'
+}
+
+function getCharacterGroupKey(entry: KnowledgeEntry): string {
+  const normalized = entry.source.replace(/\\/g, '/')
+  const parts = normalized.split('/')
+  if (parts[0] === 'characters' && parts.length >= 3) {
+    return parts[1] ?? entry.title
+  }
+  if (parts[0] === 'characters') {
+    const leaf = parts[parts.length - 1] ?? entry.source
+    return leaf.replace(/\.md(\.sample)?$/, '')
+  }
+  return entry.title
+}
+
+function getEntryDisplayTitle(entry: KnowledgeEntry): string {
+  const normalized = entry.source.replace(/\\/g, '/')
+  if (normalized.endsWith('/profile.md')) return '角色信息'
+  if (normalized.endsWith('/expression_motion.md')) return '立绘表情动作'
+  return entry.title
+}
+
+function getEntrySubtitle(entry: KnowledgeEntry): string {
+  const normalized = entry.source.replace(/\\/g, '/')
+  const parts = normalized.split('/')
+  return parts[parts.length - 1] || entry.source
+}
+
+const entriesBySection = computed(() => {
+  const grouped: Record<KnowledgeSectionKey, KnowledgeEntry[]> = {
+    character: [],
+    world: [],
+    skill: [],
+    other: [],
+  }
+  for (const entry of entries.value) {
+    grouped[getSectionKey(entry)].push(entry)
+  }
+  return grouped
+})
+
+const visibleSections = computed(() => {
+  const ordered: KnowledgeSectionKey[] = ['character', 'world', 'skill', 'other']
+  const sections = ordered
+    .map(key => ({
+      key,
+      label: SECTION_LABELS[key],
+      count: entriesBySection.value[key].length,
+    }))
+    .filter(section => section.count > 0)
+
+  const firstSection = sections[0]
+  if (!sections.some(section => section.key === activeSection.value) && firstSection) {
+    activeSection.value = firstSection.key
+  }
+  return sections
+})
+
+const activeEntries = computed(() => entriesBySection.value[activeSection.value] ?? [])
+
+const characterGroups = computed(() => {
+  const groups = new Map<string, KnowledgeEntry[]>()
+  for (const entry of entriesBySection.value.character) {
+    const key = getCharacterGroupKey(entry)
+    if (!groups.has(key)) {
+      groups.set(key, [])
+    }
+    groups.get(key)!.push(entry)
+  }
+
+  return Array.from(groups.entries())
+    .map(([key, groupEntries]) => ({
+      key,
+      label: key,
+      entries: [...groupEntries].sort((a, b) => getEntryDisplayTitle(a).localeCompare(getEntryDisplayTitle(b), 'zh-CN')),
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
+})
 
 async function loadEntries() {
   try {
