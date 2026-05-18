@@ -234,7 +234,6 @@ class ScreencastRecorder:
         print("[ScreencastRecorder] 开始 FFmpeg 编码 (tmix 时间混合 + fps 输出)...")
         encode_start = time.monotonic()
 
-        encode_error: str | None = None
         try:
             await encode_from_dir(
                 self._output_path,
@@ -246,7 +245,6 @@ class ScreencastRecorder:
                 audio_path,
             )
         except Exception as e:
-            encode_error = str(e)
             print(f"[ScreencastRecorder] FFmpeg 编码失败: {e}")
 
         encode_elapsed = time.monotonic() - encode_start

@@ -26,6 +26,7 @@ def test_build_cli_args_includes_optional_flags() -> None:
         format="png",
         quality=80,
         record_audio=True,
+        executable_path="C:/Program Files/Microsoft/Edge/Application/msedge.exe",
         game_config={"optionData.autoSpeed": 50},
     )
 
@@ -37,6 +38,8 @@ def test_build_cli_args_includes_optional_flags() -> None:
     assert "--stop-on" in args and "window.done === true" in args
     assert "--headless" in args
     assert "--record-audio" in args
+    assert "--executable" in args
+    assert "C:/Program Files/Microsoft/Edge/Application/msedge.exe" in args
     assert "--game-config" in args
     assert "--json" in args
 
@@ -81,4 +84,5 @@ async def test_get_record_config_uses_defaults(monkeypatch: pytest.MonkeyPatch) 
     assert result["quality"] == 75
     assert result["canvas_selector"] == "#root"
     assert result["record_audio"] is True
+    assert result["executable_path"] == ""
     assert result["game_config"] == {"optionData.autoSpeed": 40}

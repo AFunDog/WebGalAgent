@@ -302,7 +302,6 @@ const recording = ref(false)
 const progress = ref(0)
 const result = ref<RecordResult | null>(null)
 const logs = ref<string[]>([])
-const configLoaded = ref(false)
 const configError = ref('')
 
 const config = reactive<{
@@ -347,7 +346,6 @@ const config = reactive<{
 onMounted(async () => {
   try {
     const serverConfig = await api.getRecordConfig()
-    configLoaded.value = true
     if (serverConfig.url) config.url = serverConfig.url
     if (serverConfig.format) config.format = serverConfig.format
     if (serverConfig.quality) config.quality = serverConfig.quality
@@ -359,6 +357,7 @@ onMounted(async () => {
     if (serverConfig.browser_type) config.browser_type = serverConfig.browser_type
     if (serverConfig.headless !== undefined) config.headless = serverConfig.headless
     if (serverConfig.record_audio !== undefined) config.record_audio = serverConfig.record_audio
+    if (serverConfig.executable_path) config.executable_path = serverConfig.executable_path
     if (serverConfig.game_config) {
       const gc = serverConfig.game_config as Record<string, number>
       if (gc['optionData.autoSpeed'] != null) config.game_autoSpeed = gc['optionData.autoSpeed']
@@ -396,6 +395,7 @@ async function startRecord() {
       browser_type: config.browser_type,
       headless: config.headless,
       record_audio: config.record_audio,
+      executable_path: config.executable_path || undefined,
       game_config: Object.keys(gameCfg).length > 0 ? gameCfg : undefined,
       viewport_width: config.viewport_width,
       viewport_height: config.viewport_height,

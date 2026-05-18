@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import pathlib
-from typing import Annotated
 
-from webgal_agent.browser.client import BrowserClient, DefaultBrowserConfig, create_browser
-from webgal_agent.browser.models import Selector, SelectorType, ElementInfo
+from webgal_agent.browser.client import BrowserClient
+from webgal_agent.browser.models import Selector, SelectorType
 from webgal_agent.tools.base import Tool, ToolResult
 
 

@@ -135,7 +135,7 @@ export interface RecordConfig {
   headless?: boolean
   format?: 'jpeg' | 'png'
   quality?: number
-  channel?: string
+  executable_path?: string
   viewport_width?: number
   viewport_height?: number
   record_audio?: boolean

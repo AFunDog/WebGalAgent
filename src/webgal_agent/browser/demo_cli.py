@@ -106,6 +106,7 @@ def run_cli(args: argparse.Namespace) -> None:
                         save_frames=args.save_frames,
                         format=args.format,
                         record_audio=args.record_audio,
+                        executable_path=args.executable,
                         game_config=game_config,
                         json_mode=args.json_mode,
                     )

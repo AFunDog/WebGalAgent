@@ -16,6 +16,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from webgal_agent.browser.demo_cli import build_parser, run_cli
 from webgal_agent.browser.demo_session import demo_navigate, demo_record
 
+__all__ = ["main", "demo_navigate", "demo_record"]
+
 
 def main() -> None:
     """CLI 入口。"""

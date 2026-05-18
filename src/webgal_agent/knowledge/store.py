@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from webgal_agent.knowledge.models import KnowledgeEntry
+from webgal_agent.knowledge.models import KnowledgeCategory, KnowledgeEntry
 
 
 class KnowledgeStore(abc.ABC):

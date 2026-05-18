@@ -48,6 +48,7 @@ def _build_browser_config(
     headless: bool,
     width: int,
     height: int,
+    executable_path: str | None = None,
     record_audio: bool = False,
 ) -> DefaultBrowserConfig:
     launch_args = ["--autoplay-policy=no-user-gesture-required"] if record_audio else None
@@ -56,6 +57,7 @@ def _build_browser_config(
         headless=headless,
         viewport_width=width,
         viewport_height=height,
+        executable_path=executable_path,
         channel="msedge" if browser_type == "msedge" else None,
         launch_args=launch_args,
     )
@@ -113,6 +115,7 @@ async def demo_record(
     save_frames: str | None = None,
     format: str = "jpeg",
     record_audio: bool = False,
+    executable_path: str | None = None,
     game_config: dict[str, int] | None = None,
     json_mode: bool = False,
 ) -> dict | None:
@@ -122,6 +125,7 @@ async def demo_record(
         headless=headless,
         width=width,
         height=height,
+        executable_path=executable_path,
         record_audio=record_audio,
     )
     video_cfg = VideoConfig(output_path=output_path, fps=fps)
