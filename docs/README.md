@@ -11,6 +11,7 @@
 ## 维护
 
 - [代码结构与可维护性优化方案](./maintenance/codebase-maintainability-plan.md)
+- [Script Converter 动画效果优化方案](./maintenance/script-converter-animation-optimization.md)
 
 ## 前端
 
