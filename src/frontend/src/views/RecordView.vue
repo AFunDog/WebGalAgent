@@ -2,17 +2,18 @@
   <div>
     <h2 class="page-title">浏览器录制</h2>
 
-    <!-- 配置加载状态 -->
+    <!-- 配置异常提示：后端默认值加载失败时在页面顶部直接显示 -->
     <div v-if="configError" class="card" style="margin-bottom:16px; background: #3a1f1f;">
       <div style="padding:12px; color: #ff6b6b;">
         ⚠️ 配置加载失败: {{ configError }}
       </div>
     </div>
 
-    <!-- 录制配置 -->
+    <!-- 录制配置区：聚合 URL、浏览器、画质、音频和游戏覆盖配置 -->
     <div class="card" style="margin-bottom:16px">
       <div class="card-header"><h3>录制配置</h3></div>
 
+      <!-- 基础目标配置 -->
       <div class="form-group">
         <label>目标 URL</label>
         <input
@@ -36,6 +37,7 @@
         </small>
       </div>
 
+      <!-- 停止与定位配置 -->
       <div class="form-group">
         <label>停止条件（可选 JS 表达式）</label>
         <input
@@ -62,6 +64,7 @@
         </small>
       </div>
 
+      <!-- 录制参数：时长、帧率、视口 -->
       <div class="form-row">
         <div class="form-group" style="flex:1">
           <label>录制时长（秒）</label>
@@ -105,6 +108,7 @@
         </div>
       </div>
 
+      <!-- 浏览器启动选项 -->
       <div class="form-group">
         <label>浏览器类型</label>
         <select v-model="config.browser_type" class="form-select">
@@ -115,6 +119,7 @@
         </select>
       </div>
 
+      <!-- 音频与游戏配置扩展项 -->
       <div class="form-group">
         <label>
           <input v-model="config.headless" type="checkbox" />
@@ -173,6 +178,7 @@
         </small>
       </div>
 
+      <!-- 输出质量与落盘位置 -->
       <div class="form-row">
         <div class="form-group" style="flex:1">
           <label>截图格式</label>
@@ -206,6 +212,7 @@
         />
       </div>
 
+      <!-- 操作区：开始后进入状态轮询，停止通过后端子进程控制 -->
       <div style="display:flex;gap:8px">
         <button
           class="btn btn-primary"
@@ -227,7 +234,7 @@
       </div>
     </div>
 
-    <!-- 录制结果 -->
+    <!-- 结果区：展示后端最终返回的录制摘要 -->
     <div v-if="result" class="card">
       <div class="card-header">
         <h3>录制结果</h3>
@@ -277,7 +284,7 @@
       </button>
     </div>
 
-    <!-- 录制状态 -->
+    <!-- 状态区：录制期间展示进度条与实时日志 -->
     <div v-if="recording" class="card">
       <div class="card-header"><h3>录制进度</h3></div>
       <div class="progress-bar">
@@ -303,6 +310,11 @@ const progress = ref(0)
 const result = ref<RecordResult | null>(null)
 const logs = ref<string[]>([])
 const configError = ref('')
+
+// 页面状态拆成三层：
+// 1. config: 用户可编辑的表单态
+// 2. recording/progress/logs: 录制进行态
+// 3. result/configError: 录制结束或加载失败态
 
 // 这里维护的是表单态；真正的默认值来源仍以后端 /api/record/config 为准。
 const config = reactive<{
@@ -381,7 +393,7 @@ async function startRecord() {
   logs.value = []
 
   try {
-    // 构建 game_config（仅包含非空字段）
+    // 将 UI 上的可选配置压缩为接口真正需要的最小 payload。
     const gameCfg: Record<string, number> = {}
     if (config.game_autoSpeed != null) gameCfg['optionData.autoSpeed'] = config.game_autoSpeed
     if (config.game_textSpeed != null) gameCfg['optionData.textSpeed'] = config.game_textSpeed
@@ -434,6 +446,7 @@ async function startRecord() {
       }
 
       if (!status.recording) {
+        // 状态接口既承担进度查询，也承担最终结果回传。
         result.value = {
           success: status.success ?? false,
           message: status.message || '录制完成',
@@ -475,6 +488,7 @@ async function stopRecord() {
 }
 
 function openFile(path: string) {
+  // 当前实现依赖桌面浏览器对 file:/// 的支持，主要用于本地开发场景。
   window.open('file:///' + path.replace(/\\/g, '/'))
 }
 </script>

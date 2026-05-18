@@ -1,7 +1,7 @@
 <template>
   <div class="pipeline-graph">
     <svg :width="svgWidth" :height="svgHeight" :viewBox="`0 0 ${svgWidth} ${svgHeight}`">
-      <!-- 连线 -->
+      <!-- 连线层：表达步骤间的数据流与当前激活链路 -->
       <template v-for="(edge, i) in edges" :key="'e' + i">
         <line
           :x1="edge.x1" :y1="edge.y1"
@@ -25,7 +25,7 @@
         >{{ edge.label }}</text>
       </template>
 
-      <!-- 节点 -->
+      <!-- 节点层：展示每个 agent 的名称、状态、输入输出摘要与 token 消耗 -->
       <g v-for="(node, i) in nodes" :key="'n' + i" :transform="`translate(${node.x}, ${node.y})`">
         <!-- 背景框 -->
         <rect
@@ -106,6 +106,7 @@ const props = defineProps<{
   tokenUsageByStep?: Record<string, { prompt_tokens: number; completion_tokens: number; total_tokens: number }>
 }>()
 
+// 图结构保持固定三步，页面只传运行时状态与消息摘要。
 const AGENT_LABELS: Record<string, string> = {
   outline_writer: '大纲编写',
   script_writer: '剧本生成',
@@ -143,6 +144,7 @@ interface PipelineEdge {
   active: boolean
 }
 
+// 节点状态优先从 result 消息推断，其次才回退到 activeAgent 和前序完成情况。
 function getNodeStatus(name: string): PipelineNode['status'] {
   const resultMsg = props.messages.find(m => m.type === 'result' && m.sender === name)
   if (resultMsg) {
@@ -167,6 +169,7 @@ function getPreview(content: string, maxLen = 20): string {
   return first.slice(0, maxLen) + '…'
 }
 
+// 输入/输出摘要只取首个非空行，避免图节点被长文本撑破。
 function getInputPreview(name: string): string {
   const taskMsg = props.messages.find(m => m.type === 'task' && m.receiver === name)
   if (taskMsg) return getPreview(taskMsg.content)
@@ -207,6 +210,7 @@ const nodes = computed<PipelineNode[]>(() => {
   })
 })
 
+// 边的高亮语义是“上一步已完成，且下一步已进入运行或完成状态”。
 const edges = computed<PipelineEdge[]>(() => {
   const result: PipelineEdge[] = []
   const edgeLabels = ['大纲', '剧本']

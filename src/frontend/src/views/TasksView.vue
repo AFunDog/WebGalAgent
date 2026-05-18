@@ -2,7 +2,7 @@
   <div>
     <h2 class="page-title">任务历史</h2>
 
-    <!-- 全局 Token 统计卡片 -->
+    <!-- 顶部汇总：跨任务统计整体 token 消耗 -->
     <div v-if="tokenSummary && tokenSummary.total_tokens > 0" class="card" style="margin-bottom:16px">
       <div class="card-header"><h3>Token 消耗统计</h3></div>
       <div class="token-stats-grid">
@@ -30,10 +30,12 @@
       </div>
     </div>
 
+    <!-- 空状态：当前还没有任何落盘任务 -->
     <div v-if="tasks.length === 0" class="empty-state">
       <p>暂无任务，前往<router-link :to="{ name: 'pipeline' }">流水线</router-link>创建新任务</p>
     </div>
 
+    <!-- 任务列表：按时间倒序展示，每个任务保留步骤级操作能力 -->
     <div v-for="task in reversedTasks" :key="task.id" class="card" style="margin-bottom:16px">
       <div class="card-header">
         <h3>{{ task.title || task.content.slice(0, 60) }}</h3>
@@ -52,7 +54,7 @@
         style="color:var(--danger);font-size:12px;margin-top:4px"
       >{{ task.errors.join('; ') }}</p>
 
-      <!-- 步骤列表 -->
+      <!-- 步骤列表：与流水线页保持一致的视觉结构，但支持多任务并发观察 -->
       <div class="step-list" style="margin-top:12px">
         <div
           v-for="(step, idx) in pipelineSteps"
@@ -75,7 +77,7 @@
             </span>
           </div>
 
-          <!-- 执行按钮（仅在当前步骤且非运行中时显示） -->
+          <!-- 当前步骤操作区 -->
           <button
             v-if="idx === task.current_step && task.status !== 'running' && task.status !== 'completed'"
             class="btn btn-primary btn-sm"
@@ -86,7 +88,7 @@
             {{ runningTasks.has(task.id) ? '执行中...' : '执行此步骤' }}
           </button>
 
-          <!-- 结果展示/编辑 -->
+          <!-- 历史结果查看与修订区 -->
           <div v-if="idx < task.current_step" class="step-result">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
               <span style="font-size:12px;color:var(--text-muted)">输出结果</span>
@@ -113,7 +115,7 @@
             <pre v-else class="step-result-preview">{{ getStepResult(task, idx) }}</pre>
           </div>
 
-          <!-- 运行中动画 -->
+          <!-- 运行中反馈区 -->
           <div v-if="idx === task.current_step && task.status === 'running'" class="step-running">
             <span class="pulse-dot"></span> 正在执行...
             <button class="btn btn-danger btn-sm" style="margin-left:8px" @click="cancelTask(task.id)">终止</button>
@@ -121,7 +123,7 @@
         </div>
       </div>
 
-      <!-- 展开详细消息 -->
+      <!-- 明细消息区：保留完整消息链，便于排查 agent 输出 -->
       <details style="margin-top:12px">
         <summary style="cursor:pointer;color:var(--text-muted);font-size:13px">查看详细消息</summary>
         <div style="margin-top:8px">
@@ -151,6 +153,8 @@ const editingKey = ref<string | null>(null)
 const editContent = ref('')
 const tokenSummary = ref<TokenSummary | null>(null)
 const { startMultiTaskPolling, stopAllMultiPolling } = useTaskPolling()
+
+// 这个页面维护的是“任务集合”而不是单任务详情，因此所有写回都按 taskId 定位。
 
 // 任务历史页与流水线页共享同一套步骤定义，避免展示层自己维护流程顺序。
 const pipelineSteps = PIPELINE_STEPS
@@ -187,6 +191,7 @@ async function saveEdit(taskId: string, idx: number) {
   }
 }
 
+// 初始化拆成“任务快照”和“统计快照”两类请求，避免页面层拼接接口返回结构。
 async function loadTasks() {
   try {
     tasks.value = await api.getTasks()

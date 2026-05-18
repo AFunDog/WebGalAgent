@@ -2,7 +2,7 @@
   <div>
     <h2 class="page-title">流水线</h2>
 
-    <!-- 流水线节点图（静态展示3个智能体） -->
+    <!-- 顶部总览：展示固定三步流水线与当前任务的 token 消耗 -->
     <PipelineGraph
       :agents="agentDefs"
       :messages="[]"
@@ -11,7 +11,7 @@
       style="margin-bottom:24px"
     />
 
-    <!-- 创建新任务 -->
+    <!-- 任务创建区：支持从任意步骤开始，并为跳过步骤预填结果 -->
     <div class="card">
       <div class="card-header"><h3>创建新任务</h3></div>
       <div class="form-group">
@@ -41,7 +41,7 @@
           将跳过 {{ pipelineSteps.slice(0, startStep).map(s => s.label).join('、') }}，请提供 {{ requiredStepLabels }} 的内容
         </div>
       </div>
-      <!-- 跳过步骤的输入框（只显示当前步骤依赖的前序步骤） -->
+      <!-- 依赖补录区：只显示当前起始步骤真正依赖的前序输出 -->
       <div v-for="depIdx in requiredPrevStepIndices" :key="'input-' + depIdx" class="form-group" style="margin-top:8px">
         <label>{{ pipelineSteps[depIdx]?.label }} 的输出内容</label>
         <textarea
@@ -60,14 +60,14 @@
       </button>
     </div>
 
-    <!-- 当前任务逐步执行面板 -->
+    <!-- 当前任务区：负责逐步执行、编辑中间结果和展示状态 -->
     <div v-if="activeTask" class="card" style="margin-top:24px">
       <div class="card-header">
         <h3>{{ activeTask.title || activeTask.content.slice(0, 40) }}</h3>
         <span class="badge" :class="statusBadgeClass(activeTask.status)">{{ statusLabel(activeTask.status) }}</span>
       </div>
 
-      <!-- 步骤列表 -->
+      <!-- 步骤列表：复用共享步骤定义，按 current_step 渲染状态 -->
       <div class="step-list">
         <div
           v-for="(step, idx) in pipelineSteps"
@@ -90,7 +90,7 @@
             </span>
           </div>
 
-          <!-- 执行按钮 -->
+          <!-- 当前步骤操作区 -->
           <button
             v-if="idx === activeTask.current_step && activeTask.status !== 'running' && activeTask.status !== 'completed'"
             class="btn btn-primary btn-sm"
@@ -101,7 +101,7 @@
             {{ runningStep ? '执行中...' : '执行此步骤' }}
           </button>
 
-          <!-- 结果展示/编辑 -->
+          <!-- 已完成步骤的结果查看与手工修订区 -->
           <div v-if="idx < activeTask.current_step" class="step-result">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
               <span style="font-size:12px;color:var(--text-muted)">输出结果</span>
@@ -126,7 +126,7 @@
             <pre v-else class="step-result-preview">{{ getStepResult(idx) }}</pre>
           </div>
 
-          <!-- 运行中动画 -->
+          <!-- 运行中反馈区 -->
           <div v-if="idx === activeTask.current_step && activeTask.status === 'running'" class="step-running">
             <span class="pulse-dot"></span> 正在执行...
             <button class="btn btn-danger btn-sm" style="margin-left:8px" @click="cancelTask">终止</button>
@@ -135,7 +135,7 @@
       </div>
 
       <div style="margin-top:12px">
-        <!-- Token 消耗汇总 -->
+        <!-- 底部摘要：给出当前任务总 token 消耗和历史入口 -->
         <div v-if="activeTask.total_tokens > 0" class="token-summary-bar">
           <span class="token-summary-label">Token 消耗</span>
           <span class="token-summary-value">
@@ -149,7 +149,7 @@
       </div>
     </div>
 
-    <!-- 无任务时的提示 -->
+    <!-- 空状态：尚未创建或恢复可继续执行的任务 -->
     <div v-else-if="!creating" class="empty-state" style="margin-top:16px">
       <p>创建任务后，可逐步执行每个智能体</p>
     </div>
@@ -176,6 +176,11 @@ const startStep = ref(0)
 const stepInputs = ref<Record<string, string>>({})
 const { startSingleTaskPolling } = useTaskPolling()
 
+// 页面状态分为三组：
+// 1. 创建任务表单
+// 2. 当前激活任务
+// 3. 单任务轮询控制
+
 // 流水线静态定义来自共享常量；页面只负责交互，不再重复维护步骤元数据。
 const pipelineSteps = PIPELINE_STEPS
 
@@ -196,6 +201,7 @@ const requiredStepLabels = computed(() =>
     .join('、')
 )
 
+// 展示层状态统一从 activeTask 推导，避免维护额外的步骤状态副本。
 function getStepStatus(idx: number): string {
   if (!activeTask.value) return 'pending'
   return idx < activeTask.value.current_step
@@ -278,7 +284,7 @@ async function createTask() {
 
 function setStartStep(idx: number) {
   startStep.value = idx
-  // 只保留依赖步骤的输入
+  // 切换起始步骤时收缩输入集，只保留新步骤仍然需要的依赖内容。
   const newInputs: Record<string, string> = {}
   if (idx > 0) {
     const step = pipelineSteps[idx]
