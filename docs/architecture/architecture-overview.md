@@ -19,11 +19,9 @@
 - `src/frontend/`
   负责 Vue 3 Web UI。
 
-## 本轮拆分结果
+## 关键模块
 
 ### API 流水线层
-
-原先集中在 `task_manager.py` 的逻辑已拆分为：
 
 - `task_manager.py`: 编排入口与状态协调
 - `task_state.py`: `TaskInfo` 与工作流响应结构
@@ -33,8 +31,6 @@
 
 ### Browser 录制层
 
-原先集中在 `demo.py` 与 `screencast.py` 的部分逻辑已拆分为：
-
 - `demo.py`: CLI 入口
 - `demo_cli.py`: 参数解析与模式分发
 - `demo_session.py`: 导航与录制会话实现
@@ -43,8 +39,6 @@
 - `ffmpeg_encoder.py`: FFmpeg 编码辅助
 
 ### 前端组织层
-
-前端已补充以下共享层：
 
 - `src/frontend/src/api/*.ts`: 分模块 API
 - `src/frontend/src/composables/useTaskPolling.ts`: 共享轮询逻辑
