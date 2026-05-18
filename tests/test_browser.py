@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from webgal_agent.browser.models import RecordingResult, Selector, SelectorType, VideoConfig
 from webgal_agent.browser.screencast import SYNC_MARKER_JS, _default_sync_debug_path
+from webgal_agent.browser.script_loader import load_browser_script
 from webgal_agent.browser.webgal_injection import (
     AUTO_SELECTOR_CANDIDATES,
     CHANGE_SCENE_JS,
@@ -54,3 +55,11 @@ def test_sync_debug_helpers_are_current() -> None:
     assert str(_default_sync_debug_path(VideoConfig(output_path="out.mp4").output_path)) == "out.mp4.sync_debug.json"
     assert "__sync_marker__" in SYNC_MARKER_JS
     assert "audioScheduled" in SYNC_MARKER_JS
+
+
+def test_browser_scripts_load_from_js_directory() -> None:
+    time_control = load_browser_script("time_control.js")
+    webaudio_capture = load_browser_script("webaudio_capture.js")
+
+    assert "window.__timeControlReady" in time_control
+    assert "window.__startTrackProcessor" in webaudio_capture

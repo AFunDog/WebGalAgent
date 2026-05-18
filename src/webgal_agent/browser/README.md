@@ -9,6 +9,8 @@ browser/
 ├── __init__.py
 ├── client.py
 ├── demo.py
+├── js/
+├── script_loader.py
 ├── models.py
 ├── screencast.py
 ├── tools.py
@@ -39,6 +41,16 @@ browser/
 - `click()` / `fill()` / `get_text()`
 - `prepare_time_control()`
 - `prepare_webaudio_capture()`
+
+### `js/` 与 `script_loader.py`
+
+复杂的页面注入脚本已拆到独立 `.js` 文件中，当前包括：
+
+- `js/time_control.js`
+- `js/webaudio_capture.js`
+- `js/sync_marker.js`
+
+Python 侧通过 `script_loader.py` 统一加载，避免把大段 JS 内嵌在业务模块里。
 
 ### `demo.py`
 
