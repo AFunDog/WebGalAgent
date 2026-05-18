@@ -7,13 +7,13 @@ title: 角色动作与表情一览表
 # 角色动作与表情一览表
 
 > 使用 `read_model` 工具读取角色 model.json 可获取该角色实际可用的动作和表情列表。
-> 角色专属的动作表情对照、特色表情和演出建议已拆分到各自角色文档中：
+> 角色专属的动作表情对照、特色表情和演出建议已拆分到各角色目录下的 `expression_motion.md`：
 >
-> - `data/knowledge/characters/千早爱音.md`
-> - `data/knowledge/characters/长崎素世.md`
-> - `data/knowledge/characters/要乐奈.md`
-> - `data/knowledge/characters/椎名立希.md`
-> - `data/knowledge/characters/高松灯.md`
+> - `data/knowledge/characters/千早爱音/expression_motion.md`
+> - `data/knowledge/characters/长崎素世/expression_motion.md`
+> - `data/knowledge/characters/要乐奈/expression_motion.md`
+> - `data/knowledge/characters/椎名立希/expression_motion.md`
+> - `data/knowledge/characters/高松灯/expression_motion.md`
 >
 > 本文档保留“如何选择和使用动作表情”的通用规则。
 
