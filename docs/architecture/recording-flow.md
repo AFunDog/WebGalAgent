@@ -12,7 +12,7 @@
 4. 页面加载完成后等待 `changeScene` 等辅助符号就绪。
 5. 切换场景，可选注入 IndexedDB 游戏配置。
 6. 调用 `toggleAuto()` 和 `hideInfo()` 完成录制前准备。
-7. `ScreencastRecorder` 启动 `Page.startScreencast`，把帧落到 `data/temp/`。
+7. `ScreencastRecorder` 启动 `Page.startScreencast`，把帧落到 `data/browser/temp/`。
 8. 录制结束后离线调用 FFmpeg 生成 `.mp4` 或 `.webm`。
 
 ## 关键约束

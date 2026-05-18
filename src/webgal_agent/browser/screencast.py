@@ -24,6 +24,7 @@ from webgal_agent.browser.audio_capture import (
 )
 from webgal_agent.browser.ffmpeg_encoder import encode_from_dir
 from webgal_agent.browser.models import RecordingResult, VideoConfig
+from webgal_agent.browser.paths import BROWSER_TEMP_DIR, ensure_browser_dirs
 from webgal_agent.browser.script_loader import load_browser_script
 
 SYNC_MARKER_JS = load_browser_script("sync_marker.js")
@@ -197,7 +198,8 @@ class ScreencastRecorder:
             raise RuntimeError("无法获取页面 viewport 尺寸")
 
         ext = "png" if format == "png" else "jpg"
-        frames_dir = Path("data/temp") / f"webgal_screencast_{uuid.uuid4().hex[:8]}"
+        ensure_browser_dirs()
+        frames_dir = BROWSER_TEMP_DIR / f"webgal_screencast_{uuid.uuid4().hex[:8]}"
         frames_dir.mkdir(parents=True, exist_ok=True)
         frame_index = 0
         start_time_ns = time.monotonic_ns()

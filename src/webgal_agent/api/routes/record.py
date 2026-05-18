@@ -17,13 +17,13 @@ import json
 import subprocess
 import sys
 import threading
-import uuid
 from pathlib import Path
 from typing import Any
 
 import yaml
 from fastapi import APIRouter
 from pydantic import BaseModel
+from webgal_agent.browser.paths import default_recording_output_path
 
 router = APIRouter(prefix="/api/record", tags=["record"])
 
@@ -151,7 +151,7 @@ async def start_record(req: RecordConfigRequest) -> RecordResultResponse:
 
     output_path = req.output_path
     if not output_path:
-        output_path = str(Path("data/temp") / f"record_{uuid.uuid4().hex[:8]}.mp4")
+        output_path = str(default_recording_output_path())
 
     # 确保输出目录存在
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 from webgal_agent.browser import (
     BrowserClient,
@@ -13,6 +12,7 @@ from webgal_agent.browser import (
     SelectorType,
 )
 from webgal_agent.browser.models import VideoConfig
+from webgal_agent.browser.paths import default_demo_screenshot_path
 from webgal_agent.browser.webgal_injection import (
     APPLY_GAME_CONFIG_JS,
     AUTO_SELECTOR_CANDIDATES,
@@ -90,8 +90,7 @@ async def demo_navigate(
         print(f"页面标题: {state.title}")
         print(f"当前 URL: {state.url}")
 
-        screenshot_path = Path("data/temp/demo.png")
-        screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+        screenshot_path = default_demo_screenshot_path()
         await client.screenshot(path=str(screenshot_path), full_page=False)
         print(f"截图已保存: {screenshot_path}")
 

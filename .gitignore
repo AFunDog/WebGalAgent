@@ -36,3 +36,5 @@ providers.yaml
 *.providers.yaml.bak
 
 package/
+
+browser/

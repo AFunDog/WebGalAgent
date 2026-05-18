@@ -14,14 +14,14 @@ def test_build_parser_accepts_sync_debug_flags() -> None:
         "record",
         "--url", "http://localhost:3001",
         "--debug-sync",
-        "--sync-debug-path", "data/temp/custom_sync_debug.json",
+        "--sync-debug-path", "data/browser/recordings/custom_sync_debug.json",
         "--record-audio",
         "--executable", "C:/Browser/chrome.exe",
     ])
 
     assert args.mode == "record"
     assert args.debug_sync is True
-    assert args.sync_debug_path == "data/temp/custom_sync_debug.json"
+    assert args.sync_debug_path == "data/browser/recordings/custom_sync_debug.json"
     assert args.record_audio is True
     assert args.executable == "C:/Browser/chrome.exe"
 
@@ -38,7 +38,7 @@ def test_run_cli_record_mode_passes_record_options(monkeypatch) -> None:
     args = argparse.Namespace(
         mode="record",
         url="http://localhost:3001",
-        output="data/temp/out.mp4",
+        output="data/browser/recordings/out.mp4",
         duration=2.0,
         fps=30.0,
         width=1280,
@@ -50,12 +50,12 @@ def test_run_cli_record_mode_passes_record_options(monkeypatch) -> None:
         headless=True,
         no_record=False,
         screencast_quality=85,
-        save_frames="data/temp/frames",
+        save_frames="data/browser/temp/frames",
         format="png",
         executable="C:/Browser/chrome.exe",
         record_audio=True,
         debug_sync=True,
-        sync_debug_path="data/temp/out.sync_debug.json",
+        sync_debug_path="data/browser/recordings/out.sync_debug.json",
         game_config='{"optionData.autoSpeed": 50}',
         json_mode=False,
     )
@@ -68,5 +68,5 @@ def test_run_cli_record_mode_passes_record_options(monkeypatch) -> None:
     assert captured["record_audio"] is True
     assert captured["executable_path"] == "C:/Browser/chrome.exe"
     assert captured["debug_sync"] is True
-    assert captured["sync_debug_path"] == "data/temp/out.sync_debug.json"
+    assert captured["sync_debug_path"] == "data/browser/recordings/out.sync_debug.json"
     assert captured["game_config"] == {"optionData.autoSpeed": 50}

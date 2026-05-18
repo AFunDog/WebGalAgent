@@ -7,6 +7,8 @@ import struct
 import uuid
 from pathlib import Path
 
+from webgal_agent.browser.paths import BROWSER_TEMP_DIR, ensure_browser_dirs
+
 
 def write_wav_header(f, data_size: int, sample_rate: int, channels: int) -> None:
     """写入 WAV header (IEEE float32)。"""
@@ -212,7 +214,8 @@ async def stop_audio_recording(
     sr = audio_meta.get("sampleRate", 48000)
     ch = audio_meta.get("channels", 2)
 
-    audio_path = Path("data/temp") / f"webgal_audio_{uuid.uuid4().hex[:8]}.wav"
+    ensure_browser_dirs()
+    audio_path = BROWSER_TEMP_DIR / f"webgal_audio_{uuid.uuid4().hex[:8]}.wav"
     audio_path.parent.mkdir(parents=True, exist_ok=True)
     with open(audio_path, "wb") as f:
         write_wav_header(f, len(pcm_bytes), sr, ch)

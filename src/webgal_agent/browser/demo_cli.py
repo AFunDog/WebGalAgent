@@ -8,13 +8,14 @@ import json
 import sys
 
 from webgal_agent.browser.demo_session import demo_navigate, demo_record
+from webgal_agent.browser.paths import default_demo_output_path
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="浏览器模块演示")
     parser.add_argument("mode", choices=["navigate", "record"], help="运行模式")
     parser.add_argument("--url", default="https://example.com", help="目标 URL")
-    parser.add_argument("--output", default="data/temp/output.mp4", help="输出路径")
+    parser.add_argument("--output", default=str(default_demo_output_path()), help="输出路径")
     parser.add_argument("--duration", type=float, default=0, help="录制最大时长（秒）")
     parser.add_argument("--fps", type=float, default=60.0, help="输出帧率（ffmpeg 转换）")
     parser.add_argument("--width", type=int, default=1920, help="录制分辨率宽度")

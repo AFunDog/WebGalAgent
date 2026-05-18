@@ -64,7 +64,7 @@ Python 侧通过 `script_loader.py` 统一加载，避免把大段 JS 内嵌在�
 `ScreencastRecorder` 的当前实现：
 
 1. `Page.startScreencast`
-2. 收到的 JPEG/PNG 帧写入 `data/temp/webgal_screencast_*`
+2. 收到的 JPEG/PNG 帧写入 `data/browser/temp/webgal_screencast_*`
 3. 可选抓取 PCM 音频并落地为 WAV
 4. 录制结束后调用 FFmpeg 离线编码
 
@@ -137,7 +137,7 @@ demo.py
 ```powershell
 .\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
   --url http://localhost:3001/games/MyGO3.0.0/ `
-  --output data/temp/output.mp4 `
+  --output data/browser/recordings/output.mp4 `
   --fps 60 --width 1920 --height 1080 `
   --format jpeg --record-audio
 ```
@@ -147,7 +147,7 @@ demo.py
 ```powershell
 .\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
   --url http://localhost:3001/games/MyGO3.0.0/ `
-  --output data/temp/output.mp4 `
+  --output data/browser/recordings/output.mp4 `
   --record-audio `
   --debug-sync
 ```

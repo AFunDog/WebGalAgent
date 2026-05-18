@@ -13,7 +13,7 @@
 当前录制链路位于 [screencast.py](/d:/GitRepository/WebGalAgent/src/webgal_agent/browser/screencast.py)，核心流程是：
 
 1. `Page.startScreencast` 从 Chromium compositor 拉取 JPEG/PNG 帧
-2. `on_frame()` 中将每帧同步写入 `data/temp/...`
+2. `on_frame()` 中将每帧同步写入 `data/browser/temp/...`
 3. 录制结束后，调用 FFmpeg 离线编码为最终视频
 
 这套方案的优点是结构简单、故障边界清晰，而且录制阶段不会被 FFmpeg 实时编码吞吐拖慢。当前主要瓶颈是 `on_frame()` 热路径上的同步磁盘写入。

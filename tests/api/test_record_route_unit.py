@@ -28,11 +28,11 @@ def test_build_cli_args_includes_optional_flags() -> None:
         record_audio=True,
         executable_path="C:/Program Files/Microsoft/Edge/Application/msedge.exe",
         debug_sync=True,
-        sync_debug_path="data/temp/custom_sync_debug.json",
+        sync_debug_path="data/browser/recordings/custom_sync_debug.json",
         game_config={"optionData.autoSpeed": 50},
     )
 
-    args = _build_cli_args(req, "data/temp/out.mp4")
+    args = _build_cli_args(req, "data/browser/recordings/out.mp4")
 
     assert args[:4] == [args[0], "-m", "webgal_agent.browser.demo", "record"]
     assert "--url" in args and "http://localhost:3001" in args
@@ -43,7 +43,7 @@ def test_build_cli_args_includes_optional_flags() -> None:
     assert "--executable" in args
     assert "C:/Program Files/Microsoft/Edge/Application/msedge.exe" in args
     assert "--debug-sync" in args
-    assert "--sync-debug-path" in args and "data/temp/custom_sync_debug.json" in args
+    assert "--sync-debug-path" in args and "data/browser/recordings/custom_sync_debug.json" in args
     assert "--game-config" in args
     assert "--json" in args
 

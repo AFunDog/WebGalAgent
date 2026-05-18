@@ -208,7 +208,7 @@
           v-model="config.output_path"
           type="text"
           class="form-input"
-          placeholder="留空使用默认路径: data/temp/record_xxx.mp4"
+          placeholder="留空使用默认路径: data/browser/recordings/record_xxx.mp4"
         />
       </div>
 

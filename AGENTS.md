@@ -49,7 +49,7 @@ The repository also includes a browser automation and recording subsystem used t
 
 - Preferred recorder is `ScreencastRecorder` in `src/webgal_agent/browser/screencast.py`
 - It uses `Page.startScreencast` to pull JPEG/PNG frames from Chromium compositor
-- Frames are written to a temporary directory under `data/temp/`
+- Frames are written to a temporary directory under `data/browser/temp/`
 - After capture, FFmpeg encodes frames offline into `.mp4` or `.webm`
 - Optional audio capture uses WebAudio hook + `MediaStreamTrackProcessor` and is merged later as WAV input
 - API recording route `src/webgal_agent/api/routes/record.py` runs the CLI as a subprocess instead of embedding Playwright inside FastAPI

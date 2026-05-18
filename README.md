@@ -114,7 +114,7 @@ npm run dev --prefix src/frontend
 录制模块位于 `src/webgal_agent/browser/`，推荐方案是 `ScreencastRecorder`：
 
 - 通过 CDP `Page.startScreencast` 抓取 compositor 帧
-- 原始帧先写入 `data/temp/` 临时目录
+- 原始帧先写入 `data/browser/temp/` 临时目录
 - 录制结束后调用 FFmpeg 离线编码
 - 支持可选 WebAudio 捕获并与视频合流
 
@@ -123,7 +123,7 @@ npm run dev --prefix src/frontend
 ```powershell
 .\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
   --url http://localhost:3001/games/MyGO3.0.0/ `
-  --output data/temp/output.mp4 `
+  --output data/browser/recordings/output.mp4 `
   --fps 60 --width 1920 --height 1080 `
   --format jpeg
 ```
@@ -169,9 +169,9 @@ title: 千早爱音
 常见分类：
 
 - `character`
-- `setting`
+- `world`
 - `plot`
-- `reference`
+- `skill`
 - `custom`
 
 每个智能体可在 `src/configs/prompts.yaml` 中声明需要的 `categories` 与 `tags`。
