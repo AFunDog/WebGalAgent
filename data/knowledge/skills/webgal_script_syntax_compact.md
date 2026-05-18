@@ -1,5 +1,5 @@
 ---
-category: reference
+category: skill
 tags: [kind:reference-webgal-syntax, topic:webgal, audience:script-converter]
 title: WebGal脚本语法参考
 ---

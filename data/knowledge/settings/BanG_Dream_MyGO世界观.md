@@ -1,6 +1,6 @@
 ---
-category: setting
-tags: [kind:setting-world, franchise:bang-dream, topic:music, audience:story-writer, audience:script-converter]
+category: world
+tags: [kind:world-overview, franchise:bang-dream, topic:music, audience:story-writer, audience:script-converter]
 title: BanG Dream! MyGO!!!!! 世界观
 ---
 

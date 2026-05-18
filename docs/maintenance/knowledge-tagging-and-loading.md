@@ -181,18 +181,18 @@ tags: [kind:character-expression, audience:script-converter]
 推荐示例：
 
 ```yaml
-category: reference
+category: skill
 tags: [kind:reference-webgal-syntax, topic:webgal, audience:script-converter]
 ```
 
 ```yaml
-category: reference
+category: skill
 tags: [kind:reference-animation-recipes, topic:webgal, topic:animation, audience:script-converter]
 ```
 
 ```yaml
-category: setting
-tags: [kind:setting-world, franchise:bang-dream, topic:music, audience:story-writer, audience:script-converter]
+category: world
+tags: [kind:world-overview, franchise:bang-dream, topic:music, audience:story-writer, audience:script-converter]
 ```
 
 ## 当前 prompts.yaml 的知识取用策略

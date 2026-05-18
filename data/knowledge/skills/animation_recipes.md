@@ -1,5 +1,5 @@
 ---
-category: reference
+category: skill
 tags: [kind:reference-animation-recipes, topic:webgal, topic:animation, audience:script-converter]
 title: 动画演出效果配方
 ---

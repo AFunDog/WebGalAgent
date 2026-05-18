@@ -13,9 +13,9 @@ class KnowledgeCategory(str, Enum):
     """预定义的知识类别。"""
 
     CHARACTER = "character"
-    SETTING = "setting"
+    WORLD = "world"
     PLOT = "plot"
-    REFERENCE = "reference"
+    SKILL = "skill"
     CUSTOM = "custom"
 
 
@@ -41,6 +41,4 @@ class KnowledgeEntry(BaseModel):
     def touch(self) -> None:
         """更新 ``updated_at`` 时间戳。"""
         self.updated_at = datetime.utcnow()
-
-
 

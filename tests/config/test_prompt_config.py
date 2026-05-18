@@ -28,7 +28,7 @@ outline_writer:
   system_prompt: |
     You are outline writer.
   knowledge:
-    categories: [character, setting]
+    categories: [character, world]
     tags: [story]
 """.strip(),
         encoding="utf-8",
@@ -37,7 +37,7 @@ outline_writer:
     try:
         data = load_prompt_config(config_file)
         assert "outline_writer" in data
-        assert data["outline_writer"]["knowledge"]["categories"] == ["character", "setting"]
+        assert data["outline_writer"]["knowledge"]["categories"] == ["character", "world"]
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
