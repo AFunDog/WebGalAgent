@@ -27,25 +27,30 @@ from webgal_agent.browser.models import RecordingResult, VideoConfig
 from webgal_agent.browser.script_loader import load_browser_script
 
 SYNC_MARKER_JS = load_browser_script("sync_marker.js")
+NS_PER_SECOND = 1_000_000_000
 
 
 # ---- 同步调试辅助 ---------------------------------------------------------
+
+def _monotonic_seconds_from_ns(value_ns: int) -> float:
+    """将 monotonic_ns 结果转换为秒。"""
+    return value_ns / NS_PER_SECOND
 
 def _default_sync_debug_path(output_path: Path) -> Path:
     """为同步调试输出构造默认 JSON 路径。"""
     return Path(f"{output_path}.sync_debug.json")
 
 
-def _print_sync_debug_event(name: str, ts: float) -> None:
+def _print_sync_debug_event(name: str, ts_ns: int) -> None:
     """打印同步调试关键时间点。"""
-    print(f"[ScreencastRecorder][sync-debug] {name}: {ts:.6f}")
+    print(f"[ScreencastRecorder][sync-debug] {name}: {_monotonic_seconds_from_ns(ts_ns):.6f}")
 
 
 def _build_sync_debug_payload(
     *,
     output_path: Path,
     audio_enabled: bool,
-    timings: dict[str, float],
+    timings_ns: dict[str, int],
     sync_marker: dict[str, object] | None,
     total_frames: int,
     source_fps: float,
@@ -54,11 +59,11 @@ def _build_sync_debug_payload(
     audio_path: Path | None,
 ) -> dict[str, object]:
     """构造同步调试 JSON 内容。"""
-    base_time = timings.get("screencast_start_completed") or timings.get("recording_start")
+    base_time_ns = timings_ns.get("screencast_start_completed") or timings_ns.get("recording_start")
     relative_timings_ms = {
-        key: round((value - base_time) * 1000, 3)
-        for key, value in timings.items()
-        if base_time is not None
+        key: round((value_ns - base_time_ns) / 1_000_000, 3)
+        for key, value_ns in timings_ns.items()
+        if base_time_ns is not None
     }
 
     audio_data_bytes = 0
@@ -71,14 +76,14 @@ def _build_sync_debug_payload(
             audio_duration_estimate_sec = audio_data_bytes / (sample_rate * channels * 4)
 
     systematic_offset_ms: dict[str, float] = {}
-    if "audio_start_completed" in timings and "screencast_start_completed" in timings:
+    if "audio_start_completed" in timings_ns and "screencast_start_completed" in timings_ns:
         systematic_offset_ms["audio_started_before_screencast_ms"] = round(
-            (timings["screencast_start_completed"] - timings["audio_start_completed"]) * 1000,
+            (timings_ns["screencast_start_completed"] - timings_ns["audio_start_completed"]) / 1_000_000,
             3,
         )
-    if "audio_stop_completed" in timings and "screencast_stop_completed" in timings:
+    if "audio_stop_completed" in timings_ns and "screencast_stop_completed" in timings_ns:
         systematic_offset_ms["audio_stopped_after_screencast_ms"] = round(
-            (timings["audio_stop_completed"] - timings["screencast_stop_completed"]) * 1000,
+            (timings_ns["audio_stop_completed"] - timings_ns["screencast_stop_completed"]) / 1_000_000,
             3,
         )
 
@@ -86,7 +91,11 @@ def _build_sync_debug_payload(
         "debug_sync": True,
         "output_path": str(output_path),
         "audio_enabled": audio_enabled,
-        "timings_monotonic": {key: round(value, 6) for key, value in timings.items()},
+        "timings_monotonic_ns": timings_ns,
+        "timings_monotonic": {
+            key: round(_monotonic_seconds_from_ns(value_ns), 6)
+            for key, value_ns in timings_ns.items()
+        },
         "relative_timings_ms": relative_timings_ms,
         "sync_marker": sync_marker or {},
         "frame_stats": {
@@ -191,19 +200,19 @@ class ScreencastRecorder:
         frames_dir = Path("data/temp") / f"webgal_screencast_{uuid.uuid4().hex[:8]}"
         frames_dir.mkdir(parents=True, exist_ok=True)
         frame_index = 0
-        start_time = time.monotonic()
-        timings: dict[str, float] = {"recording_start": start_time}
+        start_time_ns = time.monotonic_ns()
+        timings_ns: dict[str, int] = {"recording_start": start_time_ns}
         sync_marker: dict[str, object] | None = None
         sync_debug_file = (
             Path(sync_debug_path) if sync_debug_path else _default_sync_debug_path(self._output_path)
         )
 
-        def mark_timing(name: str) -> float:
-            ts = time.monotonic()
-            timings[name] = ts
+        def mark_timing(name: str) -> int:
+            ts_ns = time.monotonic_ns()
+            timings_ns[name] = ts_ns
             if debug_sync:
-                _print_sync_debug_event(name, ts)
-            return ts
+                _print_sync_debug_event(name, ts_ns)
+            return ts_ns
 
         async def _ack_frame(session_id: int) -> None:
             try:
@@ -215,12 +224,12 @@ class ScreencastRecorder:
         # 这样可以避免录制期间因实时编码拖慢抓帧。
         def on_frame(params: dict) -> None:
             nonlocal frame_index
-            frame_ts = time.monotonic()
-            if "first_video_frame" not in timings:
-                timings["first_video_frame"] = frame_ts
+            frame_ts_ns = time.monotonic_ns()
+            if "first_video_frame" not in timings_ns:
+                timings_ns["first_video_frame"] = frame_ts_ns
                 if debug_sync:
-                    _print_sync_debug_event("first_video_frame", frame_ts)
-            timings["last_video_frame"] = frame_ts
+                    _print_sync_debug_event("first_video_frame", frame_ts_ns)
+            timings_ns["last_video_frame"] = frame_ts_ns
             data = base64.b64decode(params["data"])
             frame_path = frames_dir / f"frame_{frame_index:08d}.{ext}"
             frame_path.write_bytes(data)
@@ -265,21 +274,21 @@ class ScreencastRecorder:
             )
 
         # ---- 主循环：停止条件轮询 + 音频增量拉取 ---------------------------
-        deadline = time.monotonic() + duration if duration > 0 else float("inf")
-        last_pull = time.monotonic()
+        deadline_ns = start_time_ns + int(duration * NS_PER_SECOND) if duration > 0 else None
+        last_pull_ns = time.monotonic_ns()
         pull_task: asyncio.Task | None = None
         try:
             while True:
-                now = time.monotonic()
+                now_ns = time.monotonic_ns()
                 # 超时检查
-                if now >= deadline:
+                if deadline_ns is not None and now_ns >= deadline_ns:
                     break
                 # 音频增量拉取：启动异步 task（fire-and-forget），不阻塞停止条件检查
-                if has_audio and now - last_pull >= 1.0 and pull_task is None:
+                if has_audio and now_ns - last_pull_ns >= NS_PER_SECOND and pull_task is None:
                     pull_task = asyncio.create_task(
                         pull_audio_chunks(cdp, self._audio_buffer, self._audio_meta)
                     )
-                    last_pull = now
+                    last_pull_ns = now_ns
                 # 检查上次拉取是否完成
                 if pull_task is not None and pull_task.done():
                     with contextlib.suppress(Exception):
@@ -299,10 +308,12 @@ class ScreencastRecorder:
                         break
                 # 迭代间隔
                 if not stop_condition:
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
+                    if deadline_ns is None:
                         break
-                    await asyncio.sleep(min(0.5, remaining))
+                    remaining_ns = deadline_ns - time.monotonic_ns()
+                    if remaining_ns <= 0:
+                        break
+                    await asyncio.sleep(min(0.5, _monotonic_seconds_from_ns(remaining_ns)))
                 else:
                     await asyncio.sleep(0.5)
         except Exception as e:
@@ -335,7 +346,7 @@ class ScreencastRecorder:
                 has_audio = False
 
         total_frames = frame_index
-        actual_duration = time.monotonic() - start_time
+        actual_duration = _monotonic_seconds_from_ns(time.monotonic_ns() - start_time_ns)
         source_fps = total_frames / actual_duration if actual_duration > 0 else 0
 
         print(f"[ScreencastRecorder] 捕获帧数: {total_frames}")
@@ -363,7 +374,7 @@ class ScreencastRecorder:
         output_fps = int(self._video_config.fps)
         print(f"[ScreencastRecorder] 源帧率: {source_fps:.2f} FPS → 输出帧率: {output_fps} FPS")
         print("[ScreencastRecorder] 开始 FFmpeg 编码 (tmix 时间混合 + fps 输出)...")
-        encode_start = time.monotonic()
+        encode_start_ns = time.monotonic_ns()
 
         try:
             await encode_from_dir(
@@ -378,7 +389,7 @@ class ScreencastRecorder:
         except Exception as e:
             print(f"[ScreencastRecorder] FFmpeg 编码失败: {e}")
 
-        encode_elapsed = time.monotonic() - encode_start
+        encode_elapsed = _monotonic_seconds_from_ns(time.monotonic_ns() - encode_start_ns)
         print(f"[ScreencastRecorder] FFmpeg 编码完成，耗时 {encode_elapsed:.1f}s")
 
         # ---- 清理 ----------------------------------------------------------
@@ -400,7 +411,7 @@ class ScreencastRecorder:
             payload = _build_sync_debug_payload(
                 output_path=self._output_path,
                 audio_enabled=has_audio,
-                timings=timings,
+                timings_ns=timings_ns,
                 sync_marker=sync_marker,
                 total_frames=total_frames,
                 source_fps=source_fps,
