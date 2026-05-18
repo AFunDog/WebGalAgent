@@ -107,3 +107,4 @@ class RecordingResult(BaseModel):
     source_fps: float = 0.0
     output_fps: float = 0.0
     has_audio: bool = False
+    sync_debug_path: Path | None = None

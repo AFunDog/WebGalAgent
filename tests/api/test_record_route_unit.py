@@ -27,6 +27,8 @@ def test_build_cli_args_includes_optional_flags() -> None:
         quality=80,
         record_audio=True,
         executable_path="C:/Program Files/Microsoft/Edge/Application/msedge.exe",
+        debug_sync=True,
+        sync_debug_path="data/temp/custom_sync_debug.json",
         game_config={"optionData.autoSpeed": 50},
     )
 
@@ -40,6 +42,8 @@ def test_build_cli_args_includes_optional_flags() -> None:
     assert "--record-audio" in args
     assert "--executable" in args
     assert "C:/Program Files/Microsoft/Edge/Application/msedge.exe" in args
+    assert "--debug-sync" in args
+    assert "--sync-debug-path" in args and "data/temp/custom_sync_debug.json" in args
     assert "--game-config" in args
     assert "--json" in args
 
@@ -53,6 +57,8 @@ def test_build_cli_args_omits_zero_duration_and_empty_optional_fields() -> None:
     assert "--headless" not in args
     assert "--record-audio" not in args
     assert "--game-config" not in args
+    assert "--debug-sync" not in args
+    assert "--sync-debug-path" not in args
 
 
 @pytest.mark.asyncio
@@ -85,4 +91,6 @@ async def test_get_record_config_uses_defaults(monkeypatch: pytest.MonkeyPatch) 
     assert result["canvas_selector"] == "#root"
     assert result["record_audio"] is True
     assert result["executable_path"] == ""
+    assert result["debug_sync"] is False
+    assert result["sync_debug_path"] == ""
     assert result["game_config"] == {"optionData.autoSpeed": 40}

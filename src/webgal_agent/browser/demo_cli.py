@@ -52,6 +52,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="录制页面音频输出",
     )
     parser.add_argument(
+        "--debug-sync",
+        action="store_true",
+        default=False,
+        help="启用音视频同步调试：注入闪烁+beep marker，并输出 sync_debug.json",
+    )
+    parser.add_argument(
+        "--sync-debug-path",
+        default=None,
+        help="同步调试 JSON 输出路径，默认写到输出视频旁边",
+    )
+    parser.add_argument(
         "--game-config",
         default=None,
         help='游戏 IndexedDB 配置覆盖 (JSON), 如 {"optionData.autoSpeed":50}',
@@ -108,6 +119,8 @@ def run_cli(args: argparse.Namespace) -> None:
                         record_audio=args.record_audio,
                         executable_path=args.executable,
                         game_config=game_config,
+                        debug_sync=args.debug_sync,
+                        sync_debug_path=args.sync_debug_path,
                         json_mode=args.json_mode,
                     )
                 )

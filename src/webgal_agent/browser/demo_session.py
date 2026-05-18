@@ -117,6 +117,8 @@ async def demo_record(
     record_audio: bool = False,
     executable_path: str | None = None,
     game_config: dict[str, int] | None = None,
+    debug_sync: bool = False,
+    sync_debug_path: str | None = None,
     json_mode: bool = False,
 ) -> dict | None:
     """CDP Screencast 录制。json_mode=True 时返回结果 dict。"""
@@ -212,6 +214,8 @@ async def demo_record(
             format=format,
             save_frames_dir=save_frames,
             stop_condition=stop_condition,
+            debug_sync=debug_sync,
+            sync_debug_path=sync_debug_path,
         )
 
         log_message("录制完成!", json_mode=json_mode)
@@ -235,5 +239,6 @@ async def demo_record(
                 "output_fps": result.output_fps,
                 "file_size_mb": result.file_size_mb,
                 "has_audio": result.has_audio,
+                "sync_debug_path": str(result.sync_debug_path) if result.sync_debug_path else None,
             }
         return None

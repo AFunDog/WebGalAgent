@@ -70,6 +70,8 @@ class RecordConfigRequest(BaseModel):
     quality: int = 90
     record_audio: bool = False
     executable_path: str | None = None
+    debug_sync: bool = False
+    sync_debug_path: str | None = None
     game_config: dict[str, int] | None = None
 
 
@@ -129,6 +131,10 @@ def _build_cli_args(req: RecordConfigRequest, output_path: str) -> list[str]:
         args.append("--record-audio")
     if req.executable_path:
         args.extend(["--executable", req.executable_path])
+    if req.debug_sync:
+        args.append("--debug-sync")
+    if req.sync_debug_path:
+        args.extend(["--sync-debug-path", req.sync_debug_path])
     if req.game_config:
         args.extend(["--game-config", json.dumps(req.game_config)])
     return args
@@ -276,5 +282,7 @@ async def get_record_config() -> dict:
         "viewport_height": defaults.get("viewport_height", 1080),
         "record_audio": defaults.get("record_audio", False),
         "executable_path": defaults.get("executable_path", ""),
+        "debug_sync": defaults.get("debug_sync", False),
+        "sync_debug_path": defaults.get("sync_debug_path", ""),
         "game_config": defaults.get("game_config", {}),
     }

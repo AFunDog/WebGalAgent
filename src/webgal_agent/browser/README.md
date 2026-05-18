@@ -132,6 +132,22 @@ demo.py
   --format jpeg --record-audio
 ```
 
+同步调试模式：
+
+```powershell
+.\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
+  --url http://localhost:3001/games/MyGO3.0.0/ `
+  --output data/temp/output.mp4 `
+  --record-audio `
+  --debug-sync
+```
+
+启用后会额外执行：
+
+- 在录制开始后注入闪烁 + beep marker
+- 打印音频启动、第一帧到达、停止请求等关键时间点
+- 在输出视频旁边生成 `*.sync_debug.json`
+
 无固定时长，依赖停止条件：
 
 ```powershell
@@ -154,6 +170,8 @@ demo.py
 | `--selector` | `auto` 或指定 CSS |
 | `--format` | `jpeg` / `png` |
 | `--record-audio` | 开启音频捕获 |
+| `--debug-sync` | 开启音视频同步调试 |
+| `--sync-debug-path` | 指定同步调试 JSON 输出路径 |
 | `--game-config` | 注入游戏配置 JSON |
 | `--json` | 机器可读输出模式 |
 

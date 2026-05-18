@@ -136,6 +136,8 @@ export interface RecordConfig {
   format?: 'jpeg' | 'png'
   quality?: number
   executable_path?: string
+  debug_sync?: boolean
+  sync_debug_path?: string
   viewport_width?: number
   viewport_height?: number
   record_audio?: boolean
@@ -152,4 +154,5 @@ export interface RecordResult {
   output_fps: number
   file_size_mb: number
   has_audio?: boolean
+  sync_debug_path?: string | null
 }

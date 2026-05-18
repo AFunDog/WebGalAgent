@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from webgal_agent.browser.models import RecordingResult, Selector, SelectorType, VideoConfig
+from webgal_agent.browser.screencast import SYNC_MARKER_JS, _default_sync_debug_path
 from webgal_agent.browser.webgal_injection import (
     AUTO_SELECTOR_CANDIDATES,
     CHANGE_SCENE_JS,
@@ -37,6 +38,7 @@ def test_recording_result_fields() -> None:
     assert result.total_frames == 10
     assert result.has_audio is False
     assert result.output_fps == 0.0
+    assert result.sync_debug_path is None
 
 
 def test_webgal_injection_constants_are_current() -> None:
@@ -46,3 +48,9 @@ def test_webgal_injection_constants_are_current() -> None:
     assert "window.saveConfig = _r;" in RECORD_INJECT_CODE
     assert "typeof window.changeScene === 'function'" in WAIT_FOR_WEBGAL_READY_JS
     assert "window.changeScene(path, 1);" in CHANGE_SCENE_JS
+
+
+def test_sync_debug_helpers_are_current() -> None:
+    assert str(_default_sync_debug_path(VideoConfig(output_path="out.mp4").output_path)) == "out.mp4.sync_debug.json"
+    assert "__sync_marker__" in SYNC_MARKER_JS
+    assert "audioScheduled" in SYNC_MARKER_JS
