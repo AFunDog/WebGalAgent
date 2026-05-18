@@ -115,6 +115,7 @@ class ScreencastRecorder:
         if duration <= 0 and not stop_condition:
             raise ValueError("必须指定 duration > 0 或 stop_condition，否则录制无法退出")
 
+        # ---- 初始化：页面、CDP、临时帧目录 --------------------------------
         page = await self._client.get_page(context_id)
         cdp = await self._client.create_cdp_session(context_id)
 
@@ -134,6 +135,8 @@ class ScreencastRecorder:
             except Exception:
                 pass
 
+        # CDP 事件回调里只做最小工作：落盘并 ack。编码留到录制后统一处理，
+        # 这样可以避免录制期间因实时编码拖慢抓帧。
         def on_frame(params: dict) -> None:
             nonlocal frame_index
             data = base64.b64decode(params["data"])
@@ -153,7 +156,7 @@ class ScreencastRecorder:
         if format == "jpeg":
             screencast_opts["quality"] = self._quality
 
-        # 启动音频录制（在 screencast 之前，尽量接近同步）
+        # ---- 录制启动：先音频，再 screencast，尽量缩小音画起始偏差 --------
         audio_path: Path | None = None
         has_audio = False
         if self._record_audio:
@@ -163,7 +166,7 @@ class ScreencastRecorder:
 
         await cdp.send("Page.startScreencast", screencast_opts)
 
-        # 录制等待：停止条件检查（主循环）+ 音频拉取（异步 task，不阻塞主循环）
+        # ---- 主循环：停止条件轮询 + 音频增量拉取 ---------------------------
         deadline = time.monotonic() + duration if duration > 0 else float("inf")
         last_pull = time.monotonic()
         pull_task: asyncio.Task | None = None
@@ -204,6 +207,8 @@ class ScreencastRecorder:
                     await asyncio.sleep(0.5)
         except Exception as e:
             print(f"[ScreencastRecorder] 录制过程异常: {e}")
+        # ---- 录制收尾：停止 screencast / 音频 / 编码 ------------------------
+
         # 等待未完成的拉取任务
         if pull_task is not None:
             with contextlib.suppress(Exception):
@@ -265,7 +270,7 @@ class ScreencastRecorder:
         encode_elapsed = time.monotonic() - encode_start
         print(f"[ScreencastRecorder] FFmpeg 编码完成，耗时 {encode_elapsed:.1f}s")
 
-        # 清理临时文件
+        # ---- 清理 ----------------------------------------------------------
         if save_frames_dir:
             keep_dir = Path(save_frames_dir)
             if keep_dir.exists():

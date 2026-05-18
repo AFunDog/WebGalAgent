@@ -9,7 +9,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 from webgal_agent.api.models import CreateTaskRequest, TaskResponse, UpdateStepRequest
-from webgal_agent.api.task_manager import PIPELINE_ORDER
+from webgal_agent.api.workflow_definition import PIPELINE_ORDER
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 

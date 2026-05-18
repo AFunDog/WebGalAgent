@@ -34,6 +34,16 @@ from webgal_agent.browser import (
     SelectorType,
 )
 from webgal_agent.browser.models import VideoConfig
+from webgal_agent.browser.webgal_injection import (
+    APPLY_GAME_CONFIG_JS,
+    AUTO_SELECTOR_CANDIDATES,
+    CHANGE_SCENE_JS,
+    NAVIGATE_INJECT_CODE,
+    POST_SCENE_PREPARE_JS,
+    RECORD_INJECT_CODE,
+    WAIT_FOR_WEBGAL_READY_JS,
+    WEBGAL_SCRIPT_URL_PATTERN,
+)
 
 
 def _log(msg: str, *, json_mode: bool = False) -> None:
@@ -45,84 +55,13 @@ def _log(msg: str, *, json_mode: bool = False) -> None:
 
 
 async def _apply_game_config(page, overrides: dict[str, int], *, json_mode: bool = False) -> None:
-    """通过 page.evaluate 执行 IndexedDB 游戏配置修改脚本。"""
+    """通过 page.evaluate 执行 IndexedDB 游戏配置修改脚本。
+
+    这里显式保留 `saveConfig()` 之后的短等待，避免与页面自己发起的
+    IndexedDB 写入竞争；这是当前 WebGal 配置注入链路的关键约束。
+    """
     _log(f"修改游戏配置: {overrides}", json_mode=json_mode)
-    success = await page.evaluate(
-        """async (overrides) => {
-            const setNestedValue = (obj, path, value) => {
-                const parts = path.split('.');
-                let current = obj;
-                for (let i = 0; i < parts.length - 1; i += 1) {
-                    const key = parts[i];
-                    if (!current || typeof current !== 'object' || !(key in current)) {
-                        return false;
-                    }
-                    current = current[key];
-                }
-                const lastKey = parts[parts.length - 1];
-                if (!current || typeof current !== 'object') {
-                    return false;
-                }
-                current[lastKey] = value;
-                return true;
-            };
-
-            if (typeof window.saveConfig !== 'function') {
-                throw new Error('saveConfig is not available');
-            }
-            if (typeof window.loadConfig !== 'function') {
-                throw new Error('loadConfig is not available');
-            }
-            if (!window.indexedDB) {
-                throw new Error('indexedDB is not available');
-            }
-
-            window.saveConfig();
-            await new Promise((resolve) => setTimeout(resolve, 200));
-
-            return new Promise((resolve, reject) => {
-                const req = indexedDB.open('localforage');
-
-                req.onsuccess = (event) => {
-                    const db = event.target.result;
-                    const tx = db.transaction('keyvaluepairs', 'readwrite');
-                    const store = tx.objectStore('keyvaluepairs');
-                    const getReq = store.get('MyGO');
-
-                    getReq.onsuccess = () => {
-                        const data = getReq.result;
-                        if (!data) {
-                            resolve(false);
-                            return;
-                        }
-
-                        let changed = false;
-                        for (const [key, value] of Object.entries(overrides)) {
-                            changed = setNestedValue(data, key, value) || changed;
-                        }
-
-                        if (!changed) {
-                            resolve(false);
-                            return;
-                        }
-
-                        const putReq = store.put(data, 'MyGO');
-                        putReq.onsuccess = () => {
-                            window.loadConfig();
-                            resolve(true);
-                        };
-                        putReq.onerror = () => reject(putReq.error || new Error('put failed'));
-                    };
-
-                    getReq.onerror = () => reject(getReq.error || new Error('get failed'));
-                    tx.onerror = () => reject(tx.error || new Error('transaction failed'));
-                };
-
-                req.onerror = () => reject(req.error || new Error('indexedDB open failed'));
-            });
-        }""",
-        overrides,
-    )
+    success = await page.evaluate(APPLY_GAME_CONFIG_JS, overrides)
     _log(f"游戏配置{'已更新' if success else '更新失败'}", json_mode=json_mode)
 
 
@@ -143,10 +82,10 @@ async def demo_navigate(
     )
 
     async with BrowserClient(config) as client:
-        print("拦截脚本注入 (index-e1b3c40e.js)...")
+        print(f"拦截脚本注入 ({WEBGAL_SCRIPT_URL_PATTERN})...")
         await client.add_script_injection(
-            url_pattern="**/index-e1b3c40e.js",
-            inject_code="window.changeScene = gCe;\nwindow.toggleAuto = wU;",
+            url_pattern=WEBGAL_SCRIPT_URL_PATTERN,
+            inject_code=NAVIGATE_INJECT_CODE,
         )
 
         print(f"正在使用 {browser_type} 导航到: {url}")
@@ -208,25 +147,15 @@ async def demo_record(
     async with BrowserClient(config) as client:
         await client.new_context(context_id="default")
 
+        # 音频捕获与页面脚本注入必须在导航前准备好，否则会错过页面初始化时机。
         if record_audio:
             _log("注入 WebAudio 全局捕获 (masterGain 方案)...", json_mode=json_mode)
             await client.prepare_webaudio_capture()
 
-        _log("拦截脚本注入 (index-e1b3c40e.js)...", json_mode=json_mode)
+        _log(f"拦截脚本注入 ({WEBGAL_SCRIPT_URL_PATTERN})...", json_mode=json_mode)
         await client.add_script_injection(
-            url_pattern="**/index-e1b3c40e.js",
-            inject_code="""
-            window.changeScene = gCe;
-            window.toggleAuto = wU;
-            window.saveConfig = _r;
-            window.loadConfig = Vh;
-            window.__webgal = L;
-            window.hideInfo = () => {
-                const el = document.querySelector(`.${ke.main}`);
-                el.style.visibility = 'hidden';
-            };
-
-            """,
+            url_pattern=WEBGAL_SCRIPT_URL_PATTERN,
+            inject_code=RECORD_INJECT_CODE,
         )
 
         _log(f"正在使用 {browser_type} 导航到: {url}", json_mode=json_mode)
@@ -239,39 +168,21 @@ async def demo_record(
         page = await client.get_page()
 
         _log("等待 changeScene 函数就绪...", json_mode=json_mode)
-        await page.wait_for_function(
-            """() =>
-            typeof window.changeScene === 'function' &&
-            typeof window.toggleAuto === 'function' &&
-            typeof window.__webgal === 'object' &&
-            typeof window.hideInfo === 'function'
-            """,
-            timeout=10000,
-        )
+        await page.wait_for_function(WAIT_FOR_WEBGAL_READY_JS, timeout=10000)
         _log(f'changeScene 已就绪，调用 changeScene("{scene_path}", 1)...', json_mode=json_mode)
 
-        await page.evaluate(
-            """async (path) => {
-                window.changeScene(path, 1);
-            }""",
-            scene_path,
-        )
+        await page.evaluate(CHANGE_SCENE_JS, scene_path)
         _log("changeScene 调用完成", json_mode=json_mode)
 
         if game_config:
             _log("场景切换后注入游戏配置...", json_mode=json_mode)
             await _apply_game_config(page, game_config, json_mode=json_mode)
 
-        await page.evaluate(
-            """async () => {
-                await new Promise(r => setTimeout(r, 300));
-                window.toggleAuto();
-                window.hideInfo();
-            }"""
-        )
+        # 场景切换后再开启自动播放并隐藏 UI，避免影响注入配置与初始场景加载。
+        await page.evaluate(POST_SCENE_PREPARE_JS)
 
         if selector == "auto":
-            for candidate in ("#root", "canvas"):
+            for candidate in AUTO_SELECTOR_CANDIDATES:
                 found = await client.wait_for(
                     Selector(value=candidate, type=SelectorType.CSS),
                     state="visible",
@@ -281,7 +192,10 @@ async def demo_record(
                     _log(f"目标元素已就绪: {candidate}", json_mode=json_mode)
                     break
             else:
-                _log("警告: 未找到 #root 或 canvas 元素，继续录制整个页面", json_mode=json_mode)
+                _log(
+                    f"警告: 未找到 {' 或 '.join(AUTO_SELECTOR_CANDIDATES)} 元素，继续录制整个页面",
+                    json_mode=json_mode,
+                )
         else:
             _log(f"等待目标元素出现: {selector}", json_mode=json_mode)
             found = await client.wait_for(
@@ -343,6 +257,11 @@ async def demo_record(
 
 
 def main() -> None:
+    """CLI 入口。
+
+    这里保留参数解析与模式分发；具体的 WebGal 页面注入和录制准备细节
+    已集中到独立常量，降低主流程阅读成本。
+    """
     parser = argparse.ArgumentParser(description="浏览器模块演示")
     parser.add_argument(
         "mode",

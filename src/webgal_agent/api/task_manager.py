@@ -1,4 +1,11 @@
-"""工作流执行任务管理器。"""
+"""工作流执行任务管理器。
+
+这个模块目前仍是编排中心，负责把“任务状态、智能体构建、知识上下文、
+任务落盘”串成一个可运行的流水线。P0 整理先做两件事：
+
+1. 把重复的工作流定义和 prompts.yaml 解析逻辑抽出去
+2. 给关键状态流转补结构性说明，降低后续拆分前的阅读成本
+"""
 
 from __future__ import annotations
 
@@ -9,32 +16,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import TypedDict
 
-import yaml
-
 from webgal_agent.agents import OutlineWriterAgent, ScriptConverterAgent, ScriptWriterAgent
+from webgal_agent.api.workflow_definition import AGENT_DESCRIPTIONS, AGENT_PREV_DEPS, PIPELINE_ORDER
 from webgal_agent.config.provider_manager import ProviderConfigManager
+from webgal_agent.config.prompt_config import (
+    extract_knowledge_requirements,
+    extract_system_prompts,
+    load_prompt_config,
+)
 from webgal_agent.core.agent import Agent
 from webgal_agent.core.message import Message, MessageType
 from webgal_agent.knowledge import KnowledgeStore
 from webgal_agent.knowledge.models import KnowledgeEntry
 from webgal_agent.tools.base import Tool
-
-# 流水线步骤顺序：A → B → C
-PIPELINE_ORDER = ["outline_writer", "script_writer", "script_converter"]
-
-# 智能体描述
-AGENT_DESCRIPTIONS: dict[str, str] = {
-    "outline_writer": "接受用户输入和知识库，编写剧本大纲",
-    "script_writer": "接受用户输入、剧本大纲和知识库，生成各章节剧本",
-    "script_converter": "接受用户输入、剧本和知识库，转换为 WebGal 引擎脚本",
-}
-
-# 每个智能体需要的前序步骤输出（None 表示需要所有前序步骤）
-AGENT_PREV_DEPS: dict[str, list[str] | None] = {
-    "outline_writer": None,       # 第一步，无前序
-    "script_writer": None,        # 需要大纲
-    "script_converter": ["script_writer"],  # 只需要剧本，不需要大纲
-}
 
 # 持久化任务数据的输出目录
 DEFAULT_TASK_DIR = "data/tasks"
@@ -137,52 +131,6 @@ class TaskInfo:
             "total_completion_tokens": self.total_completion_tokens,
             "total_tokens": self.total_tokens,
         }
-
-
-def _load_prompts() -> dict[str, str]:
-    """从 src/configs/prompts.yaml 加载智能体提示词。"""
-    prompts_path = Path("src/configs/prompts.yaml")
-    if not prompts_path.exists():
-        return {}
-
-    data = yaml.safe_load(prompts_path.read_text(encoding="utf-8"))
-    if not data or not isinstance(data, dict):
-        return {}
-
-    result: dict[str, str] = {}
-    for key, value in data.items():
-        if isinstance(value, dict) and "system_prompt" in value:
-            result[key] = value["system_prompt"].strip()
-    return result
-
-
-def _load_knowledge_requirements() -> dict[str, dict[str, list[str]]]:
-    """从 src/configs/prompts.yaml 加载各智能体的知识库需求配置。
-
-    返回智能体名称到知识筛选配置的映射::
-
-        {
-            "outline_writer": {"categories": ["character", "setting"], "tags": []},
-            "script_converter": {"categories": ["reference"], "tags": ["webgal"]},
-        }
-    """
-    prompts_path = Path("src/configs/prompts.yaml")
-    if not prompts_path.exists():
-        return {}
-
-    data = yaml.safe_load(prompts_path.read_text(encoding="utf-8"))
-    if not data or not isinstance(data, dict):
-        return {}
-
-    result: dict[str, dict[str, list[str]]] = {}
-    for key, value in data.items():
-        if isinstance(value, dict) and "knowledge" in value:
-            knowledge_cfg = value["knowledge"]
-            result[key] = {
-                "categories": knowledge_cfg.get("categories", []),
-                "tags": knowledge_cfg.get("tags", []),
-            }
-    return result
 
 
 def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) -> Path:
@@ -312,7 +260,15 @@ def _load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, 
 
 
 class TaskManager:
-    """管理流水线工作流执行。"""
+    """管理流水线工作流执行。
+
+    当前对外仍暴露一个聚合型 manager。调用链大致是：
+
+    start_task -> run_step -> _run_step_background
+
+    其中 `_run_step_background()` 是真正的编排核心，会把用户输入、
+    知识上下文和前序步骤输出拼成当前 agent 的输入，再触发落盘。
+    """
 
     def __init__(
         self,
@@ -323,8 +279,9 @@ class TaskManager:
         self._task_dir = Path(task_dir)
         self._knowledge_store = knowledge_store
         self._provider_manager = provider_manager
-        self._prompts = _load_prompts()
-        self._knowledge_requirements = _load_knowledge_requirements()
+        prompt_config = load_prompt_config()
+        self._prompts = extract_system_prompts(prompt_config)
+        self._knowledge_requirements = extract_knowledge_requirements(prompt_config)
 
         # 加载之前持久化的任务
         self._tasks: dict[str, TaskInfo] = _load_tasks_from_disk(self._task_dir)
@@ -517,7 +474,15 @@ class TaskManager:
         return task
 
     async def _run_step_background(self, task: TaskInfo) -> None:
-        """在后台执行单步智能体。"""
+        """在后台执行单步智能体。
+
+        这是任务状态流转的关键节点：
+
+        1. 按当前步骤构建 agent
+        2. 拼接用户输入、知识库、前序输出
+        3. 调用 agent.handle()
+        4. 写回内存状态与磁盘快照
+        """
         import logging
         logger = logging.getLogger("webgal_agent.task_manager")
 
@@ -530,7 +495,8 @@ class TaskManager:
             self._running_task_id = task.id
             agent = agents[agent_name]
 
-            # 构建累积上下文
+            # 构建当前步骤的完整输入上下文。这里保留“文本拼接”策略，
+            # 不改变现有行为，只把来源拆得更清楚。
             knowledge_contexts = self._build_all_knowledge_contexts()
             context_parts: list[str] = []
 

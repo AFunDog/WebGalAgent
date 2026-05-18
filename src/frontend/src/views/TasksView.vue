@@ -71,7 +71,7 @@
               {{ getStepStatusText(task, idx) }}
             </span>
             <span v-if="task.token_usage_by_step?.[String(idx)]" class="step-token-badge">
-              {{ formatTokenCount(task.token_usage_by_step[String(idx)].total_tokens) }} tokens
+              {{ formatTokenCount(task.token_usage_by_step?.[String(idx)]?.total_tokens ?? 0) }} tokens
             </span>
           </div>
 

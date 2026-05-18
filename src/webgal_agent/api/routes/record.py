@@ -2,6 +2,12 @@
 
 录制操作通过子进程调用 CLI 工具完成，Playwright 运行在独立进程中，
 与 FastAPI/Uvicorn 的 event loop 完全隔离。
+
+这个模块的重点不是浏览器细节，而是“子进程协议”：
+
+1. 构造 `python -m webgal_agent.browser.demo record --json`
+2. 读取 stderr 作为实时日志
+3. 读取 stdout 最后一行 JSON 作为最终结果
 """
 
 from __future__ import annotations
@@ -21,7 +27,8 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/record", tags=["record"])
 
-# 配置文件路径解析
+# ---- 配置读取 -------------------------------------------------------------
+
 def _resolve_config_path() -> Path | None:
     candidates = [
         Path("src/configs/record.yaml"),
@@ -84,6 +91,8 @@ _recording_state: dict[str, Any] = {
     "logs": [],
 }
 
+
+# ---- 子进程协调 -----------------------------------------------------------
 
 def _read_stderr(proc: subprocess.Popen, logs: list[str]) -> None:
     """在后台线程中逐行读取子进程 stderr，追加到共享日志列表。"""
@@ -210,6 +219,8 @@ async def _wait_recording(proc: subprocess.Popen) -> None:
         _recording_state["proc"] = None
         _recording_state["progress"] = 100.0
 
+
+# ---- 路由 -----------------------------------------------------------------
 
 @router.post("/stop")
 async def stop_record() -> dict:

@@ -162,6 +162,10 @@ import { api } from '../api'
 import PipelineGraph from '../components/PipelineGraph.vue'
 import type { AgentInfo, Task } from '../types'
 
+// 当前页面同时承载三类状态：
+// 1. 新任务创建
+// 2. 当前任务的逐步执行
+// 3. 已完成步骤的局部编辑
 const agentDefs = ref<AgentInfo[]>([])
 const newTaskContent = ref('')
 const creating = ref(false)
@@ -172,6 +176,7 @@ const editContent = ref('')
 const startStep = ref(0)
 const stepInputs = ref<Record<string, string>>({})
 
+// 这份步骤定义目前仍是前端本地常量，需与后端流水线定义保持同步。
 const pipelineSteps = [
   { name: 'outline_writer', label: '大纲编写', deps: [] as string[] },
   { name: 'script_writer', label: '剧本生成', deps: ['outline_writer'] },
@@ -352,7 +357,8 @@ async function cancelTask() {
   }
 }
 
-// 轮询逻辑
+// 轮询只在“当前激活任务处于 running”时开启；一旦状态离开 running，
+// 必须立即停止，避免页面持续请求历史任务。
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 function startPolling(taskId: string) {
