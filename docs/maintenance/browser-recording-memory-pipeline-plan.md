@@ -1,5 +1,13 @@
 # 浏览器录制内存管线优化方案
 
+## 当前状态
+
+- `Phase 1` 已完成第一版落地
+- 当前实现位置：`src/webgal_agent/browser/screencast.py`
+- 现在的录制热路径已经从“同步写盘”改为“base64 解码 + 有界内存队列 + ack”
+- 后台 writer worker 负责异步写盘，录制结束后等待队列清空，再继续现有 FFmpeg 离线编码流程
+- 若后台 writer 写盘失败或队列已满，录制会中止并抛出明确错误，避免无界内存增长
+
 ## 背景
 
 当前录制链路位于 [screencast.py](/d:/GitRepository/WebGalAgent/src/webgal_agent/browser/screencast.py)，核心流程是：

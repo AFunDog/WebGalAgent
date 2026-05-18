@@ -203,6 +203,9 @@ class ScreencastRecorder:
         start_time_ns = time.monotonic_ns()
         timings_ns: dict[str, int] = {"recording_start": start_time_ns}
         sync_marker: dict[str, object] | None = None
+        frame_queue: asyncio.Queue[tuple[int, bytes] | None] = asyncio.Queue(maxsize=128)
+        frame_writer_error: RuntimeError | None = None
+        accept_frames = True
         sync_debug_file = (
             Path(sync_debug_path) if sync_debug_path else _default_sync_debug_path(self._output_path)
         )
@@ -220,20 +223,49 @@ class ScreencastRecorder:
             except Exception:
                 pass
 
-        # CDP 事件回调里只做最小工作：落盘并 ack。编码留到录制后统一处理，
-        # 这样可以避免录制期间因实时编码拖慢抓帧。
+        async def _frame_writer() -> None:
+            nonlocal frame_writer_error
+            while True:
+                item = await frame_queue.get()
+                try:
+                    if item is None:
+                        return
+                    if frame_writer_error is not None:
+                        continue
+                    queued_index, queued_data = item
+                    frame_path = frames_dir / f"frame_{queued_index:08d}.{ext}"
+                    await asyncio.to_thread(frame_path.write_bytes, queued_data)
+                except Exception as exc:
+                    if frame_writer_error is None:
+                        frame_writer_error = RuntimeError(f"帧写盘失败: {exc}")
+                finally:
+                    frame_queue.task_done()
+
+        writer_task = asyncio.create_task(_frame_writer())
+
+        # CDP 事件回调里只做最小工作：解码、入队、ack。
+        # 真正写盘放到后台 writer，避免事件回调被同步磁盘 I/O 阻塞。
         def on_frame(params: dict) -> None:
-            nonlocal frame_index
+            nonlocal frame_index, frame_writer_error
             frame_ts_ns = time.monotonic_ns()
             if "first_video_frame" not in timings_ns:
                 timings_ns["first_video_frame"] = frame_ts_ns
                 if debug_sync:
                     _print_sync_debug_event("first_video_frame", frame_ts_ns)
             timings_ns["last_video_frame"] = frame_ts_ns
-            data = base64.b64decode(params["data"])
-            frame_path = frames_dir / f"frame_{frame_index:08d}.{ext}"
-            frame_path.write_bytes(data)
-            frame_index += 1
+            if not accept_frames or frame_writer_error is not None:
+                asyncio.ensure_future(_ack_frame(params["sessionId"]))
+                return
+            try:
+                data = base64.b64decode(params["data"])
+                frame_queue.put_nowait((frame_index, data))
+                frame_index += 1
+            except asyncio.QueueFull:
+                if frame_writer_error is None:
+                    frame_writer_error = RuntimeError("帧写入队列已满，后台 writer 吞吐不足")
+            except Exception as exc:
+                if frame_writer_error is None:
+                    frame_writer_error = RuntimeError(f"帧处理失败: {exc}")
             asyncio.ensure_future(_ack_frame(params["sessionId"]))
 
         cdp.on("Page.screencastFrame", on_frame)
@@ -280,6 +312,9 @@ class ScreencastRecorder:
         try:
             while True:
                 now_ns = time.monotonic_ns()
+                if frame_writer_error is not None:
+                    print(f"[ScreencastRecorder] {frame_writer_error}")
+                    break
                 # 超时检查
                 if deadline_ns is not None and now_ns >= deadline_ns:
                     break
@@ -333,7 +368,12 @@ class ScreencastRecorder:
             mark_timing("screencast_stop_completed")
         except Exception:
             pass
+        accept_frames = False
         await asyncio.sleep(0.1)
+        await frame_queue.join()
+        await frame_queue.put(None)
+        with contextlib.suppress(Exception):
+            await writer_task
 
         # 停止音频轮询并完成录制
         if has_audio:
@@ -344,6 +384,12 @@ class ScreencastRecorder:
                 print(f"[ScreencastRecorder] 音频已保存: {audio_path}")
             else:
                 has_audio = False
+
+        if frame_writer_error is not None:
+            shutil.rmtree(frames_dir, ignore_errors=True)
+            if audio_path and audio_path.exists():
+                print(f"[ScreencastRecorder] 音频文件保留: {audio_path}")
+            raise frame_writer_error
 
         total_frames = frame_index
         actual_duration = _monotonic_seconds_from_ns(time.monotonic_ns() - start_time_ns)
