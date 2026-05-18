@@ -20,7 +20,9 @@ def test_message_reply() -> None:
     assert reply.type == MessageType.RESULT
 
 
-def test_message_with_type() -> None:
+def test_message_reply_with_custom_type() -> None:
     msg = Message(sender="a", receiver="b", content="hi")
-    error_msg = msg.with_type(MessageType.ERROR)
+    error_msg = msg.reply(content="oops", msg_type=MessageType.ERROR)
+    assert error_msg.sender == "b"
+    assert error_msg.receiver == "a"
     assert error_msg.type == MessageType.ERROR
