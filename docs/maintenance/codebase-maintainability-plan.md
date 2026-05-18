@@ -257,9 +257,9 @@
 
 建议新增或维护以下文档：
 
-- `docs/architecture-overview.md`: 后端、前端、browser 三大子系统边界
-- `docs/task-pipeline.md`: 流水线步骤、依赖、任务状态、落盘格式
-- `docs/recording-flow.md`: 录制前准备、注入、screencast、音频、子进程协议
+- `docs/architecture/architecture-overview.md`: 后端、前端、browser 三大子系统边界
+- `docs/architecture/task-pipeline.md`: 流水线步骤、依赖、任务状态、落盘格式
+- `docs/architecture/recording-flow.md`: 录制前准备、注入、screencast、音频、子进程协议
 
 这样能减少“必须打开 4 个源码文件才知道真实流程”的情况。
 

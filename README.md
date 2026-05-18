@@ -228,4 +228,5 @@ npm run build --prefix src/frontend
 
 - 工程协作说明: [AGENTS.md](d:/GitRepository/WebGalAgent/AGENTS.md)
 - 浏览器模块文档: [src/webgal_agent/browser/README.md](d:/GitRepository/WebGalAgent/src/webgal_agent/browser/README.md)
-- 问题与路线图: [docs/issues-and-roadmap.md](d:/GitRepository/WebGalAgent/docs/issues-and-roadmap.md)
+- 文档目录: [docs/README.md](d:/GitRepository/WebGalAgent/docs/README.md)
+- 问题与路线图: [docs/roadmap/issues-and-roadmap.md](d:/GitRepository/WebGalAgent/docs/roadmap/issues-and-roadmap.md)

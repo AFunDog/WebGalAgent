@@ -43,7 +43,7 @@ The repository also includes a browser automation and recording subsystem used t
 - `src/configs/`: `default.yaml`, `prompts.yaml`, `providers.yaml.sample`, `record.yaml`
 - `src/frontend/`: frontend app
 - `data/knowledge/`: markdown knowledge base
-- `docs/issues-and-roadmap.md`: active engineering issues and roadmap
+- `docs/roadmap/issues-and-roadmap.md`: active engineering issues and roadmap
 
 ## Current Browser Recording Model
 
@@ -131,5 +131,5 @@ If behavior changes, keep these docs in sync:
 
 - `README.md`
 - `src/webgal_agent/browser/README.md`
-- `docs/issues-and-roadmap.md`
+- `docs/roadmap/issues-and-roadmap.md`
 - `AGENTS.md`
