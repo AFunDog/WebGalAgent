@@ -126,7 +126,26 @@
 - 指导脚本转换阶段选择立绘动作和表情
 - 支持更稳定的 WebGal 演出生成
 
-## 当前推荐标签
+## 当前推荐标签体系
+
+当前建议把标签分成两种前缀：
+
+- `kind:*`
+  说明“这份知识是什么类型”
+- `audience:*`
+  说明“这份知识应该主要给谁看”
+
+可选再补：
+
+- `topic:*`
+  说明知识主题
+- `franchise:*`
+  说明作品或 IP 归属
+
+这个命名方式的目标是：
+
+- 看到标签名就能猜到用途
+- 不再依赖 `compact` 这类语义过于隐含的旧名字
 
 ### profile.md
 
@@ -134,13 +153,14 @@
 
 ```yaml
 category: character
-tags: [character-profile]
+tags: [kind:character-profile, audience:story-writer]
 ```
 
 说明：
 
 - `category: character` 表示角色知识
-- `character-profile` 用来标记“可供前序写作智能体消费的角色信息”
+- `kind:character-profile` 表示这是角色设定信息
+- `audience:story-writer` 表示它主要服务于前序写作智能体
 
 ### expression_motion.md
 
@@ -148,13 +168,32 @@ tags: [character-profile]
 
 ```yaml
 category: character
-tags: [character-expression, compact]
+tags: [kind:character-expression, audience:script-converter]
 ```
 
 说明：
 
-- `character-expression` 表示这是立绘表情动作知识
-- `compact` 表示内容适合直接进入 `script_converter` 的紧凑型参考上下文
+- `kind:character-expression` 表示这是立绘表情动作知识
+- `audience:script-converter` 表示它主要服务于脚本转换智能体
+
+### 其他常见知识文件
+
+推荐示例：
+
+```yaml
+category: reference
+tags: [kind:reference-webgal-syntax, topic:webgal, audience:script-converter]
+```
+
+```yaml
+category: reference
+tags: [kind:reference-animation-recipes, topic:webgal, topic:animation, audience:script-converter]
+```
+
+```yaml
+category: setting
+tags: [kind:setting-world, franchise:bang-dream, topic:music, audience:story-writer, audience:script-converter]
+```
 
 ## 当前 prompts.yaml 的知识取用策略
 
@@ -162,20 +201,17 @@ tags: [character-expression, compact]
 
 ### outline_writer
 
-- `categories: [setting]`
-- `tags: [character-profile]`
+- `tags: [audience:story-writer]`
 
 这意味着它会读取：
 
-- 所有 `setting` 类知识
-- 所有带 `character-profile` 标签的角色信息文件
+- 所有带 `audience:story-writer` 标签的知识文件
 
 它不会因为角色目录存在就自动拿到 `expression_motion.md`。
 
 ### script_writer
 
-- `categories: [setting]`
-- `tags: [character-profile]`
+- `tags: [audience:story-writer]`
 
 含义与 `outline_writer` 相同。
 
@@ -186,14 +222,11 @@ tags: [character-expression, compact]
 
 ### script_converter
 
-- `categories: [setting]`
-- `tags: [compact, character-expression]`
+- `tags: [audience:script-converter]`
 
 这意味着它会读取：
 
-- 所有 `setting` 类知识
-- 所有带 `compact` 标签的紧凑参考
-- 所有带 `character-expression` 标签的角色立绘动作知识
+- 所有带 `audience:script-converter` 标签的知识文件
 
 这一步的目标是：
 
@@ -224,18 +257,22 @@ tags: [character-expression, compact]
 
 它就应该进入 `profile.md`。
 
-### 3. 谨慎使用 `compact`
+### 3. audience 标签优先决定知识去向
 
-当前筛选逻辑是并集，因此 `compact` 的影响很大。
+当前筛选逻辑是并集，因此标签一旦命中，就会进入该智能体上下文。
 
-如果某个文件被打上 `compact`：
+因此建议把“给谁看”这件事显式写进标签：
 
-- `script_converter` 很可能会直接看到它
+- `audience:story-writer`
+- `audience:script-converter`
 
-因此：
+不要再依赖模糊语义标签去间接表达知识去向。
 
-- `profile.md` 默认不要打 `compact`
-- 只有明确想喂给 `script_converter` 的知识才打 `compact`
+经验规则：
+
+- `profile.md` 默认只打 `audience:story-writer`
+- `expression_motion.md` 默认只打 `audience:script-converter`
+- 同时需要两边消费的知识，再同时打两个 `audience:*`
 
 ### 4. 新增角色时优先补齐两层文件
 

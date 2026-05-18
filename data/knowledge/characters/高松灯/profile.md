@@ -1,6 +1,6 @@
 ---
 category: character
-tags: [character-profile]
+tags: [kind:character-profile, audience:story-writer]
 title: 高松灯·角色设定
 ---
 

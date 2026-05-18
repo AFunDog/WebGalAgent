@@ -1,6 +1,6 @@
 ---
 category: character
-tags: [character-profile]
+tags: [kind:character-profile, audience:story-writer]
 title: 椎名立希·角色设定
 ---
 

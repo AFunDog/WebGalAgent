@@ -1,6 +1,6 @@
 ---
 category: character
-tags: [character-expression, compact]
+tags: [kind:character-expression, audience:script-converter]
 title: 千早爱音·动作与表情
 ---
 

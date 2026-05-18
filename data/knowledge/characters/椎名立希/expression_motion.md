@@ -1,6 +1,6 @@
 ---
 category: character
-tags: [character-expression, compact]
+tags: [kind:character-expression, audience:script-converter]
 title: 椎名立希·动作与表情
 ---
 

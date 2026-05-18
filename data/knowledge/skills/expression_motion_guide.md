@@ -1,6 +1,6 @@
 ---
 category: reference
-tags: [compact]
+tags: [kind:reference-expression-guide, audience:script-converter]
 title: 角色动作与表情一览表
 ---
 

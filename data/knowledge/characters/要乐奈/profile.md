@@ -1,6 +1,6 @@
 ---
 category: character
-tags: [character-profile]
+tags: [kind:character-profile, audience:story-writer]
 title: 要乐奈·角色设定
 ---
 
