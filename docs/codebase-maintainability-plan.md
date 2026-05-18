@@ -4,6 +4,31 @@
 
 本文档只讨论“不改变程序功能”的工程优化方向，目标是提升可读性、注释质量、模块边界清晰度、测试可维护性和文档一致性。所有建议均基于当前仓库真实代码状态整理，而不是抽象模板。
 
+## 已完成进展
+
+截至 2026-05-18，本轮已完成以下拆分整理：
+
+- `TaskManager` 已拆出：
+  - `task_state.py`
+  - `task_storage.py`
+  - `task_context.py`
+  - `task_agents.py`
+- `browser/demo.py` 已拆出：
+  - `demo_cli.py`
+  - `demo_session.py`
+- `browser/screencast.py` 已拆出：
+  - `audio_capture.py`
+  - `ffmpeg_encoder.py`
+- 前端 API 已拆为分模块文件
+- 前端已补：
+  - `constants/pipeline.ts`
+  - `utils/taskDisplay.ts`
+  - `composables/useTaskPolling.ts`
+
+当前仍未彻底完成的点：
+
+- `PipelineView.vue` / `TasksView.vue` / `RecordView.vue` 的模板层仍偏大，后续如继续复杂化，建议再拆展示组件。
+
 ## 1. 当前代码结构概览
 
 ### 1.1 顶层目录职责
@@ -356,6 +381,8 @@
 这一阶段几乎不改调用关系，最适合先做。
 
 ### 第二阶段：文件级拆分
+
+当前状态：已大体完成
 
 - 拆 `TaskManager`
 - 拆 `demo.py`

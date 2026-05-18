@@ -26,8 +26,12 @@
 ## 当前代码位置
 
 - CLI 入口: `src/webgal_agent/browser/demo.py`
+- CLI 参数与模式分发: `src/webgal_agent/browser/demo_cli.py`
+- 录制会话实现: `src/webgal_agent/browser/demo_session.py`
 - 注入脚本常量: `src/webgal_agent/browser/webgal_injection.py`
 - 录制器: `src/webgal_agent/browser/screencast.py`
+- 音频抓取: `src/webgal_agent/browser/audio_capture.py`
+- 编码辅助: `src/webgal_agent/browser/ffmpeg_encoder.py`
 - API 子进程协调: `src/webgal_agent/api/routes/record.py`
 
 ## 当前输出协议

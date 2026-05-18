@@ -157,15 +157,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { api } from '../api'
 import PipelineGraph from '../components/PipelineGraph.vue'
+import { useTaskPolling } from '../composables/useTaskPolling'
+import { PIPELINE_STEPS } from '../constants/pipeline'
 import type { AgentInfo, Task } from '../types'
+import { formatTokenCount, getStepStatusText as getTaskStepStatusText, statusBadgeClass, statusLabel } from '../utils/taskDisplay'
 
-// 当前页面同时承载三类状态：
-// 1. 新任务创建
-// 2. 当前任务的逐步执行
-// 3. 已完成步骤的局部编辑
 const agentDefs = ref<AgentInfo[]>([])
 const newTaskContent = ref('')
 const creating = ref(false)
@@ -175,25 +174,19 @@ const editingStep = ref<number | null>(null)
 const editContent = ref('')
 const startStep = ref(0)
 const stepInputs = ref<Record<string, string>>({})
+const { startSingleTaskPolling } = useTaskPolling()
 
-// 这份步骤定义目前仍是前端本地常量，需与后端流水线定义保持同步。
-const pipelineSteps = [
-  { name: 'outline_writer', label: '大纲编写', deps: [] as string[] },
-  { name: 'script_writer', label: '剧本生成', deps: ['outline_writer'] },
-  { name: 'script_converter', label: '脚本转换', deps: ['script_writer'] },
-]
+const pipelineSteps = PIPELINE_STEPS
 
-// 当前选择起始步骤时，需要填写输入的前序步骤索引列表
 const requiredPrevStepIndices = computed(() => {
   if (startStep.value === 0) return []
   const step = pipelineSteps[startStep.value]
   if (!step) return []
-  return step.deps
+  return (step.deps ?? [])
     .map(name => pipelineSteps.findIndex(s => s.name === name))
     .filter(idx => idx >= 0)
 })
 
-// 需要填写的步骤标签（用于提示文字）
 const requiredStepLabels = computed(() =>
   requiredPrevStepIndices.value
     .map(idx => pipelineSteps[idx]?.label)
@@ -201,48 +194,22 @@ const requiredStepLabels = computed(() =>
     .join('、')
 )
 
-function statusBadgeClass(status: string): string {
-  switch (status) {
-    case 'completed': return 'badge-success'
-    case 'running': return 'badge-warning'
-    case 'paused': return 'badge-info'
-    case 'failed': return 'badge-danger'
-    case 'cancelled': return 'badge-danger'
-    default: return 'badge-muted'
-  }
-}
-
-function statusLabel(status: string): string {
-  switch (status) {
-    case 'completed': return '已完成'
-    case 'running': return '执行中'
-    case 'paused': return '等待下一步'
-    case 'pending': return '待开始'
-    case 'failed': return '失败'
-    case 'cancelled': return '已取消'
-    default: return status
-  }
-}
-
 function getStepStatus(idx: number): string {
   if (!activeTask.value) return 'pending'
-  if (idx < activeTask.value.current_step) return 'done'
-  if (idx === activeTask.value.current_step) {
-    if (activeTask.value.status === 'running') return 'running'
-    if (activeTask.value.status === 'completed') return 'done'
-    return 'ready'
-  }
-  return 'pending'
+  return idx < activeTask.value.current_step
+    ? 'done'
+    : idx === activeTask.value.current_step
+      ? activeTask.value.status === 'running'
+        ? 'running'
+        : activeTask.value.status === 'completed'
+          ? 'done'
+          : 'ready'
+      : 'pending'
 }
 
 function getStepStatusText(idx: number): string {
-  const s = getStepStatus(idx)
-  switch (s) {
-    case 'done': return '已完成'
-    case 'running': return '执行中'
-    case 'ready': return '待执行'
-    default: return '等待中'
-  }
+  if (!activeTask.value) return '等待中'
+  return getTaskStepStatusText(activeTask.value, idx)
 }
 
 function getStepResult(idx: number): string {
@@ -253,12 +220,6 @@ function getStepResult(idx: number): string {
 function getStepTokenUsage(idx: number): { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null {
   if (!activeTask.value) return null
   return activeTask.value.token_usage_by_step?.[String(idx)] ?? null
-}
-
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
 }
 
 function startEdit(idx: number) {
@@ -319,7 +280,7 @@ function setStartStep(idx: number) {
   if (idx > 0) {
     const step = pipelineSteps[idx]
     if (step) {
-      for (const depName of step.deps) {
+      for (const depName of step.deps ?? []) {
         const depIdx = pipelineSteps.findIndex(s => s.name === depName)
         if (depIdx >= 0) {
           newInputs[String(depIdx)] = stepInputs.value[String(depIdx)] || ''
@@ -336,9 +297,10 @@ async function runStep() {
   try {
     const updated = await api.runStep(activeTask.value.id)
     activeTask.value = updated
-    // 如果正在运行，开始轮询
     if (updated.status === 'running') {
-      startPolling(updated.id)
+      startSingleTaskPolling(updated.id, task => {
+        activeTask.value = task
+      })
     }
   } catch (e) {
     alert('执行步骤失败: ' + (e instanceof Error ? e.message : String(e)))
@@ -357,36 +319,6 @@ async function cancelTask() {
   }
 }
 
-// 轮询只在“当前激活任务处于 running”时开启；一旦状态离开 running，
-// 必须立即停止，避免页面持续请求历史任务。
-let pollTimer: ReturnType<typeof setInterval> | null = null
-
-function startPolling(taskId: string) {
-  if (pollTimer !== null) return
-  pollTimer = setInterval(async () => {
-    try {
-      const task = await api.getTask(taskId)
-      activeTask.value = task
-      if (task.status !== 'running') {
-        stopPolling()
-      }
-    } catch {
-      stopPolling()
-    }
-  }, 1500)
-}
-
-function stopPolling() {
-  if (pollTimer !== null) {
-    clearInterval(pollTimer)
-    pollTimer = null
-  }
-}
-
-onUnmounted(() => {
-  stopPolling()
-})
-
 onMounted(async () => {
   try {
     const info = await api.getPipeline()
@@ -401,7 +333,9 @@ onMounted(async () => {
     if (lastTask && (lastTask.status === 'pending' || lastTask.status === 'paused' || lastTask.status === 'running')) {
       activeTask.value = lastTask
       if (lastTask.status === 'running') {
-        startPolling(lastTask.id)
+        startSingleTaskPolling(lastTask.id, task => {
+          activeTask.value = task
+        })
       }
     }
   } catch {

@@ -19,6 +19,38 @@
 - `src/frontend/`
   负责 Vue 3 Web UI。
 
+## 本轮拆分结果
+
+### API 流水线层
+
+原先集中在 `task_manager.py` 的逻辑已拆分为：
+
+- `task_manager.py`: 编排入口与状态协调
+- `task_state.py`: `TaskInfo` 与工作流响应结构
+- `task_storage.py`: 任务落盘与恢复
+- `task_context.py`: 知识上下文和步骤输入构建
+- `task_agents.py`: agent 构建与 agent 信息映射
+
+### Browser 录制层
+
+原先集中在 `demo.py` 与 `screencast.py` 的部分逻辑已拆分为：
+
+- `demo.py`: CLI 入口
+- `demo_cli.py`: 参数解析与模式分发
+- `demo_session.py`: 导航与录制会话实现
+- `webgal_injection.py`: 页面注入常量
+- `audio_capture.py`: 音频抓取与 WAV 落盘
+- `ffmpeg_encoder.py`: FFmpeg 编码辅助
+
+### 前端组织层
+
+前端已补充以下共享层：
+
+- `src/frontend/src/api/*.ts`: 分模块 API
+- `src/frontend/src/composables/useTaskPolling.ts`: 共享轮询逻辑
+- `src/frontend/src/constants/pipeline.ts`: 流水线步骤定义
+- `src/frontend/src/utils/taskDisplay.ts`: 状态/步骤/token 展示辅助
+
 ## 主要运行链路
 
 ### 任务流水线
@@ -48,6 +80,6 @@
 
 ## 当前维护重点
 
-- `TaskManager` 仍是编排中心，后续宜拆但暂不改接口。
-- `browser/demo.py` 仍是录制前准备和 CLI 分发中心。
-- `PipelineView.vue` 仍是单页聚合组件，适合后续再拆。
+- `TaskManager` 仍是统一入口，但内部职责已拆开，后续应继续保持“对外稳定、内部分层”。
+- browser 录制链路已从“单大文件”转为“CLI / 会话 / 注入 / 音频 / 编码”分层。
+- `RecordView.vue`、`PipelineView.vue`、`TasksView.vue` 模板仍偏重，后续若继续加功能，建议再拆组件层。

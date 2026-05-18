@@ -140,67 +140,24 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { api } from '../api'
 import MessageBubble from '../components/MessageBubble.vue'
+import { useTaskPolling } from '../composables/useTaskPolling'
+import { PIPELINE_STEPS } from '../constants/pipeline'
 import type { Task, TokenSummary } from '../types'
+import { agentLabel, formatTokenCount, getStepStatus, getStepStatusText, statusBadgeClass, statusLabel } from '../utils/taskDisplay'
 
 const tasks = ref<Task[]>([])
 const runningTasks = ref(new Set<string>())
 const editingKey = ref<string | null>(null)
 const editContent = ref('')
 const tokenSummary = ref<TokenSummary | null>(null)
+const { startMultiTaskPolling, stopAllMultiPolling } = useTaskPolling()
 
-const pipelineSteps = [
-  { name: 'outline_writer', label: '大纲编写' },
-  { name: 'script_writer', label: '剧本生成' },
-  { name: 'script_converter', label: '脚本转换' },
-]
+const pipelineSteps = PIPELINE_STEPS
 
 const reversedTasks = computed(() => [...tasks.value].reverse())
 
-function statusBadgeClass(status: string): string {
-  switch (status) {
-    case 'completed': return 'badge-success'
-    case 'running': return 'badge-warning'
-    case 'paused': return 'badge-info'
-    case 'failed': return 'badge-danger'
-    case 'cancelled': return 'badge-danger'
-    default: return 'badge-muted'
-  }
-}
-
-function statusLabel(status: string): string {
-  switch (status) {
-    case 'completed': return '已完成'
-    case 'running': return '执行中'
-    case 'paused': return '等待下一步'
-    case 'pending': return '待开始'
-    case 'failed': return '失败'
-    case 'cancelled': return '已取消'
-    default: return status
-  }
-}
-
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString()
-}
-
-function getStepStatus(task: Task, idx: number): string {
-  if (idx < task.current_step) return 'done'
-  if (idx === task.current_step) {
-    if (task.status === 'running') return 'running'
-    if (task.status === 'completed') return 'done'
-    return 'ready'
-  }
-  return 'pending'
-}
-
-function getStepStatusText(task: Task, idx: number): string {
-  const s = getStepStatus(task, idx)
-  switch (s) {
-    case 'done': return '已完成'
-    case 'running': return '执行中'
-    case 'ready': return '待执行'
-    default: return '等待中'
-  }
 }
 
 function getStepResult(task: Task, idx: number): string {
@@ -245,21 +202,6 @@ async function loadTokenSummary() {
   }
 }
 
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
-  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
-  return String(n)
-}
-
-function agentLabel(name: string): string {
-  const labels: Record<string, string> = {
-    outline_writer: '大纲编写',
-    script_writer: '剧本生成',
-    script_converter: '脚本转换',
-  }
-  return labels[name] ?? name
-}
-
 async function runStep(taskId: string) {
   runningTasks.value.add(taskId)
   try {
@@ -267,7 +209,10 @@ async function runStep(taskId: string) {
     const i = tasks.value.findIndex(t => t.id === taskId)
     if (i !== -1) tasks.value[i] = updated
     if (updated.status === 'running') {
-      startPolling(taskId)
+      startMultiTaskPolling(taskId, task => {
+        const index = tasks.value.findIndex(t => t.id === task.id)
+        if (index !== -1) tasks.value[index] = task
+      })
     }
   } catch (e) {
     alert('执行步骤失败: ' + (e instanceof Error ? e.message : String(e)))
@@ -286,40 +231,20 @@ async function cancelTask(taskId: string) {
   }
 }
 
-// 轮询逻辑
-const activePolls = new Map<string, ReturnType<typeof setTimeout>>()
-
-function startPolling(taskId: string) {
-  if (activePolls.has(taskId)) return
-  const timer = setInterval(async () => {
-    try {
-      const task = await api.getTask(taskId)
-      const i = tasks.value.findIndex(t => t.id === taskId)
-      if (i !== -1) tasks.value[i] = task
-      if (task.status !== 'running') {
-        clearInterval(timer)
-        activePolls.delete(taskId)
-      }
-    } catch {
-      clearInterval(timer)
-      activePolls.delete(taskId)
-    }
-  }, 1500)
-  activePolls.set(taskId, timer)
-}
-
 onMounted(async () => {
   await Promise.all([loadTasks(), loadTokenSummary()])
   for (const t of tasks.value) {
     if (t.status === 'running') {
-      startPolling(t.id)
+      startMultiTaskPolling(t.id, task => {
+        const index = tasks.value.findIndex(item => item.id === task.id)
+        if (index !== -1) tasks.value[index] = task
+      })
     }
   }
 })
 
 onUnmounted(() => {
-  activePolls.forEach(timer => clearInterval(timer))
-  activePolls.clear()
+  stopAllMultiPolling()
 })
 </script>
 

@@ -1,23 +1,20 @@
 """工作流执行任务管理器。
 
-这个模块目前仍是编排中心，负责把“任务状态、智能体构建、知识上下文、
-任务落盘”串成一个可运行的流水线。P0 整理先做两件事：
-
-1. 把重复的工作流定义和 prompts.yaml 解析逻辑抽出去
-2. 给关键状态流转补结构性说明，降低后续拆分前的阅读成本
+TaskManager 现在只保留编排职责，状态模型、落盘恢复、知识上下文构建和
+agent 工厂已拆到独立模块中，对外接口保持不变。
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import uuid
-from datetime import datetime
 from pathlib import Path
-from typing import TypedDict
 
-from webgal_agent.agents import OutlineWriterAgent, ScriptConverterAgent, ScriptWriterAgent
-from webgal_agent.api.workflow_definition import AGENT_DESCRIPTIONS, AGENT_PREV_DEPS, PIPELINE_ORDER
+from webgal_agent.api.task_agents import build_agent_info, build_agents
+from webgal_agent.api.task_context import build_all_knowledge_contexts, build_step_input
+from webgal_agent.api.task_state import TaskInfo, WorkflowInfoDict, extract_title
+from webgal_agent.api.task_storage import DEFAULT_TASK_DIR, load_tasks_from_disk, save_task_to_disk
+from webgal_agent.api.workflow_definition import PIPELINE_ORDER
 from webgal_agent.config.provider_manager import ProviderConfigManager
 from webgal_agent.config.prompt_config import (
     extract_knowledge_requirements,
@@ -27,236 +24,6 @@ from webgal_agent.config.prompt_config import (
 from webgal_agent.core.agent import Agent
 from webgal_agent.core.message import Message, MessageType
 from webgal_agent.knowledge import KnowledgeStore
-from webgal_agent.knowledge.models import KnowledgeEntry
-from webgal_agent.tools.base import Tool
-
-# 持久化任务数据的输出目录
-DEFAULT_TASK_DIR = "data/tasks"
-
-
-def _extract_title(outline_content: str) -> str:
-    """从 outline_writer 的输出中提取标题。
-
-    期望格式：第一行为 # 标题 或 【标题】 或纯文本标题行，
-    下一空行之前的内容作为标题。
-    """
-    for line in outline_content.strip().splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        # # 标题 格式
-        if stripped.startswith("#"):
-            return stripped.lstrip("#").strip()
-        # 【标题】 格式
-        if stripped.startswith("【") and stripped.endswith("】"):
-            return stripped[1:-1]
-        # 其他：取第一个非空行作为标题（截断过长的）
-        if len(stripped) > 50:
-            return stripped[:50] + "…"
-        return stripped
-    return ""
-
-
-class AgentInfoDict(TypedDict):
-    """工作流 API 响应中的智能体信息。"""
-
-    name: str
-    description: str
-    state: str
-    provider: str
-    model: str
-
-
-class WorkflowInfoDict(TypedDict):
-    """API 响应中的工作流信息。"""
-
-    name: str
-    type: str
-    description: str
-    agents: list[AgentInfoDict]
-    order: list[str]
-
-
-class TaskInfo:
-    """跟踪单个工作流执行。"""
-
-    def __init__(self, task_id: str, content: str) -> None:
-        self.id = task_id
-        self.workflow_name = "pipeline"
-        self.content = content
-        self.title: str = ""
-        self.status: str = "pending"
-        self.current_step: int = 0  # 下一步要执行的步骤索引 (0-based)
-        self.step_results: dict[int, str] = {}  # step_index → 结果内容（可编辑）
-        self.messages: list[Message] = []
-        self.errors: list[str] = []
-        self.created_at = datetime.utcnow()
-        # Token 统计
-        self.token_usage_by_step: dict[int, dict[str, int]] = {}  # step_index → {prompt, completion, total}
-        self.total_prompt_tokens: int = 0
-        self.total_completion_tokens: int = 0
-        self.total_tokens: int = 0
-
-    def _recalc_token_totals(self) -> None:
-        """从 token_usage_by_step 重新计算汇总值。"""
-        self.total_prompt_tokens = sum(u.get("prompt_tokens", 0) for u in self.token_usage_by_step.values())
-        self.total_completion_tokens = sum(u.get("completion_tokens", 0) for u in self.token_usage_by_step.values())
-        self.total_tokens = sum(u.get("total_tokens", 0) for u in self.token_usage_by_step.values())
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "id": self.id,
-            "status": self.status,
-            "workflow": self.workflow_name,
-            "content": self.content,
-            "title": self.title,
-            "current_step": self.current_step,
-            "step_results": {str(k): v for k, v in self.step_results.items()},
-            "messages": [
-                {
-                    "id": m.id,
-                    "type": m.type.value,
-                    "sender": m.sender,
-                    "receiver": m.receiver,
-                    "content": m.content,
-                    "metadata": m.metadata,
-                    "created_at": m.created_at.isoformat(),
-                }
-                for m in self.messages
-            ],
-            "errors": self.errors,
-            "created_at": self.created_at.isoformat(),
-            "token_usage_by_step": {str(k): v for k, v in self.token_usage_by_step.items()},
-            "total_prompt_tokens": self.total_prompt_tokens,
-            "total_completion_tokens": self.total_completion_tokens,
-            "total_tokens": self.total_tokens,
-        }
-
-
-def _save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) -> Path:
-    """将任务数据持久化到磁盘。
-
-    保存内容：
-      - ``{task_id}/process.json`` — 完整的中间过程（所有消息）
-      - ``{task_id}/result.txt``   — 最后一个智能体的输出（WebGal 脚本）
-
-    返回任务目录路径。
-    """
-    task_path = Path(task_dir) / task.id
-    task_path.mkdir(parents=True, exist_ok=True)
-
-    # --- 保存中间过程为 JSON ---
-    process_data = {
-        "task_id": task.id,
-        "status": task.status,
-        "workflow": task.workflow_name,
-        "user_input": task.content,
-        "title": task.title,
-        "current_step": task.current_step,
-        "step_results": {str(k): v for k, v in task.step_results.items()},
-        "created_at": task.created_at.isoformat(),
-        "errors": task.errors,
-        "token_usage_by_step": {str(k): v for k, v in task.token_usage_by_step.items()},
-        "total_prompt_tokens": task.total_prompt_tokens,
-        "total_completion_tokens": task.total_completion_tokens,
-        "total_tokens": task.total_tokens,
-        "steps": [
-            {
-                "step": i + 1,
-                "agent": m.receiver if m.type == MessageType.TASK else m.sender,
-                "type": m.type.value,
-                "sender": m.sender,
-                "receiver": m.receiver,
-                "content": m.content,
-                "metadata": m.metadata,
-                "created_at": m.created_at.isoformat(),
-            }
-            for i, m in enumerate(task.messages)
-        ],
-    }
-
-    process_file = task_path / "process.json"
-    process_file.write_text(
-        json.dumps(process_data, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-
-    # --- 保存最终结果 ---
-    # write_result 工具已将脚本直接写入 result/ 目录
-    # 这里将最后一个智能体的文本输出保存为 result.txt 作为摘要/备份
-    if task.messages:
-        last_msg = task.messages[-1]
-        result_file = task_path / "result.txt"
-        result_file.write_text(last_msg.content, encoding="utf-8")
-
-    # --- 同时保存每个步骤的独立输出 ---
-    for i, msg in enumerate(task.messages):
-        if msg.type == MessageType.RESULT:
-            step_name = msg.sender
-            step_file = task_path / f"step_{i + 1}_{step_name}.txt"
-            step_file.write_text(msg.content, encoding="utf-8")
-
-    return task_path
-
-
-def _load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, TaskInfo]:
-    """启动时从磁盘加载之前持久化的任务。"""
-    tasks: dict[str, TaskInfo] = {}
-    task_path = Path(task_dir)
-
-    if not task_path.exists():
-        return tasks
-
-    for task_folder in sorted(task_path.iterdir()):
-        process_file = task_folder / "process.json"
-        if not process_file.exists():
-            continue
-
-        try:
-            data = json.loads(process_file.read_text(encoding="utf-8"))
-            task = TaskInfo(task_id=data["task_id"], content=data["user_input"])
-            task.workflow_name = data.get("workflow", "pipeline")
-            task.title = data.get("title", "")
-            task.status = data.get("status", "unknown")
-            task.current_step = data.get("current_step", 0)
-            # 恢复 step_results（键从字符串转回整数）
-            raw_results = data.get("step_results", {})
-            task.step_results = {int(k): v for k, v in raw_results.items()}
-            task.errors = data.get("errors", [])
-            task.created_at = datetime.fromisoformat(data["created_at"])
-
-            # 恢复 Token 统计
-            raw_token_usage = data.get("token_usage_by_step", {})
-            task.token_usage_by_step = {int(k): v for k, v in raw_token_usage.items()}
-            task.total_prompt_tokens = data.get("total_prompt_tokens", 0)
-            task.total_completion_tokens = data.get("total_completion_tokens", 0)
-            task.total_tokens = data.get("total_tokens", 0)
-
-            # 如果 process.json 中没有汇总但 messages 中有 token_usage，从 messages 重建
-            if not task.token_usage_by_step:
-                for i, step in enumerate(data.get("steps", [])):
-                    token_usage = step.get("metadata", {}).get("token_usage", {})
-                    if token_usage and token_usage.get("total_tokens", 0) > 0:
-                        task.token_usage_by_step[i] = token_usage
-                if task.token_usage_by_step:
-                    task._recalc_token_totals()
-
-            # 从步骤重建消息
-            for step in data.get("steps", []):
-                msg = Message(
-                    type=MessageType(step["type"]),
-                    sender=step["sender"],
-                    receiver=step["receiver"],
-                    content=step["content"],
-                    metadata=step.get("metadata", {}),
-                )
-                task.messages.append(msg)
-
-            tasks[task.id] = task
-        except (KeyError, ValueError, json.JSONDecodeError):
-            continue
-
-    return tasks
 
 
 class TaskManager:
@@ -284,7 +51,7 @@ class TaskManager:
         self._knowledge_requirements = extract_knowledge_requirements(prompt_config)
 
         # 加载之前持久化的任务
-        self._tasks: dict[str, TaskInfo] = _load_tasks_from_disk(self._task_dir)
+        self._tasks: dict[str, TaskInfo] = load_tasks_from_disk(self._task_dir)
 
         # 保存后台 asyncio.Task 引用，用于取消任务
         self._running_task: asyncio.Task | None = None
@@ -299,111 +66,15 @@ class TaskManager:
         return ["pipeline"]
 
     def _build_agents(self, task_id: str = "") -> dict[str, Agent]:
-        from webgal_agent.tools.asset_query import AssetQueryTool
-        from webgal_agent.tools.file_ops import ReadFileTool, WriteResultTool
-        from webgal_agent.tools.read_model import ReadModelTool
-
-        # 通用工具（只读，所有智能体都可以使用）
-        result_dir = str(Path(self._task_dir) / task_id / "result") if task_id else None
-        common_tools: list[Tool] = [
-            ReadFileTool(result_dir=result_dir),
-        ]
-
-        # 素材查询工具（script_converter 专用）
-        asset_tool = AssetQueryTool()
-
-        # 模型读取工具（script_converter 专用）
-        read_model_tool = ReadModelTool()
-
-        # 结果写入工具（仅 script_converter 使用）
-        write_result_tool = WriteResultTool(task_id=task_id, task_dir=self._task_dir) if task_id else None
-
-        # 每个智能体可用的工具配置
-        agent_tools: dict[str, list[Tool]] = {
-            "outline_writer": [],
-            "script_writer": [],
-            "script_converter": [asset_tool, read_model_tool] + ([write_result_tool] if write_result_tool else []),
-        }
-
-        agents: dict[str, Agent] = {}
-        for name in PIPELINE_ORDER:
-            # 从供应商管理器构建 AgentConfig（如果可用）
-            if self._provider_manager:
-                config = self._provider_manager.to_agent_config(
-                    name, AGENT_DESCRIPTIONS.get(name, "")
-                )
-            else:
-                from webgal_agent.core.agent import AgentConfig
-                config = AgentConfig(
-                    name=name,
-                    description=AGENT_DESCRIPTIONS.get(name, ""),
-                )
-
-            prompt = self._prompts.get(name, "")
-            # 合并通用工具 + 智能体专属工具
-            tools = common_tools + agent_tools.get(name, [])
-
-            if name == "outline_writer":
-                agents[name] = OutlineWriterAgent(config=config, system_prompt=prompt, tools=tools)
-            elif name == "script_writer":
-                agents[name] = ScriptWriterAgent(config=config, system_prompt=prompt, tools=tools)
-            elif name == "script_converter":
-                agents[name] = ScriptConverterAgent(config=config, system_prompt=prompt, tools=tools)
-
-        return agents
+        return build_agents(self._prompts, self._provider_manager, self._task_dir, task_id=task_id)
 
     def _build_knowledge_context(self, agent_name: str = "") -> str:
-        """将知识库条目格式化为指定智能体的上下文文本。
-
-        如果该智能体在 prompts.yaml 中配置了知识需求，
-        则仅包含匹配的条目；否则返回全部条目。
-
-        对于 script_converter，还会追加可用素材上下文。
-        """
-        if self._knowledge_store is None:
-            return ""
-
-        # 确定该智能体的筛选条件
-        requirements = self._knowledge_requirements.get(agent_name, {}) if agent_name else {}
-        categories = requirements.get("categories", [])
-        tags = requirements.get("tags", [])
-
-        if categories or tags:
-            # 按类别和标签筛选（并集：匹配任一类别或任一标签）
-            entries_by_category: list[KnowledgeEntry] = []
-            entries_by_tags: list[KnowledgeEntry] = []
-            if categories:
-                for cat in categories:
-                    entries_by_category.extend(self._knowledge_store.query(category=cat))
-            if tags:
-                entries_by_tags = self._knowledge_store.query(tags=tags)
-
-            # 合并并去重
-            seen_ids: set[str] = set()
-            entries: list[KnowledgeEntry] = []
-            for entry in entries_by_category + entries_by_tags:
-                if entry.id not in seen_ids:
-                    seen_ids.add(entry.id)
-                    entries.append(entry)
-        else:
-            # 未配置需求 — 返回全部条目
-            entries = self._knowledge_store.list_all()
-
-        if not entries:
-            return ""
-
-        parts: list[str] = []
-        for entry in entries:
-            header = f"### {entry.title}"
-            if entry.category:
-                header += f" [{entry.category}]"
-            parts.append(f"{header}\n{entry.body}")
-
-        return "\n\n".join(parts)
+        return build_all_knowledge_contexts(
+            self._knowledge_store, self._knowledge_requirements
+        ).get(agent_name, "")
 
     def _build_all_knowledge_contexts(self) -> dict[str, str]:
-        """为流水线中的每个智能体构建知识库上下文。"""
-        return {name: self._build_knowledge_context(name) for name in PIPELINE_ORDER}
+        return build_all_knowledge_contexts(self._knowledge_store, self._knowledge_requirements)
 
     async def start_task(
         self,
@@ -443,11 +114,11 @@ class TaskManager:
         # 设置当前步骤和标题
         task.current_step = start_step
         if task.step_results.get(0):
-            task.title = _extract_title(task.step_results[0])
+            task.title = extract_title(task.step_results[0])
         task.status = "pending" if start_step < len(PIPELINE_ORDER) else "completed"
 
         self._tasks[task_id] = task
-        _save_task_to_disk(task, self._task_dir)
+        save_task_to_disk(task, self._task_dir)
         return task
 
     async def run_step(self, task_id: str) -> TaskInfo:
@@ -466,7 +137,7 @@ class TaskManager:
             raise ValueError("所有步骤已执行完毕")
 
         task.status = "running"
-        _save_task_to_disk(task, self._task_dir)
+        save_task_to_disk(task, self._task_dir)
 
         # 后台启动执行，不阻塞当前请求
         self._running_task = asyncio.create_task(self._run_step_background(task))
@@ -495,31 +166,8 @@ class TaskManager:
             self._running_task_id = task.id
             agent = agents[agent_name]
 
-            # 构建当前步骤的完整输入上下文。这里保留“文本拼接”策略，
-            # 不改变现有行为，只把来源拆得更清楚。
             knowledge_contexts = self._build_all_knowledge_contexts()
-            context_parts: list[str] = []
-
-            if task.content:
-                context_parts.append(f"【用户输入】\n{task.content}")
-
-            # 知识库上下文
-            agent_knowledge = knowledge_contexts.get(agent_name, "")
-            if agent_knowledge:
-                context_parts.append(f"【知识库】\n{agent_knowledge}")
-
-            # 前序步骤的输出（使用可编辑的 step_results）
-            prev_deps = AGENT_PREV_DEPS.get(agent_name)
-            for idx in range(step_index):
-                prev_name = PIPELINE_ORDER[idx]
-                # 如果配置了依赖列表，只注入指定的前序步骤
-                if prev_deps is not None and prev_name not in prev_deps:
-                    continue
-                prev_output = task.step_results.get(idx, "")
-                if prev_output:
-                    context_parts.append(f"【{prev_name} 的输出】\n{prev_output}")
-
-            context_content = "\n\n".join(context_parts) if context_parts else task.content
+            context_content = build_step_input(task, agent_name, step_index, knowledge_contexts)
 
             current_msg = Message(
                 type=MessageType.TASK,
@@ -548,11 +196,11 @@ class TaskManager:
                     "completion_tokens": int(token_usage_raw.get("completion_tokens", 0)),
                     "total_tokens": int(token_usage_raw.get("total_tokens", 0)),
                 }
-                task._recalc_token_totals()
+                task.recalc_token_totals()
 
             # outline_writer 完成后提取标题
             if agent_name == "outline_writer" and not task.title:
-                task.title = _extract_title(result.content)
+                task.title = extract_title(result.content)
 
             # 判断是否全部完成
             if task.current_step >= len(PIPELINE_ORDER):
@@ -574,7 +222,7 @@ class TaskManager:
             self._active_agents = {}
             self._running_task_id = None
             self._running_task = None
-            _save_task_to_disk(task, self._task_dir)
+            save_task_to_disk(task, self._task_dir)
 
     def update_step_result(self, task_id: str, step_index: int, content: str) -> TaskInfo:
         """更新某一步的结果内容（用于手动修改中间结果）。"""
@@ -595,7 +243,7 @@ class TaskManager:
                 m.content = content
                 break
 
-        _save_task_to_disk(task, self._task_dir)
+        save_task_to_disk(task, self._task_dir)
         return task
 
     def get_task(self, task_id: str) -> TaskInfo | None:
@@ -626,7 +274,7 @@ class TaskManager:
         if task.status in ("pending", "paused"):
             task.status = "cancelled"
             task.errors.append("任务已被用户终止")
-            _save_task_to_disk(task, self._task_dir)
+            save_task_to_disk(task, self._task_dir)
             return True
 
         return False
@@ -637,46 +285,17 @@ class TaskManager:
     def get_workflow_info(self) -> WorkflowInfoDict:
         """返回流水线工作流信息。"""
         agents = self._build_agents()
-        agent_list: list[AgentInfoDict] = [
-            {
-                "name": a.name,
-                "description": a.description,
-                "state": a.state.value,
-                "provider": a._config.provider,
-                "model": a._config.model,
-            }
-            for a in agents.values()
-        ]
         return {
             "name": "pipeline",
             "type": "TaskManagerPipeline",
             "description": "三阶段流水线：A(大纲) → B(剧本) → C(WebGal脚本)",
-            "agents": agent_list,
+            "agents": build_agent_info(agents),
             "order": PIPELINE_ORDER,
         }
 
-    def get_active_agents_info(self) -> list[AgentInfoDict]:
+    def get_active_agents_info(self) -> list[dict[str, str]]:
         """返回当前正在运行的智能体信息（反映真实状态）。"""
         if self._active_agents:
-            return [
-                {
-                    "name": a.name,
-                    "description": a.description,
-                    "state": a.state.value,
-                    "provider": a._config.provider,
-                    "model": a._config.model,
-                }
-                for a in self._active_agents.values()
-            ]
+            return build_agent_info(self._active_agents)
         # 没有运行中的任务时，返回默认配置的智能体
-        agents = self._build_agents()
-        return [
-            {
-                "name": a.name,
-                "description": a.description,
-                "state": a.state.value,
-                "provider": a._config.provider,
-                "model": a._config.model,
-            }
-            for a in agents.values()
-        ]
+        return build_agent_info(self._build_agents())
