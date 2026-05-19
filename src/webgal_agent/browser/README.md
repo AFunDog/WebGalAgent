@@ -163,6 +163,21 @@ demo.py
 
 启用后会在输出视频旁边生成 `*.log` 日志文件，记录 CLI、录制器和 FFmpeg 相关输出。
 
+启用音画同步调试脉冲：
+
+```powershell
+.\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
+  --url http://localhost:3001/games/MyGO3.0.0/ `
+  --output data/browser/recordings/output.mp4 `
+  --record-audio `
+  --av-sync-debug-interval 2 `
+  --av-sync-debug-flash-ms 120 `
+  --av-sync-debug-tone-ms 120 `
+  --av-sync-debug-frequency 880
+```
+
+该模式会周期性触发一次全屏纯红覆盖层，并同时发出方波脉冲，便于肉眼检查成片中的音画同步。
+
 无固定时长，依赖停止条件：
 
 ```powershell
@@ -186,6 +201,10 @@ demo.py
 | `--page-mode` | `webgal` / `generic` |
 | `--format` | `jpeg` / `png` |
 | `--record-audio` | 开启音频捕获 |
+| `--av-sync-debug-interval` | 每隔多少秒触发一次纯红闪屏 + 方波脉冲，`0` 为关闭 |
+| `--av-sync-debug-flash-ms` | 纯红闪屏持续时长（毫秒） |
+| `--av-sync-debug-tone-ms` | 方波脉冲持续时长（毫秒） |
+| `--av-sync-debug-frequency` | 方波频率（Hz） |
 | `--save-logs` | 将运行日志保存到输出视频旁边 |
 | `--game-config` | 注入游戏配置 JSON |
 | `--json` | 机器可读输出模式 |

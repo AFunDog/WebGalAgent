@@ -48,6 +48,58 @@ def _build_browser_config(
     )
 
 
+async def _start_av_sync_debug(
+    page,
+    *,
+    interval: float,
+    flash_ms: int,
+    tone_ms: int,
+    frequency: float,
+    log,
+) -> None:
+    if interval <= 0:
+        return
+
+    result = await page.evaluate(
+        """
+        async (opts) => {
+            if (!window.__startAvSyncDebug) {
+                return { ok: false, reason: "missing_hook" };
+            }
+            return await window.__startAvSyncDebug(opts);
+        }
+        """,
+        {
+            "intervalMs": int(interval * 1000),
+            "flashMs": flash_ms,
+            "toneMs": tone_ms,
+            "frequency": frequency,
+        },
+    )
+    if result and result.get("ok"):
+        log(
+            "音画同步调试已启用: "
+            f"interval={result['intervalMs']}ms, "
+            f"flash={result['flashMs']}ms, "
+            f"tone={result['toneMs']}ms, "
+            f"freq={result['frequency']}Hz"
+        )
+        return
+    log(f"警告: 音画同步调试启动失败: {result}")
+
+
+async def _stop_av_sync_debug(page) -> None:
+    await page.evaluate(
+        """
+        () => {
+            if (window.__stopAvSyncDebug) {
+                window.__stopAvSyncDebug();
+            }
+        }
+        """
+    )
+
+
 async def demo_navigate(
     url: str,
     browser_type: str = "chromium",
@@ -102,6 +154,10 @@ async def demo_record(
     executable_path: str | None = None,
     page_mode: str = "webgal",
     game_config: dict[str, int] | None = None,
+    av_sync_debug_interval: float = 0.0,
+    av_sync_debug_flash_ms: int = 120,
+    av_sync_debug_tone_ms: int = 120,
+    av_sync_debug_frequency: float = 880.0,
     log_path: str | None = None,
     json_mode: bool = False,
 ) -> dict | None:
@@ -120,9 +176,14 @@ async def demo_record(
         await client.new_context(context_id="default")
         is_webgal_mode = page_mode == "webgal"
 
-        if record_audio:
+        if record_audio or av_sync_debug_interval > 0:
             log_message("注入 WebAudio 全局捕获 (masterGain 方案)...", json_mode=json_mode)
             await client.prepare_webaudio_capture()
+            if av_sync_debug_interval > 0 and not record_audio:
+                log_message(
+                    "警告: 已启用音画同步调试，但未开启 record_audio，输出视频不会包含调试音频。",
+                    json_mode=json_mode,
+                )
 
         if is_webgal_mode:
             await install_webgal_injection(
@@ -186,18 +247,32 @@ async def demo_record(
             log_message("观察完成!", json_mode=json_mode)
             return None
 
+        if av_sync_debug_interval > 0:
+            await _start_av_sync_debug(
+                page,
+                interval=av_sync_debug_interval,
+                flash_ms=av_sync_debug_flash_ms,
+                tone_ms=av_sync_debug_tone_ms,
+                frequency=av_sync_debug_frequency,
+                log=lambda msg: log_message(msg, json_mode=json_mode),
+            )
+
         log_message(f"开始录制 {duration}s @ {fps} FPS (CDP Screencast)...", json_mode=json_mode)
         log_message(f"输出: {output_path}", json_mode=json_mode)
 
         recorder = ScreencastRecorder(
             client, video_cfg, screencast_quality=screencast_quality, record_audio=record_audio
         )
-        result = await recorder.start(
-            duration=duration,
-            format=format,
-            save_frames_dir=save_frames,
-            stop_condition=stop_condition,
-        )
+        try:
+            result = await recorder.start(
+                duration=duration,
+                format=format,
+                save_frames_dir=save_frames,
+                stop_condition=stop_condition,
+            )
+        finally:
+            if av_sync_debug_interval > 0:
+                await _stop_av_sync_debug(page)
 
         log_message("录制完成!", json_mode=json_mode)
         log_message(f"  输出路径: {result.output_path}", json_mode=json_mode)

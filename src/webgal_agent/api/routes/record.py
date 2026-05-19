@@ -70,6 +70,10 @@ class RecordConfigRequest(BaseModel):
     format: str = "jpeg"
     quality: int = 90
     record_audio: bool = False
+    av_sync_debug_interval: float = 0.0
+    av_sync_debug_flash_ms: int = 120
+    av_sync_debug_tone_ms: int = 120
+    av_sync_debug_frequency: float = 880.0
     executable_path: str | None = None
     save_logs: bool = False
     game_config: dict[str, int] | None = None
@@ -131,6 +135,11 @@ def _build_cli_args(req: RecordConfigRequest, output_path: str) -> list[str]:
         args.append("--headless")
     if req.record_audio:
         args.append("--record-audio")
+    if req.av_sync_debug_interval > 0:
+        args.extend(["--av-sync-debug-interval", str(req.av_sync_debug_interval)])
+        args.extend(["--av-sync-debug-flash-ms", str(req.av_sync_debug_flash_ms)])
+        args.extend(["--av-sync-debug-tone-ms", str(req.av_sync_debug_tone_ms)])
+        args.extend(["--av-sync-debug-frequency", str(req.av_sync_debug_frequency)])
     if req.executable_path:
         args.extend(["--executable", req.executable_path])
     if req.save_logs:
@@ -282,6 +291,10 @@ async def get_record_config() -> dict:
         "viewport_width": defaults.get("viewport_width", 1920),
         "viewport_height": defaults.get("viewport_height", 1080),
         "record_audio": defaults.get("record_audio", False),
+        "av_sync_debug_interval": defaults.get("av_sync_debug_interval", 0.0),
+        "av_sync_debug_flash_ms": defaults.get("av_sync_debug_flash_ms", 120),
+        "av_sync_debug_tone_ms": defaults.get("av_sync_debug_tone_ms", 120),
+        "av_sync_debug_frequency": defaults.get("av_sync_debug_frequency", 880.0),
         "executable_path": defaults.get("executable_path", ""),
         "save_logs": defaults.get("save_logs", False),
         "game_config": defaults.get("game_config", {}),

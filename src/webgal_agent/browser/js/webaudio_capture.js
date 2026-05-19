@@ -212,5 +212,117 @@
         };
     };
 
+    function ensureSyncOverlay() {
+        let overlay = document.getElementById("__av-sync-debug-overlay");
+        if (overlay) return overlay;
+
+        overlay = document.createElement("div");
+        overlay.id = "__av-sync-debug-overlay";
+        overlay.style.position = "fixed";
+        overlay.style.inset = "0";
+        overlay.style.background = "#ff0000";
+        overlay.style.opacity = "0";
+        overlay.style.pointerEvents = "none";
+        overlay.style.zIndex = "2147483647";
+        overlay.style.transition = "none";
+        document.documentElement.appendChild(overlay);
+        return overlay;
+    }
+
+    window.__stopAvSyncDebug = () => {
+        const state = window.__avSyncDebugState;
+        if (!state) return false;
+
+        state.stopped = true;
+        if (state.timerId) {
+            clearTimeout(state.timerId);
+        }
+        if (state.overlay) {
+            state.overlay.style.opacity = "0";
+        }
+        window.__avSyncDebugState = null;
+        return true;
+    };
+
+    window.__startAvSyncDebug = async (opts = {}) => {
+        window.__stopAvSyncDebug();
+
+        const intervalMs = Math.max(Number(opts.intervalMs) || 0, 100);
+        if (!intervalMs) {
+            return { ok: false, reason: "interval_disabled" };
+        }
+
+        const flashMs = Math.max(Number(opts.flashMs) || 120, 10);
+        const toneMs = Math.max(Number(opts.toneMs) || 120, 10);
+        const frequency = Math.max(Number(opts.frequency) || 880, 1);
+        const gainValue = Math.min(Math.max(Number(opts.gain) || 0.25, 0.01), 1.0);
+        const initialDelayMs = Math.max(
+            Number(opts.initialDelayMs) || Math.min(intervalMs, 1000),
+            0,
+        );
+
+        const ctx = getOrCreateCaptureCtx();
+        patchContext(ctx);
+        if (ctx.state === "suspended") {
+            await ctx.resume();
+        }
+
+        const overlay = ensureSyncOverlay();
+        const connectFn = _originalConnect || AudioNode.prototype.connect;
+
+        const state = {
+            stopped: false,
+            timerId: null,
+            overlay,
+            intervalMs,
+        };
+        window.__avSyncDebugState = state;
+
+        const firePulse = () => {
+            if (state.stopped) return;
+
+            requestAnimationFrame(() => {
+                if (state.stopped) return;
+
+                overlay.style.opacity = "1";
+                setTimeout(() => {
+                    if (!state.stopped) {
+                        overlay.style.opacity = "0";
+                    }
+                }, flashMs);
+
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.type = "square";
+                osc.frequency.setValueAtTime(frequency, ctx.currentTime);
+
+                gain.gain.setValueAtTime(0, ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(gainValue, ctx.currentTime + 0.002);
+                gain.gain.setValueAtTime(
+                    gainValue,
+                    ctx.currentTime + Math.max(toneMs / 1000 - 0.004, 0.002),
+                );
+                gain.gain.linearRampToValueAtTime(0, ctx.currentTime + toneMs / 1000);
+
+                osc.connect(gain);
+                connectFn.call(gain, ctx.__masterGain__ || ctx.destination);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + toneMs / 1000 + 0.01);
+            });
+
+            state.timerId = setTimeout(firePulse, intervalMs);
+        };
+
+        state.timerId = setTimeout(firePulse, initialDelayMs);
+        return {
+            ok: true,
+            intervalMs,
+            flashMs,
+            toneMs,
+            frequency,
+            initialDelayMs,
+        };
+    };
+
     console.log("[WebAudio Capture] graph + HTMLAudio hook installed");
 })();

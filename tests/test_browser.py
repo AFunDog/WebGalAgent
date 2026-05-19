@@ -59,3 +59,5 @@ def test_browser_scripts_load_from_js_directory() -> None:
     webaudio_capture = load_browser_script("webaudio_capture.js")
 
     assert "window.__startTrackProcessor" in webaudio_capture
+    assert "window.__startAvSyncDebug" in webaudio_capture
+    assert "window.__stopAvSyncDebug" in webaudio_capture

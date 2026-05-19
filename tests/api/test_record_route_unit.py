@@ -27,6 +27,10 @@ def test_build_cli_args_includes_optional_flags() -> None:
         format="png",
         quality=80,
         record_audio=True,
+        av_sync_debug_interval=2.0,
+        av_sync_debug_flash_ms=140,
+        av_sync_debug_tone_ms=160,
+        av_sync_debug_frequency=660.0,
         executable_path="C:/Program Files/Microsoft/Edge/Application/msedge.exe",
         save_logs=True,
         game_config={"optionData.autoSpeed": 50},
@@ -41,6 +45,10 @@ def test_build_cli_args_includes_optional_flags() -> None:
     assert "--stop-on" in args and "window.done === true" in args
     assert "--headless" in args
     assert "--record-audio" in args
+    assert "--av-sync-debug-interval" in args and "2.0" in args
+    assert "--av-sync-debug-flash-ms" in args and "140" in args
+    assert "--av-sync-debug-tone-ms" in args and "160" in args
+    assert "--av-sync-debug-frequency" in args and "660.0" in args
     assert "--executable" in args
     assert "C:/Program Files/Microsoft/Edge/Application/msedge.exe" in args
     assert "--save-logs" in args
@@ -79,6 +87,10 @@ async def test_get_record_config_uses_defaults(monkeypatch: pytest.MonkeyPatch) 
             "viewport_width": 1280,
             "viewport_height": 720,
             "record_audio": True,
+            "av_sync_debug_interval": 1.5,
+            "av_sync_debug_flash_ms": 100,
+            "av_sync_debug_tone_ms": 150,
+            "av_sync_debug_frequency": 523.25,
             "game_config": {"optionData.autoSpeed": 40},
         },
     )
@@ -91,6 +103,10 @@ async def test_get_record_config_uses_defaults(monkeypatch: pytest.MonkeyPatch) 
     assert result["canvas_selector"] == "#root"
     assert result["page_mode"] == "generic"
     assert result["record_audio"] is True
+    assert result["av_sync_debug_interval"] == 1.5
+    assert result["av_sync_debug_flash_ms"] == 100
+    assert result["av_sync_debug_tone_ms"] == 150
+    assert result["av_sync_debug_frequency"] == 523.25
     assert result["executable_path"] == ""
     assert result["save_logs"] is False
     assert result["game_config"] == {"optionData.autoSpeed": 40}

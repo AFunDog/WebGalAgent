@@ -81,6 +81,30 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="录制页面音频输出",
     )
+    parser.add_argument(
+        "--av-sync-debug-interval",
+        type=float,
+        default=0.0,
+        help="启用音画同步调试；每隔多少秒触发一次纯红闪屏 + 方波脉冲，0 为关闭",
+    )
+    parser.add_argument(
+        "--av-sync-debug-flash-ms",
+        type=int,
+        default=120,
+        help="音画同步调试中纯红闪屏持续时长（毫秒）",
+    )
+    parser.add_argument(
+        "--av-sync-debug-tone-ms",
+        type=int,
+        default=120,
+        help="音画同步调试中方波脉冲持续时长（毫秒）",
+    )
+    parser.add_argument(
+        "--av-sync-debug-frequency",
+        type=float,
+        default=880.0,
+        help="音画同步调试中方波频率（Hz）",
+    )
     parser.add_argument("--save-logs", action="store_true", default=False, help="将运行日志保存到输出视频旁边")
     parser.add_argument(
         "--game-config",
@@ -145,6 +169,10 @@ def run_cli(args: argparse.Namespace) -> None:
                         save_frames=args.save_frames,
                         format=args.format,
                         record_audio=args.record_audio,
+                        av_sync_debug_interval=args.av_sync_debug_interval,
+                        av_sync_debug_flash_ms=args.av_sync_debug_flash_ms,
+                        av_sync_debug_tone_ms=args.av_sync_debug_tone_ms,
+                        av_sync_debug_frequency=args.av_sync_debug_frequency,
                         executable_path=args.executable,
                         game_config=game_config,
                         log_path=log_path,

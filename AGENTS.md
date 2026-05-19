@@ -63,6 +63,7 @@ The repository also includes a browser automation and recording subsystem used t
 - `--selector auto` should try `#root` first, then `canvas`
 - `--duration 0` is valid only when `--stop-on` is provided
 - Use `msedge` channel only when the repo already expects Edge behavior; do not silently switch browsers in docs or code
+- AV sync debug pulses are page-level diagnostics: a full-screen red overlay and square-wave tone must be triggered from the same injected page callback, not from separate host-side timers
 
 ## WebGal Config Injection Rule
 

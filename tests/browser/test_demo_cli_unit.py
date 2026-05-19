@@ -17,6 +17,7 @@ def test_build_parser_accepts_save_logs_flag() -> None:
         "--page-mode", "generic",
         "--save-logs",
         "--record-audio",
+        "--av-sync-debug-interval", "2.5",
         "--executable", "C:/Browser/chrome.exe",
     ])
 
@@ -24,6 +25,7 @@ def test_build_parser_accepts_save_logs_flag() -> None:
     assert args.page_mode == "generic"
     assert args.save_logs is True
     assert args.record_audio is True
+    assert args.av_sync_debug_interval == 2.5
     assert args.executable == "C:/Browser/chrome.exe"
 
 
@@ -56,6 +58,10 @@ def test_run_cli_record_mode_passes_record_options(monkeypatch) -> None:
         format="png",
         executable="C:/Browser/chrome.exe",
         record_audio=True,
+        av_sync_debug_interval=2.0,
+        av_sync_debug_flash_ms=140,
+        av_sync_debug_tone_ms=160,
+        av_sync_debug_frequency=660.0,
         save_logs=True,
         game_config='{"optionData.autoSpeed": 50}',
         json_mode=False,
@@ -68,6 +74,10 @@ def test_run_cli_record_mode_passes_record_options(monkeypatch) -> None:
     assert captured["selector"] == "#root"
     assert captured["stop_condition"] == "window.done"
     assert captured["record_audio"] is True
+    assert captured["av_sync_debug_interval"] == 2.0
+    assert captured["av_sync_debug_flash_ms"] == 140
+    assert captured["av_sync_debug_tone_ms"] == 160
+    assert captured["av_sync_debug_frequency"] == 660.0
     assert captured["executable_path"] == "C:/Browser/chrome.exe"
     assert Path(str(captured["log_path"])) == Path("data/browser/recordings/out.mp4.log")
     assert captured["game_config"] == {"optionData.autoSpeed": 50}
