@@ -2,7 +2,6 @@
   <div>
     <h2 class="page-title">软链接管理</h2>
 
-    <!-- 当前链接状态 -->
     <div class="card" style="margin-bottom:16px">
       <div class="card-header">
         <h3>链接状态</h3>
@@ -41,7 +40,6 @@
       </div>
     </div>
 
-    <!-- 创建软链接 -->
     <div class="card" style="margin-bottom:16px">
       <div class="card-header"><h3>创建软链接</h3></div>
       <div class="form-group">
@@ -59,7 +57,7 @@
           v-model="customLinkPath"
           type="text"
           class="form-input"
-          placeholder="留空使用默认: D:\Data\WebGal\scene"
+          placeholder="留空使用默认: D:\Data\WebGal\games\MyGO3.0.0\game\scene"
         />
       </div>
       <div class="form-group">
@@ -80,12 +78,14 @@
       </p>
     </div>
 
-    <!-- 快速操作 -->
     <div class="card">
       <div class="card-header"><h3>快速操作</h3></div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="quick-actions">
         <button class="btn" @click="removeLink" :disabled="!linkStatus?.exists || removing">
           {{ removing ? '删除中...' : '删除软链接' }}
+        </button>
+        <button class="btn" @click="resetLink" :disabled="resetting">
+          {{ resetting ? '重置中...' : '重置为默认场景' }}
         </button>
         <button class="btn" @click="openInExplorer" :disabled="!linkStatus?.exists">
           在资源管理器中打开
@@ -103,6 +103,7 @@ import type { LinkStatus } from '../types'
 const loading = ref(false)
 const creating = ref(false)
 const removing = ref(false)
+const resetting = ref(false)
 const taskList = ref<string[]>([])
 const selectedTaskId = ref('')
 const customLinkPath = ref('')
@@ -114,7 +115,7 @@ const resultSuccess = ref(false)
 async function refreshStatus() {
   loading.value = true
   try {
-    linkStatus.value = await api.getLinkStatus()
+    linkStatus.value = await api.getLinkStatus(customLinkPath.value || undefined)
   } catch (e) {
     console.error('Failed to load link status:', e)
   } finally {
@@ -138,7 +139,7 @@ async function createLink() {
     const res = await api.createLink(
       selectedTaskId.value,
       customLinkPath.value || undefined,
-      forceOverwrite.value
+      forceOverwrite.value,
     )
     resultMessage.value = res.message
     resultSuccess.value = res.success
@@ -159,7 +160,7 @@ async function removeLink() {
   removing.value = true
   resultMessage.value = ''
   try {
-    const res = await api.removeLink()
+    const res = await api.removeLink(customLinkPath.value || undefined)
     resultMessage.value = res.message
     resultSuccess.value = res.success
     if (res.success) {
@@ -170,6 +171,25 @@ async function removeLink() {
     resultSuccess.value = false
   } finally {
     removing.value = false
+  }
+}
+
+async function resetLink() {
+  if (!confirm('确定要将软链接恢复到默认场景目录吗？')) return
+  resetting.value = true
+  resultMessage.value = ''
+  try {
+    const res = await api.resetLink(customLinkPath.value || undefined)
+    resultMessage.value = res.message
+    resultSuccess.value = res.success
+    if (res.success) {
+      await refreshStatus()
+    }
+  } catch (e) {
+    resultMessage.value = '重置失败: ' + (e instanceof Error ? e.message : String(e))
+    resultSuccess.value = false
+  } finally {
+    resetting.value = false
   }
 }
 
@@ -199,6 +219,11 @@ onMounted(async () => {
   min-width: 80px;
   color: var(--text-muted);
   font-size: 13px;
+}
+.quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 code {
   background: var(--bg-input);

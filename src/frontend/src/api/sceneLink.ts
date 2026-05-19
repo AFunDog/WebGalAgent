@@ -17,5 +17,9 @@ export const sceneLinkApi = {
     request<LinkResponse>(`/scene-link/remove${linkPath ? '?link_path=' + encodeURIComponent(linkPath) : ''}`, {
       method: 'POST',
     }),
+  resetLink: (linkPath?: string) =>
+    request<LinkResponse>(`/scene-link/reset${linkPath ? '?link_path=' + encodeURIComponent(linkPath) : ''}`, {
+      method: 'POST',
+    }),
   listTasks: () => request<string[]>('/scene-link/tasks'),
 }

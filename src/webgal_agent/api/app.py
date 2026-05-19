@@ -94,7 +94,14 @@ def create_app(
     # 初始化并注册软链接路由
     scene_link.init_manager(
         result_base_dir=os.getenv("WEBGAL_TASK_DIR", "data/tasks"),
-        link_root=os.getenv("WEBGAL_LINK_ROOT", r"D:\Data\WebGal"),
+        link_path=os.getenv(
+            "WEBGAL_SCENE_LINK_PATH",
+            r"D:\Data\WebGal\games\MyGO3.0.0\game\scene",
+        ),
+        scene_source_path=os.getenv(
+            "WEBGAL_SCENE_SOURCE_PATH",
+            r"D:\Data\WebGal\scene",
+        ),
     )
     app.include_router(scene_link.router)
     app.include_router(record.router)
