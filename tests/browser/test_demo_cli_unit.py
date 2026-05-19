@@ -3,25 +3,26 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from webgal_agent.browser.demo_cli import build_parser, run_cli
 
 
-def test_build_parser_accepts_sync_debug_flags() -> None:
+def test_build_parser_accepts_save_logs_flag() -> None:
     parser = build_parser()
 
     args = parser.parse_args([
         "record",
         "--url", "http://localhost:3001",
-        "--debug-sync",
-        "--sync-debug-path", "data/browser/recordings/custom_sync_debug.json",
+        "--page-mode", "generic",
+        "--save-logs",
         "--record-audio",
         "--executable", "C:/Browser/chrome.exe",
     ])
 
     assert args.mode == "record"
-    assert args.debug_sync is True
-    assert args.sync_debug_path == "data/browser/recordings/custom_sync_debug.json"
+    assert args.page_mode == "generic"
+    assert args.save_logs is True
     assert args.record_audio is True
     assert args.executable == "C:/Browser/chrome.exe"
 
@@ -43,6 +44,7 @@ def test_run_cli_record_mode_passes_record_options(monkeypatch) -> None:
         fps=30.0,
         width=1280,
         height=720,
+        page_mode="generic",
         selector="#root",
         scene_path="index.txt",
         stop_condition="window.done",
@@ -54,8 +56,7 @@ def test_run_cli_record_mode_passes_record_options(monkeypatch) -> None:
         format="png",
         executable="C:/Browser/chrome.exe",
         record_audio=True,
-        debug_sync=True,
-        sync_debug_path="data/browser/recordings/out.sync_debug.json",
+        save_logs=True,
         game_config='{"optionData.autoSpeed": 50}',
         json_mode=False,
     )
@@ -63,10 +64,10 @@ def test_run_cli_record_mode_passes_record_options(monkeypatch) -> None:
     run_cli(args)
 
     assert captured["url"] == "http://localhost:3001"
+    assert captured["page_mode"] == "generic"
     assert captured["selector"] == "#root"
     assert captured["stop_condition"] == "window.done"
     assert captured["record_audio"] is True
     assert captured["executable_path"] == "C:/Browser/chrome.exe"
-    assert captured["debug_sync"] is True
-    assert captured["sync_debug_path"] == "data/browser/recordings/out.sync_debug.json"
+    assert Path(str(captured["log_path"])) == Path("data/browser/recordings/out.mp4.log")
     assert captured["game_config"] == {"optionData.autoSpeed": 50}

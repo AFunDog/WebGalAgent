@@ -31,9 +31,21 @@
           type="text"
           class="form-input"
           placeholder="index.txt"
+          :disabled="config.page_mode !== 'webgal'"
         />
         <small style="color:var(--text-muted);font-size:11px">
-          调用 window.changeScene(path, 1) 时传入的场景文件路径
+          仅 WebGal 模式使用，调用 window.changeScene(path, 1) 时传入的场景文件路径
+        </small>
+      </div>
+
+      <div class="form-group">
+        <label>页面模式</label>
+        <select v-model="config.page_mode" class="form-select">
+          <option value="webgal">WebGal 页面</option>
+          <option value="generic">通用页面</option>
+        </select>
+        <small style="color:var(--text-muted);font-size:11px">
+          WebGal 模式会注入 changeScene、配置覆盖和自动隐藏 UI；通用页面模式会跳过这些专属逻辑
         </small>
       </div>
 
@@ -134,6 +146,19 @@
         </label>
       </div>
 
+      <fieldset class="debug-fieldset">
+        <legend>运行日志（可选）</legend>
+        <div class="form-group" style="margin-bottom:8px">
+          <label>
+            <input v-model="config.save_logs" type="checkbox" />
+            将运行日志保存到输出视频旁边
+          </label>
+        </div>
+        <small class="helper-text">
+          启用后会把 CLI 和录制器输出的运行日志写到输出视频同目录，例如 `record_xxx.mp4.log`
+        </small>
+      </fieldset>
+
       <fieldset style="border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:16px">
         <legend style="color:var(--text-muted);font-size:13px">游戏配置覆盖（IndexedDB 注入，可选）</legend>
         <div class="form-row">
@@ -146,6 +171,7 @@
               min="1"
               max="100"
               placeholder="不修改"
+              :disabled="config.page_mode !== 'webgal'"
             />
           </div>
           <div class="form-group" style="flex:1">
@@ -157,11 +183,12 @@
               min="1"
               max="100"
               placeholder="不修改"
+              :disabled="config.page_mode !== 'webgal'"
             />
           </div>
         </div>
         <small style="color:var(--text-muted);font-size:11px">
-          修改后通过 IndexedDB 注入，调用 loadConfig() 生效。留空则不修改
+          仅 WebGal 模式使用。修改后通过 IndexedDB 注入，调用 loadConfig() 生效。留空则不修改
         </small>
       </fieldset>
 
@@ -278,9 +305,20 @@
             {{ result.has_audio ? '已捕获' : '无音频' }}
           </span>
         </div>
+        <div v-if="result.log_path" class="result-row">
+          <span class="result-label">日志文件:</span>
+          <code>{{ result.log_path }}</code>
+        </div>
       </div>
       <button v-if="result.success && result.output_path" class="btn" @click="openFile(result.output_path)">
         在资源管理器中打开
+      </button>
+      <button
+        v-if="result.success && result.log_path"
+        class="btn"
+        @click="openFile(result.log_path)"
+      >
+        打开日志文件
       </button>
     </div>
 
@@ -324,12 +362,14 @@ const config = reactive<{
   fps: number
   canvas_selector: string
   scene_path: string
+  page_mode: 'webgal' | 'generic'
   stop_condition: string
   viewport_width: number
   viewport_height: number
   browser_type: string
   headless: boolean
   record_audio: boolean
+  save_logs: boolean
   game_autoSpeed: number | null
   game_textSpeed: number | null
   executable_path: string
@@ -342,12 +382,14 @@ const config = reactive<{
   fps: 30,
   canvas_selector: 'div._MainStage_main_9enex_1',
   scene_path: 'index.txt',
+  page_mode: 'webgal',
   stop_condition: '',
   viewport_width: 1920,
   viewport_height: 1080,
   browser_type: 'msedge',
   headless: false,
   record_audio: false,
+  save_logs: false,
   game_autoSpeed: null,
   game_textSpeed: null,
   executable_path: '',
@@ -366,10 +408,12 @@ onMounted(async () => {
     if (serverConfig.duration) config.duration = serverConfig.duration
     if (serverConfig.canvas_selector) config.canvas_selector = serverConfig.canvas_selector
     if (serverConfig.scene_path) config.scene_path = serverConfig.scene_path
+    if (serverConfig.page_mode) config.page_mode = serverConfig.page_mode
     if (serverConfig.stop_condition) config.stop_condition = serverConfig.stop_condition
     if (serverConfig.browser_type) config.browser_type = serverConfig.browser_type
     if (serverConfig.headless !== undefined) config.headless = serverConfig.headless
     if (serverConfig.record_audio !== undefined) config.record_audio = serverConfig.record_audio
+    if (serverConfig.save_logs !== undefined) config.save_logs = serverConfig.save_logs
     if (serverConfig.executable_path) config.executable_path = serverConfig.executable_path
     if (serverConfig.game_config) {
       const gc = serverConfig.game_config as Record<string, number>
@@ -405,10 +449,12 @@ async function startRecord() {
       fps: config.fps,
       canvas_selector: config.canvas_selector,
       scene_path: config.scene_path,
+      page_mode: config.page_mode,
       stop_condition: config.stop_condition || undefined,
       browser_type: config.browser_type,
       headless: config.headless,
       record_audio: config.record_audio,
+      save_logs: config.save_logs,
       executable_path: config.executable_path || undefined,
       game_config: Object.keys(gameCfg).length > 0 ? gameCfg : undefined,
       viewport_width: config.viewport_width,
@@ -457,6 +503,7 @@ async function startRecord() {
           output_fps: status.output_fps || 0,
           file_size_mb: status.file_size_mb || 0,
           has_audio: (status as any).has_audio ?? false,
+          log_path: status.log_path || null,
         }
         break
       }
@@ -471,6 +518,7 @@ async function startRecord() {
       source_fps: 0,
       output_fps: 0,
       file_size_mb: 0,
+      log_path: null,
     }
   } finally {
     recording.value = false
@@ -497,6 +545,22 @@ function openFile(path: string) {
 .form-row {
   display: flex;
   gap: 16px;
+}
+.debug-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+.debug-fieldset legend {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.helper-text {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
 }
 .result-info {
   display: flex;

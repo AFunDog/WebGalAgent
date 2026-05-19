@@ -13,16 +13,8 @@ from webgal_agent.browser import (
 )
 from webgal_agent.browser.models import VideoConfig
 from webgal_agent.browser.paths import default_demo_screenshot_path
-from webgal_agent.browser.webgal_injection import (
-    APPLY_GAME_CONFIG_JS,
-    AUTO_SELECTOR_CANDIDATES,
-    CHANGE_SCENE_JS,
-    NAVIGATE_INJECT_CODE,
-    POST_SCENE_PREPARE_JS,
-    RECORD_INJECT_CODE,
-    WAIT_FOR_WEBGAL_READY_JS,
-    WEBGAL_SCRIPT_URL_PATTERN,
-)
+from webgal_agent.browser.webgal_injection import AUTO_SELECTOR_CANDIDATES
+from webgal_agent.browser.webgal_session import install_webgal_injection, prepare_webgal_recording
 
 
 def log_message(msg: str, *, json_mode: bool = False) -> None:
@@ -33,13 +25,6 @@ def log_message(msg: str, *, json_mode: bool = False) -> None:
         print(msg, file=sys.stderr)
     else:
         print(msg)
-
-
-async def apply_game_config(page, overrides: dict[str, int], *, json_mode: bool = False) -> None:
-    """通过 page.evaluate 执行 IndexedDB 游戏配置修改脚本。"""
-    log_message(f"修改游戏配置: {overrides}", json_mode=json_mode)
-    success = await page.evaluate(APPLY_GAME_CONFIG_JS, overrides)
-    log_message(f"游戏配置{'已更新' if success else '更新失败'}", json_mode=json_mode)
 
 
 def _build_browser_config(
@@ -79,10 +64,10 @@ async def demo_navigate(
     )
 
     async with BrowserClient(config) as client:
-        print(f"拦截脚本注入 ({WEBGAL_SCRIPT_URL_PATTERN})...")
-        await client.add_script_injection(
-            url_pattern=WEBGAL_SCRIPT_URL_PATTERN,
-            inject_code=NAVIGATE_INJECT_CODE,
+        await install_webgal_injection(
+            client,
+            record_mode=False,
+            log=lambda msg: print(msg),
         )
 
         print(f"正在使用 {browser_type} 导航到: {url}")
@@ -115,9 +100,9 @@ async def demo_record(
     format: str = "jpeg",
     record_audio: bool = False,
     executable_path: str | None = None,
+    page_mode: str = "webgal",
     game_config: dict[str, int] | None = None,
-    debug_sync: bool = False,
-    sync_debug_path: str | None = None,
+    log_path: str | None = None,
     json_mode: bool = False,
 ) -> dict | None:
     """CDP Screencast 录制。json_mode=True 时返回结果 dict。"""
@@ -133,16 +118,20 @@ async def demo_record(
 
     async with BrowserClient(config) as client:
         await client.new_context(context_id="default")
+        is_webgal_mode = page_mode == "webgal"
 
         if record_audio:
             log_message("注入 WebAudio 全局捕获 (masterGain 方案)...", json_mode=json_mode)
             await client.prepare_webaudio_capture()
 
-        log_message(f"拦截脚本注入 ({WEBGAL_SCRIPT_URL_PATTERN})...", json_mode=json_mode)
-        await client.add_script_injection(
-            url_pattern=WEBGAL_SCRIPT_URL_PATTERN,
-            inject_code=RECORD_INJECT_CODE,
-        )
+        if is_webgal_mode:
+            await install_webgal_injection(
+                client,
+                record_mode=True,
+                log=lambda msg: log_message(msg, json_mode=json_mode),
+            )
+        else:
+            log_message("通用页面模式：跳过 WebGal 脚本注入与场景控制", json_mode=json_mode)
 
         log_message(f"正在使用 {browser_type} 导航到: {url}", json_mode=json_mode)
         try:
@@ -152,20 +141,15 @@ async def demo_record(
             await asyncio.sleep(5)
 
         page = await client.get_page()
-        log_message("等待 changeScene 函数就绪...", json_mode=json_mode)
-        await page.wait_for_function(WAIT_FOR_WEBGAL_READY_JS, timeout=10000)
-        log_message(
-            f'changeScene 已就绪，调用 changeScene("{scene_path}", 1)...',
-            json_mode=json_mode,
-        )
-        await page.evaluate(CHANGE_SCENE_JS, scene_path)
-        log_message("changeScene 调用完成", json_mode=json_mode)
-
-        if game_config:
-            log_message("场景切换后注入游戏配置...", json_mode=json_mode)
-            await apply_game_config(page, game_config, json_mode=json_mode)
-
-        await page.evaluate(POST_SCENE_PREPARE_JS)
+        if is_webgal_mode:
+            await prepare_webgal_recording(
+                page,
+                scene_path=scene_path,
+                game_config=game_config,
+                log=lambda msg: log_message(msg, json_mode=json_mode),
+            )
+        elif game_config:
+            log_message("通用页面模式下忽略 game_config 覆盖", json_mode=json_mode)
 
         if selector == "auto":
             for candidate in AUTO_SELECTOR_CANDIDATES:
@@ -213,8 +197,6 @@ async def demo_record(
             format=format,
             save_frames_dir=save_frames,
             stop_condition=stop_condition,
-            debug_sync=debug_sync,
-            sync_debug_path=sync_debug_path,
         )
 
         log_message("录制完成!", json_mode=json_mode)
@@ -238,6 +220,6 @@ async def demo_record(
                 "output_fps": result.output_fps,
                 "file_size_mb": result.file_size_mb,
                 "has_audio": result.has_audio,
-                "sync_debug_path": str(result.sync_debug_path) if result.sync_debug_path else None,
+                "log_path": log_path,
             }
         return None

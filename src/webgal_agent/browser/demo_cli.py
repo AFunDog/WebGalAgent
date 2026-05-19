@@ -4,11 +4,34 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import io
 import json
 import sys
+from pathlib import Path
 
 from webgal_agent.browser.demo_session import demo_navigate, demo_record
-from webgal_agent.browser.paths import default_demo_output_path
+from webgal_agent.browser.paths import default_demo_output_path, default_recording_log_path
+
+
+class _TeeStream(io.TextIOBase):
+    """同时写入终端和日志文件的简单文本流。"""
+
+    def __init__(self, primary, log_file) -> None:
+        self._primary = primary
+        self._log_file = log_file
+
+    def write(self, s: str) -> int:
+        self._primary.write(s)
+        self._log_file.write(s)
+        return len(s)
+
+    def flush(self) -> None:
+        self._primary.flush()
+        self._log_file.flush()
+
+    @property
+    def encoding(self):  # type: ignore[override]
+        return getattr(self._primary, "encoding", "utf-8")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,6 +49,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="等待的目标元素 CSS 选择器；auto 会优先尝试 #root，再回退到 canvas",
     )
     parser.add_argument("--scene", default="index.txt", dest="scene_path", help="场景路径")
+    parser.add_argument(
+        "--page-mode",
+        default="webgal",
+        choices=["webgal", "generic"],
+        help="页面模式：webgal 会执行场景切换和配置注入；generic 跳过这些专属逻辑",
+    )
     parser.add_argument("--stop-on", default=None, dest="stop_condition", help="停止条件 JS 表达式")
     parser.add_argument(
         "--browser",
@@ -52,17 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="录制页面音频输出",
     )
-    parser.add_argument(
-        "--debug-sync",
-        action="store_true",
-        default=False,
-        help="启用音视频同步调试：注入闪烁+beep marker，并输出 sync_debug.json",
-    )
-    parser.add_argument(
-        "--sync-debug-path",
-        default=None,
-        help="同步调试 JSON 输出路径，默认写到输出视频旁边",
-    )
+    parser.add_argument("--save-logs", action="store_true", default=False, help="将运行日志保存到输出视频旁边")
     parser.add_argument(
         "--game-config",
         default=None,
@@ -95,9 +114,16 @@ def run_cli(args: argparse.Namespace) -> None:
                 )
             )
         case "record":
-            saved_stdout = None
+            orig_stdout = sys.stdout
+            orig_stderr = sys.stderr
+            log_file = None
+            log_path = str(default_recording_log_path(args.output)) if args.save_logs else None
+            if log_path:
+                Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+                log_file = open(log_path, "w", encoding="utf-8")
+                sys.stdout = _TeeStream(orig_stdout, log_file)
+                sys.stderr = _TeeStream(orig_stderr, log_file)
             if args.json_mode:
-                saved_stdout = sys.stdout
                 sys.stdout = sys.stderr
             try:
                 result = asyncio.run(
@@ -110,6 +136,7 @@ def run_cli(args: argparse.Namespace) -> None:
                         height=args.height,
                         selector=args.selector,
                         scene_path=args.scene_path,
+                        page_mode=args.page_mode,
                         stop_condition=args.stop_condition,
                         browser_type=args.browser,
                         headless=args.headless,
@@ -120,14 +147,17 @@ def run_cli(args: argparse.Namespace) -> None:
                         record_audio=args.record_audio,
                         executable_path=args.executable,
                         game_config=game_config,
-                        debug_sync=args.debug_sync,
-                        sync_debug_path=args.sync_debug_path,
+                        log_path=log_path,
                         json_mode=args.json_mode,
                     )
                 )
             finally:
-                if saved_stdout is not None:
-                    sys.stdout = saved_stdout
+                sys.stdout = orig_stdout
+                sys.stderr = orig_stderr
+                if log_file is not None:
+                    log_file.close()
+            if result is not None and log_path:
+                result["log_path"] = log_path
             if args.json_mode and result:
                 print(json.dumps(result, ensure_ascii=False))
                 if not result["success"]:

@@ -14,6 +14,14 @@
 6. 调用 `toggleAuto()` 和 `hideInfo()` 完成录制前准备。
 7. `ScreencastRecorder` 启动 `Page.startScreencast`，把帧落到 `data/browser/temp/`。
 8. 录制结束后离线调用 FFmpeg 生成 `.mp4` 或 `.webm`。
+9. 如果启用了 `save_logs`，CLI 会把运行日志写到输出视频旁边的 `*.log` 文件。
+
+当 `page_mode=generic` 时：
+
+- 跳过 WebGal 构建产物拦截注入
+- 跳过 `changeScene`
+- 跳过 IndexedDB 游戏配置覆盖
+- 跳过 `toggleAuto()` / `hideInfo()` 等页面专属准备
 
 ## 关键约束
 

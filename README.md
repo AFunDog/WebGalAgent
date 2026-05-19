@@ -128,6 +128,15 @@ npm run dev --prefix src/frontend
   --format jpeg
 ```
 
+保存运行日志：
+
+```powershell
+.\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
+  --url http://localhost:3001/games/MyGO3.0.0/ `
+  --output data/browser/recordings/output.mp4 `
+  --save-logs
+```
+
 常用参数：
 
 | 参数 | 说明 |
@@ -137,7 +146,9 @@ npm run dev --prefix src/frontend
 | `--duration` | 最大录制时长；为 `0` 时必须配合 `--stop-on` |
 | `--stop-on` | 轮询求值的 JS 停止条件 |
 | `--selector` | `auto` / 指定 CSS 选择器 |
+| `--page-mode` | `webgal` / `generic` |
 | `--record-audio` | 捕获页面音频 |
+| `--save-logs` | 将运行日志保存到输出视频旁边 |
 | `--game-config` | 通过 IndexedDB 注入 WebGal 配置 |
 
 ### WebGal 配置注入注意事项

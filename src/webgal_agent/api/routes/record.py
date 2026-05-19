@@ -61,6 +61,7 @@ class RecordConfigRequest(BaseModel):
     fps: float = 30.0
     canvas_selector: str = "auto"
     scene_path: str = "index.txt"
+    page_mode: str = "webgal"
     stop_condition: str | None = None
     browser_type: str = "msedge"
     headless: bool = False
@@ -70,8 +71,7 @@ class RecordConfigRequest(BaseModel):
     quality: int = 90
     record_audio: bool = False
     executable_path: str | None = None
-    debug_sync: bool = False
-    sync_debug_path: str | None = None
+    save_logs: bool = False
     game_config: dict[str, int] | None = None
 
 
@@ -85,6 +85,7 @@ class RecordResultResponse(BaseModel):
     output_fps: float = 0.0
     file_size_mb: float = 0.0
     has_audio: bool = False
+    log_path: str | None = None
 
 
 _recording_state: dict[str, Any] = {
@@ -114,6 +115,7 @@ def _build_cli_args(req: RecordConfigRequest, output_path: str) -> list[str]:
         "--height", str(req.viewport_height),
         "--selector", req.canvas_selector,
         "--scene", req.scene_path,
+        "--page-mode", req.page_mode,
     ]
     if req.duration > 0:
         args.extend(["--duration", str(req.duration)])
@@ -131,10 +133,8 @@ def _build_cli_args(req: RecordConfigRequest, output_path: str) -> list[str]:
         args.append("--record-audio")
     if req.executable_path:
         args.extend(["--executable", req.executable_path])
-    if req.debug_sync:
-        args.append("--debug-sync")
-    if req.sync_debug_path:
-        args.extend(["--sync-debug-path", req.sync_debug_path])
+    if req.save_logs:
+        args.append("--save-logs")
     if req.game_config:
         args.extend(["--game-config", json.dumps(req.game_config)])
     return args
@@ -275,6 +275,7 @@ async def get_record_config() -> dict:
         "duration": defaults.get("duration", 5.0),
         "canvas_selector": defaults.get("canvas_selector", "auto"),
         "scene_path": defaults.get("scene_path", "index.txt"),
+        "page_mode": defaults.get("page_mode", "webgal"),
         "stop_condition": defaults.get("stop_condition", ""),
         "browser_type": defaults.get("browser_type", "msedge"),
         "headless": defaults.get("headless", False),
@@ -282,7 +283,6 @@ async def get_record_config() -> dict:
         "viewport_height": defaults.get("viewport_height", 1080),
         "record_audio": defaults.get("record_audio", False),
         "executable_path": defaults.get("executable_path", ""),
-        "debug_sync": defaults.get("debug_sync", False),
-        "sync_debug_path": defaults.get("sync_debug_path", ""),
+        "save_logs": defaults.get("save_logs", False),
         "game_config": defaults.get("game_config", {}),
     }

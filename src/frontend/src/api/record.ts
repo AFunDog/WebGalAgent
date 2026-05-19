@@ -22,6 +22,7 @@ export const recordApi = {
       output_fps?: number
       file_size_mb?: number
       has_audio?: boolean
+      log_path?: string | null
     }>('/record/status'),
   getRecordConfig: () => request<RecordConfig>('/record/config'),
 }

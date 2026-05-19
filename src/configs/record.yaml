@@ -18,6 +18,9 @@ duration: 0
 # changeScene 默认场景路径
 scene_path: "index.txt"
 
+# 页面模式：webgal / generic
+page_mode: webgal
+
 # 默认目标选择器
 canvas_selector: "div._MainStage_main_9enex_1"
 
@@ -29,6 +32,9 @@ stop_condition: "window.__webgal.sceneManager.sceneData.currentScene.sceneUrl ==
 
 # 是否录制 WebAudio 音频（Hook AudioNode.prototype.connect）
 record_audio: true
+
+# 是否将运行日志保存到输出视频旁边
+save_logs: false
 
 # 是否默认使用无头模式
 headless: false

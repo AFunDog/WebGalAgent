@@ -46,7 +46,6 @@ browser/
 复杂的页面注入脚本已拆到独立 `.js` 文件中，当前包括：
 
 - `js/webaudio_capture.js`
-- `js/sync_marker.js`
 
 Python 侧通过 `script_loader.py` 统一加载，避免把大段 JS 内嵌在业务模块里。
 
@@ -142,21 +141,27 @@ demo.py
   --format jpeg --record-audio
 ```
 
-同步调试模式：
+录制普通测试页面（跳过 WebGal 注入和 `changeScene`）：
+
+```powershell
+.\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
+  --url https://example.com `
+  --page-mode generic `
+  --selector auto `
+  --output data/browser/recordings/output.mp4
+```
+
+保存运行日志：
 
 ```powershell
 .\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
   --url http://localhost:3001/games/MyGO3.0.0/ `
   --output data/browser/recordings/output.mp4 `
   --record-audio `
-  --debug-sync
+  --save-logs
 ```
 
-启用后会额外执行：
-
-- 在录制开始后注入闪烁 + beep marker
-- 打印音频启动、第一帧到达、停止请求等关键时间点
-- 在输出视频旁边生成 `*.sync_debug.json`
+启用后会在输出视频旁边生成 `*.log` 日志文件，记录 CLI、录制器和 FFmpeg 相关输出。
 
 无固定时长，依赖停止条件：
 
@@ -178,10 +183,10 @@ demo.py
 | `--fps` | 输出帧率 |
 | `--width` / `--height` | 视口大小 |
 | `--selector` | `auto` 或指定 CSS |
+| `--page-mode` | `webgal` / `generic` |
 | `--format` | `jpeg` / `png` |
 | `--record-audio` | 开启音频捕获 |
-| `--debug-sync` | 开启音视频同步调试 |
-| `--sync-debug-path` | 指定同步调试 JSON 输出路径 |
+| `--save-logs` | 将运行日志保存到输出视频旁边 |
 | `--game-config` | 注入游戏配置 JSON |
 | `--json` | 机器可读输出模式 |
 
@@ -203,3 +208,4 @@ asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 - 当前帧缓存策略是“写临时目录后离线编码”
 - 当前 API 录制模式是“子进程调用 demo CLI”
 - 当前 WebGal 配置注入依赖 `saveConfig()` 后短延迟
+- `page-mode=generic` 时不得执行任何 WebGal 专属准备逻辑

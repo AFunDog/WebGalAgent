@@ -18,6 +18,7 @@ def test_build_cli_args_includes_optional_flags() -> None:
         fps=60,
         canvas_selector="#root",
         scene_path="start.txt",
+        page_mode="generic",
         stop_condition="window.done === true",
         browser_type="msedge",
         headless=True,
@@ -27,8 +28,7 @@ def test_build_cli_args_includes_optional_flags() -> None:
         quality=80,
         record_audio=True,
         executable_path="C:/Program Files/Microsoft/Edge/Application/msedge.exe",
-        debug_sync=True,
-        sync_debug_path="data/browser/recordings/custom_sync_debug.json",
+        save_logs=True,
         game_config={"optionData.autoSpeed": 50},
     )
 
@@ -36,14 +36,14 @@ def test_build_cli_args_includes_optional_flags() -> None:
 
     assert args[:4] == [args[0], "-m", "webgal_agent.browser.demo", "record"]
     assert "--url" in args and "http://localhost:3001" in args
+    assert "--page-mode" in args and "generic" in args
     assert "--duration" in args and "3.5" in args
     assert "--stop-on" in args and "window.done === true" in args
     assert "--headless" in args
     assert "--record-audio" in args
     assert "--executable" in args
     assert "C:/Program Files/Microsoft/Edge/Application/msedge.exe" in args
-    assert "--debug-sync" in args
-    assert "--sync-debug-path" in args and "data/browser/recordings/custom_sync_debug.json" in args
+    assert "--save-logs" in args
     assert "--game-config" in args
     assert "--json" in args
 
@@ -57,8 +57,7 @@ def test_build_cli_args_omits_zero_duration_and_empty_optional_fields() -> None:
     assert "--headless" not in args
     assert "--record-audio" not in args
     assert "--game-config" not in args
-    assert "--debug-sync" not in args
-    assert "--sync-debug-path" not in args
+    assert "--save-logs" not in args
 
 
 @pytest.mark.asyncio
@@ -73,6 +72,7 @@ async def test_get_record_config_uses_defaults(monkeypatch: pytest.MonkeyPatch) 
             "duration": 6,
             "canvas_selector": "#root",
             "scene_path": "opening.txt",
+            "page_mode": "generic",
             "stop_condition": "window.done",
             "browser_type": "chromium",
             "headless": True,
@@ -89,8 +89,8 @@ async def test_get_record_config_uses_defaults(monkeypatch: pytest.MonkeyPatch) 
     assert result["format"] == "png"
     assert result["quality"] == 75
     assert result["canvas_selector"] == "#root"
+    assert result["page_mode"] == "generic"
     assert result["record_audio"] is True
     assert result["executable_path"] == ""
-    assert result["debug_sync"] is False
-    assert result["sync_debug_path"] == ""
+    assert result["save_logs"] is False
     assert result["game_config"] == {"optionData.autoSpeed": 40}

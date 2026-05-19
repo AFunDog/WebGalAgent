@@ -130,14 +130,14 @@ export interface RecordConfig {
   fps?: number
   canvas_selector?: string
   scene_path?: string
+  page_mode?: 'webgal' | 'generic'
   stop_condition?: string
   browser_type?: string
   headless?: boolean
   format?: 'jpeg' | 'png'
   quality?: number
   executable_path?: string
-  debug_sync?: boolean
-  sync_debug_path?: string
+  save_logs?: boolean
   viewport_width?: number
   viewport_height?: number
   record_audio?: boolean
@@ -154,5 +154,5 @@ export interface RecordResult {
   output_fps: number
   file_size_mb: number
   has_audio?: boolean
-  sync_debug_path?: string | null
+  log_path?: string | null
 }

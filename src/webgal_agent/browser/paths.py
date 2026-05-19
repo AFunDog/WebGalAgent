@@ -32,3 +32,9 @@ def default_demo_screenshot_path(filename: str = "demo.png") -> Path:
     """构造 demo 导航模式截图路径。"""
     ensure_browser_dirs()
     return BROWSER_TEMP_DIR / filename
+
+
+def default_recording_log_path(output_path: str | Path) -> Path:
+    """为录制输出构造默认日志路径。"""
+    path = Path(output_path)
+    return Path(f"{path}.log")
