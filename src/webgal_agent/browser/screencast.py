@@ -110,6 +110,7 @@ class ScreencastRecorder:
         frames_dir.mkdir(parents=True, exist_ok=True)
         frame_index = 0
         start_time_ns = time.monotonic_ns()
+        frame_pts: list[float] = []
         frame_queue: asyncio.Queue[tuple[int, bytes] | None] = asyncio.Queue(maxsize=128)
         frame_writer_error: RuntimeError | None = None
         accept_frames = True
@@ -149,6 +150,7 @@ class ScreencastRecorder:
                 return
             try:
                 data = base64.b64decode(params["data"])
+                frame_pts.append(_monotonic_seconds_from_ns(time.monotonic_ns() - start_time_ns))
                 frame_queue.put_nowait((frame_index, data))
                 frame_index += 1
             except asyncio.QueueFull:
@@ -289,7 +291,7 @@ class ScreencastRecorder:
 
         output_fps = int(self._video_config.fps)
         print(f"[ScreencastRecorder] 源帧率: {source_fps:.2f} FPS → 输出帧率: {output_fps} FPS")
-        print("[ScreencastRecorder] 开始 FFmpeg 编码 (tmix 时间混合 + fps 输出)...")
+        print("[ScreencastRecorder] 开始 FFmpeg 编码 (按秒分段校正时间轴)...")
         encode_start_ns = time.monotonic_ns()
 
         try:
@@ -301,6 +303,8 @@ class ScreencastRecorder:
                 source_fps,
                 output_fps,
                 audio_path,
+                frame_pts,
+                actual_duration,
             )
         except Exception as e:
             print(f"[ScreencastRecorder] FFmpeg 编码失败: {e}")
