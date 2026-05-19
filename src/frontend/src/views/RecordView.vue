@@ -147,7 +147,62 @@
       </div>
 
       <fieldset class="debug-fieldset">
-        <legend>运行日志（可选）</legend>
+        <legend>调试模式</legend>
+        <div class="form-group" style="margin-bottom:12px">
+          <label>
+            <input
+              :checked="avSyncDebugEnabled"
+              type="checkbox"
+              @change="toggleAvSyncDebug(($event.target as HTMLInputElement).checked)"
+            />
+            启用音画同步调试脉冲
+          </label>
+        </div>
+        <div v-if="avSyncDebugEnabled" class="form-row">
+          <div class="form-group" style="flex:1">
+            <label>触发间隔（秒）</label>
+            <input
+              v-model.number="config.av_sync_debug_interval"
+              type="number"
+              class="form-input"
+              min="0.1"
+              step="0.1"
+            />
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>闪屏时长（毫秒）</label>
+            <input
+              v-model.number="config.av_sync_debug_flash_ms"
+              type="number"
+              class="form-input"
+              min="1"
+            />
+          </div>
+        </div>
+        <div v-if="avSyncDebugEnabled" class="form-row">
+          <div class="form-group" style="flex:1">
+            <label>音频脉冲时长（毫秒）</label>
+            <input
+              v-model.number="config.av_sync_debug_tone_ms"
+              type="number"
+              class="form-input"
+              min="1"
+            />
+          </div>
+          <div class="form-group" style="flex:1">
+            <label>音频脉冲频率（Hz）</label>
+            <input
+              v-model.number="config.av_sync_debug_frequency"
+              type="number"
+              class="form-input"
+              min="1"
+              step="1"
+            />
+          </div>
+        </div>
+        <small v-if="avSyncDebugEnabled" class="helper-text" style="margin-bottom:12px">
+          录制期间会周期性触发一次全屏红色闪屏和方波脉冲，便于检查成片中的音画同步。建议同时开启“录制音频”。
+        </small>
         <div class="form-group" style="margin-bottom:8px">
           <label>
             <input v-model="config.save_logs" type="checkbox" />
@@ -339,7 +394,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { api } from '../api'
 import type { RecordConfig, RecordResult } from '../types'
 
@@ -369,6 +424,10 @@ const config = reactive<{
   browser_type: string
   headless: boolean
   record_audio: boolean
+  av_sync_debug_interval: number
+  av_sync_debug_flash_ms: number
+  av_sync_debug_tone_ms: number
+  av_sync_debug_frequency: number
   save_logs: boolean
   game_autoSpeed: number | null
   game_textSpeed: number | null
@@ -389,6 +448,10 @@ const config = reactive<{
   browser_type: 'msedge',
   headless: false,
   record_audio: false,
+  av_sync_debug_interval: 2,
+  av_sync_debug_flash_ms: 120,
+  av_sync_debug_tone_ms: 120,
+  av_sync_debug_frequency: 880,
   save_logs: false,
   game_autoSpeed: null,
   game_textSpeed: null,
@@ -396,6 +459,16 @@ const config = reactive<{
   format: 'jpeg',
   quality: 90,
 })
+
+const avSyncDebugEnabled = computed(() => config.av_sync_debug_interval > 0)
+
+function toggleAvSyncDebug(enabled: boolean) {
+  if (enabled) {
+    if (config.av_sync_debug_interval <= 0) config.av_sync_debug_interval = 2
+    return
+  }
+  config.av_sync_debug_interval = 0
+}
 
 // 页面加载时从后端获取配置默认值，保证前端表单与 CLI/API 的默认配置一致。
 onMounted(async () => {
@@ -413,6 +486,18 @@ onMounted(async () => {
     if (serverConfig.browser_type) config.browser_type = serverConfig.browser_type
     if (serverConfig.headless !== undefined) config.headless = serverConfig.headless
     if (serverConfig.record_audio !== undefined) config.record_audio = serverConfig.record_audio
+    if (serverConfig.av_sync_debug_interval !== undefined) {
+      config.av_sync_debug_interval = serverConfig.av_sync_debug_interval
+    }
+    if (serverConfig.av_sync_debug_flash_ms !== undefined) {
+      config.av_sync_debug_flash_ms = serverConfig.av_sync_debug_flash_ms
+    }
+    if (serverConfig.av_sync_debug_tone_ms !== undefined) {
+      config.av_sync_debug_tone_ms = serverConfig.av_sync_debug_tone_ms
+    }
+    if (serverConfig.av_sync_debug_frequency !== undefined) {
+      config.av_sync_debug_frequency = serverConfig.av_sync_debug_frequency
+    }
     if (serverConfig.save_logs !== undefined) config.save_logs = serverConfig.save_logs
     if (serverConfig.executable_path) config.executable_path = serverConfig.executable_path
     if (serverConfig.game_config) {
@@ -454,6 +539,10 @@ async function startRecord() {
       browser_type: config.browser_type,
       headless: config.headless,
       record_audio: config.record_audio,
+      av_sync_debug_interval: avSyncDebugEnabled.value ? config.av_sync_debug_interval : 0,
+      av_sync_debug_flash_ms: config.av_sync_debug_flash_ms,
+      av_sync_debug_tone_ms: config.av_sync_debug_tone_ms,
+      av_sync_debug_frequency: config.av_sync_debug_frequency,
       save_logs: config.save_logs,
       executable_path: config.executable_path || undefined,
       game_config: Object.keys(gameCfg).length > 0 ? gameCfg : undefined,

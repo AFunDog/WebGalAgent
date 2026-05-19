@@ -141,6 +141,10 @@ export interface RecordConfig {
   viewport_width?: number
   viewport_height?: number
   record_audio?: boolean
+  av_sync_debug_interval?: number
+  av_sync_debug_flash_ms?: number
+  av_sync_debug_tone_ms?: number
+  av_sync_debug_frequency?: number
   game_config?: Record<string, number>
 }
 
