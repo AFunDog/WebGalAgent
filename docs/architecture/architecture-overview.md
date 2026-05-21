@@ -1,79 +1,75 @@
 # WebGalAgent 架构概览
 
-最后更新: 2026-05-18
+最后更新: 2026-05-21
 
-本文档描述当前代码的真实分层与主要数据流，作为后续重构和协作的公共参考。
+本文档只保留顶层模块边界和两条主运行链路。更细的任务编排和录制细节分别放在独立文档中。
 
-## 顶层分层
+## 顶层结构
 
-- `src/webgal_agent/core/`
-  负责消息模型、智能体基类、记忆抽象。
-- `src/webgal_agent/agents/`
-  负责三个具体智能体封装：`outline_writer`、`script_writer`、`script_converter`。
-- `src/webgal_agent/api/`
-  负责 FastAPI 应用、任务管理、只读/写路由。
-- `src/webgal_agent/browser/`
-  负责浏览器自动化、页面注入、录制 CLI、Screencast 录制器。
-- `src/webgal_agent/knowledge/`
-  负责 Markdown + Frontmatter 知识库加载与查询。
-- `src/frontend/`
-  负责 Vue 3 Web UI。
+- `src/webgal_agent/core/`: 消息模型、Agent 基类、记忆抽象
+- `src/webgal_agent/agents/`: `outline_writer`、`script_writer`、`script_converter`
+- `src/webgal_agent/api/`: FastAPI 应用、任务编排、各类路由
+- `src/webgal_agent/browser/`: 浏览器自动化、页面注入、录制 CLI、Screencast 录制
+- `src/webgal_agent/knowledge/`: Markdown + Frontmatter 知识库
+- `src/webgal_agent/scene_link/`: WebGal 场景软链接管理
+- `src/frontend/`: Vue 3 前端工作台
 
-## 关键模块
+## 两条主链路
 
-### API 流水线层
+### 1. 文本流水线
 
-- `task_manager.py`: 编排入口与状态协调
-- `task_state.py`: `TaskInfo` 与工作流响应结构
-- `task_storage.py`: 任务落盘与恢复
-- `task_context.py`: 知识上下文和步骤输入构建
-- `task_agents.py`: agent 构建与 agent 信息映射
+```text
+前端 /tasks
+  -> /api/tasks
+  -> TaskManager
+  -> outline_writer
+  -> script_writer
+  -> script_converter
+  -> data/tasks/<task_id>/*
+```
 
-### Browser 录制层
+特点：
 
-- `demo.py`: CLI 入口
-- `demo_cli.py`: 参数解析与模式分发
-- `demo_session.py`: 导航与录制会话实现
-- `webgal_injection.py`: 页面注入常量
-- `audio_capture.py`: 音频抓取与 WAV 落盘
-- `ffmpeg_encoder.py`: FFmpeg 编码辅助
+- 当前固定三步执行顺序
+- 单步执行与结果编辑都由 `TaskManager` 协调
+- 步骤输出会持久化到 `data/tasks/<task_id>/`
 
-### 前端组织层
+细节见 [task-pipeline.md](./task-pipeline.md)。
 
-- `src/frontend/src/api/*.ts`: 分模块 API
-- `src/frontend/src/composables/useTaskPolling.ts`: 共享轮询逻辑
-- `src/frontend/src/constants/pipeline.ts`: 流水线步骤定义
-- `src/frontend/src/utils/taskDisplay.ts`: 状态/步骤/token 展示辅助
+### 2. 浏览器录制
 
-## 主要运行链路
+```text
+前端 /record
+  -> /api/record/*
+  -> 子进程 demo.py
+  -> demo_session.py
+  -> ScreencastRecorder
+  -> data/browser/temp/*
+  -> ffmpeg 编码输出
+```
 
-### 任务流水线
+特点：
 
-1. 前端调用 `/api/tasks` 创建任务。
-2. `TaskManager` 初始化任务状态并落盘到 `data/tasks/<task_id>/`。
-3. 前端调用 `/api/tasks/{id}/run-step` 逐步推进。
-4. `TaskManager` 为当前步骤构建 agent、知识上下文和前序输出上下文。
-5. agent 调用 LLM，必要时触发工具调用。
-6. 步骤输出写回内存任务状态，并同步持久化。
+- Playwright 与 FastAPI 进程隔离
+- 当前默认录制器是 `ScreencastRecorder`
+- 页面录制默认值来自 `src/configs/record.yaml`
 
-### 浏览器录制
+细节见 [recording-flow.md](./recording-flow.md)。
 
-1. 前端调用 `/api/record/start`。
-2. 后端 `record.py` 子进程启动 `python -m webgal_agent.browser.demo record --json`。
-3. `demo.py` 完成脚本注入、场景切换、可选配置注入、自动播放与录制准备。
-4. `ScreencastRecorder` 通过 CDP `Page.startScreencast` 抓帧到磁盘。
-5. 可选音频通过 WebAudio hook 抓取 PCM/WAV。
-6. 录制结束后用 FFmpeg 离线编码，再把 JSON 结果回传给 API 层。
+## 前端职责
 
-## 当前边界约束
+前端当前主要是工作台，不承担核心业务实现：
 
-- Playwright 不直接嵌入 FastAPI 业务进程。
-- Windows event loop policy 只在入口点设置。
-- `saveConfig()` 后必须留短延迟，再访问同一 IndexedDB store。
-- `selector=auto` 固定尝试 `#root`、`canvas`。
+- `KnowledgeView.vue`: 知识库浏览与编辑
+- `PipelineView.vue`: 流水线结构展示
+- `TasksView.vue`: 任务管理与步骤推进
+- `ProvidersView.vue`: LLM provider 配置
+- `SceneLinkView.vue`: 场景软链接切换
+- `RecordView.vue`: 浏览器录制控制台
 
-## 当前维护重点
+## 关键边界
 
-- `TaskManager` 仍是统一入口，但内部职责已拆开，后续应继续保持“对外稳定、内部分层”。
-- browser 录制链路已从“单大文件”转为“CLI / 会话 / 注入 / 音频 / 编码”分层。
-- `RecordView.vue`、`PipelineView.vue`、`TasksView.vue` 模板仍偏重，后续若继续加功能，建议再拆组件层。
+- Windows event loop policy 只在入口点设定
+- 录制 API 只负责子进程协议，不直接运行 Playwright
+- `saveConfig()` 后必须短暂等待，避免 IndexedDB 写冲突
+- README 负责“怎么用”，roadmap 负责“待解决什么”，不要互相混写

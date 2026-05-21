@@ -1,49 +1,45 @@
-# 浏览器录制流程说明
+# 浏览器录制链路细节
 
-最后更新: 2026-05-18
+最后更新: 2026-05-21
 
-本文档只描述当前仓库真实录制行为，不保留旧实现。
+## 主链路
 
-## 当前录制链路
+1. `/api/record/start` 接收前端录制配置。
+2. `src/webgal_agent/api/routes/record.py` 组装 CLI 参数并启动子进程。
+3. 子进程执行 `python -m webgal_agent.browser.demo record --json`。
+4. `demo_session.py` 完成导航、元素等待、WebGal 专属准备。
+5. `ScreencastRecorder` 通过 `Page.startScreencast` 抓帧。
+6. 帧先落到 `data/browser/temp/`，结束后由 FFmpeg 离线编码。
+7. `stdout` 最后一行 JSON 作为最终结果返回给 API，`stderr` 作为实时日志。
 
-1. API 路由 `src/webgal_agent/api/routes/record.py` 启动子进程。
-2. 子进程执行 `src/webgal_agent/browser/demo.py` 的 `record` 模式。
-3. `demo.py` 在导航前注入 WebAudio 捕获和 WebGal 页面辅助脚本。
-4. 页面加载完成后等待 `changeScene` 等辅助符号就绪。
-5. 切换场景，可选注入 IndexedDB 游戏配置。
-6. 调用 `toggleAuto()` 和 `hideInfo()` 完成录制前准备。
-7. `ScreencastRecorder` 启动 `Page.startScreencast`，把帧落到 `data/browser/temp/`。
-8. 录制结束后离线调用 FFmpeg 生成 `.mp4` 或 `.webm`。
-9. 如果启用了 `save_logs`，CLI 会把运行日志写到输出视频旁边的 `*.log` 文件。
+## 代码位置
 
-当 `page_mode=generic` 时：
+- API 协调：`src/webgal_agent/api/routes/record.py`
+- CLI 入口：`src/webgal_agent/browser/demo.py`
+- 参数解析：`src/webgal_agent/browser/demo_cli.py`
+- 录制会话：`src/webgal_agent/browser/demo_session.py`
+- 录制器：`src/webgal_agent/browser/screencast.py`
+- 音频抓取：`src/webgal_agent/browser/audio_capture.py`
+- 编码：`src/webgal_agent/browser/ffmpeg_encoder.py`
 
-- 跳过 WebGal 构建产物拦截注入
-- 跳过 `changeScene`
-- 跳过 IndexedDB 游戏配置覆盖
-- 跳过 `toggleAuto()` / `hideInfo()` 等页面专属准备
+## 模式分歧
 
-## 关键约束
+`page_mode=webgal`：
 
-- `--duration 0` 只有配合 `--stop-on` 才有意义。
-- `selector=auto` 先查找 `#root`，失败后回退到 `canvas`。
-- `saveConfig()` 会触发页面自身的异步 IndexedDB 写入。
-- 因此自定义配置写回前必须留短延迟，避免同 store 冲突。
-- API 只把 CLI 当作子进程，不直接持有 Playwright 对象。
+- 等待 WebGal 辅助符号
+- 可选切场景
+- 可选注入配置
+- 录制前执行自动播放与 UI 隐藏
 
-## 当前代码位置
+`page_mode=generic`：
 
-- CLI 入口: `src/webgal_agent/browser/demo.py`
-- CLI 参数与模式分发: `src/webgal_agent/browser/demo_cli.py`
-- 录制会话实现: `src/webgal_agent/browser/demo_session.py`
-- 注入脚本常量: `src/webgal_agent/browser/webgal_injection.py`
-- 录制器: `src/webgal_agent/browser/screencast.py`
-- 音频抓取: `src/webgal_agent/browser/audio_capture.py`
-- 编码辅助: `src/webgal_agent/browser/ffmpeg_encoder.py`
-- API 子进程协调: `src/webgal_agent/api/routes/record.py`
+- 不执行任何 WebGal 专属准备
+- 只做通用导航、元素等待和录制
 
-## 当前输出协议
+## 当前约束
 
-- CLI `--json` 模式下，日志写到 `stderr`。
-- 最终结果只在 `stdout` 输出一行 JSON。
-- API 层读取 `stderr` 作为实时日志，读取 `stdout` 最后一行作为最终结果。
+- `--duration 0` 必须搭配 `--stop-on`
+- CLI 的 `--selector auto` 规则是 `#root -> canvas`
+- 录制页默认选择器最终以 `src/configs/record.yaml` 为准
+- `saveConfig()` 后必须短延迟，再访问同一 IndexedDB store
+- API 子进程模式是当前稳定边界，不应在文档里写成“FastAPI 内嵌 Playwright”

@@ -1,147 +1,150 @@
 # browser 模块
 
-WebGalAgent 的浏览器自动化与录制子系统。
+当前 `browser/` 目录承载 WebGalAgent 的浏览器自动化与录制专题。它既服务 CLI，也服务 Web UI 的 `/record` 页面。
 
-## 当前模块组成
+## 模块边界
+
+这个目录负责：
+
+- 启动与管理 Playwright 浏览器
+- 页面导航、元素等待、CDP 会话创建
+- WebGal 页面辅助注入
+- WebAudio 音频抓取
+- Screencast 帧采集与 FFmpeg 离线编码
+
+这个目录不负责：
+
+- FastAPI 路由协议定义
+- 前端表单状态管理
+- 任务流水线编排
+
+## 当前文件职责
 
 ```text
 browser/
-├── __init__.py
-├── client.py
-├── demo.py
-├── js/
-├── script_loader.py
-├── models.py
-├── screencast.py
-├── tools.py
-└── README.md
+├── client.py             # 浏览器上下文、页面操作、CDP 会话
+├── demo.py               # CLI 入口；Windows event loop policy 在这里设定
+├── demo_cli.py           # 参数解析、json/log 输出协议
+├── demo_session.py       # navigate / record 两类会话实现
+├── screencast.py         # ScreencastRecorder
+├── audio_capture.py      # WebAudio PCM 抓取与 WAV 落盘
+├── ffmpeg_encoder.py     # 帧目录 -> 视频编码/合流
+├── webgal_injection.py   # WebGal 页面辅助注入脚本
+├── webgal_session.py     # WebGal 页面专属准备逻辑
+├── script_loader.py      # 加载独立 JS 资源
+└── js/webaudio_capture.js
 ```
 
-当前仓库里没有旧版 `recorder.py` 或 `capture.py` 文件，文档与实现应以这里的实际文件为准。
+## 当前录制架构
 
-## 主要职责
-
-- 启动和管理 Playwright 浏览器
-- 页面导航、等待、点击、截图
-- 拦截脚本并注入 WebGal 调试辅助代码
-- 通过 CDP Screencast 录制页面
-- 可选捕获 WebAudio 音频
-
-## 关键组件
-
-### `client.py`
-
-`BrowserClient` 负责：
-
-- `new_context()`
-- `navigate()`
-- `add_script_injection()`
-- `create_cdp_session()`
-- `wait_for()`
-- `click()` / `fill()` / `get_text()`
-- `prepare_webaudio_capture()`
-
-### `js/` 与 `script_loader.py`
-
-复杂的页面注入脚本已拆到独立 `.js` 文件中，当前包括：
-
-- `js/webaudio_capture.js`
-
-Python 侧通过 `script_loader.py` 统一加载，避免把大段 JS 内嵌在业务模块里。
-
-### `demo.py`
-
-命令行入口，支持：
-
-- `navigate`
-- `record`
-
-也是当前 Web UI 录制能力的真实执行端。API 路由不会直接跑 Playwright，而是通过子进程调用这里。
-
-### `screencast.py`
-
-`ScreencastRecorder` 的当前实现：
-
-1. `Page.startScreencast`
-2. 收到的 JPEG/PNG 帧写入 `data/browser/temp/webgal_screencast_*`
-3. 可选抓取 PCM 音频并落地为 WAV
-4. 录制结束后调用 FFmpeg 离线编码
-
-这不是“实时管道编码到 ffmpeg stdin”的实现，文档不要再写旧架构。
-
-## 当前录制流程
+真实链路如下：
 
 ```text
-demo.py
-  -> BrowserClient.new_context()
-  -> 可选 prepare_webaudio_capture()
-  -> add_script_injection()
-  -> navigate()
-  -> 可选 WebGal scene/config 操作
+/record 页面 或 手工 CLI
+  -> /api/record/start
+  -> 子进程: python -m webgal_agent.browser.demo record --json
+  -> demo_session.demo_record()
   -> ScreencastRecorder.start()
-       -> Page.startScreencast
-       -> 帧写磁盘
-       -> 可选音频增量拉取
-       -> Page.stopScreencast
-       -> ffmpeg 离线编码
+  -> Page.startScreencast 抓帧到 data/browser/temp/
+  -> ffmpeg 离线编码
+  -> stdout 返回最终 JSON，stderr 输出过程日志
 ```
 
-## Web UI 与子进程隔离
+关键事实：
 
-`src/webgal_agent/api/routes/record.py` 通过子进程调用：
+- API 只是子进程协调层，不直接持有 Playwright 对象
+- 当前默认录制器是 `ScreencastRecorder`
+- 当前默认模式是“临时帧目录 + 事后编码”，不是“实时推流进 ffmpeg stdin”
+- 音频抓取是可选项，走 WebAudio hook + PCM/WAV 合流
+
+## CLI 入口与默认值
+
+CLI 入口：
 
 ```powershell
-.\.venv\Scripts\python.exe -m webgal_agent.browser.demo record --json ...
+.\.venv\Scripts\python.exe -m webgal_agent.browser.demo record
 ```
 
-这样做的原因：
+CLI 自身的关键默认值：
 
-- Playwright 与 FastAPI/Uvicorn event loop 隔离
-- 录制崩溃不会直接拖垮 API 进程
-- stdout/stderr 可单独采集
+- `--selector auto`
+- `--page-mode webgal`
+- `--browser msedge`
+- `--fps 60`
 
-## WebGal 相关注入规则
+其中 `auto` 的规则是：
 
-当前 `demo.py` 中录制 WebGal 页面时，会注入辅助符号，例如：
+1. 先尝试 `#root`
+2. 找不到再回退到 `canvas`
 
-- `window.changeScene`
-- `window.toggleAuto`
-- `window.saveConfig`
-- `window.loadConfig`
-- `window.__webgal`
-- `window.hideInfo`
+注意：Web UI 录制页会先从 `/api/record/config` 读取 `src/configs/record.yaml`，因此页面表单的默认选择器以配置文件为准，不一定等于 CLI 的 `auto` 默认值。当前 `record.yaml` 默认是具体 CSS 选择器 `div._MainStage_main_9enex_1`。
 
-### 配置注入结论
+## WebGal 页面专属规则
 
-已确认的实现细节：
+`page_mode=webgal` 时，会执行以下准备逻辑：
+
+- 注入 `changeScene`、`toggleAuto`、`hideInfo`、`saveConfig`、`loadConfig` 等辅助入口
+- 等待页面辅助符号就绪
+- 可选切换场景
+- 可选通过 IndexedDB 注入游戏配置
+- 录制前隐藏 UI、开启自动播放
+
+`page_mode=generic` 时，上述 WebGal 专属逻辑全部跳过，只保留通用导航、等待和录制。
+
+## 配置注入规则
+
+当前确认的约束：
 
 - IndexedDB 数据库名是 `localforage`
-- 配置记录 key 当前按 `MyGO` 读取/写回
-- `window.saveConfig()` 本身会触发异步数据库写入
-- 如果紧跟着访问同一个 IndexedDB store，会与其内部异步写入发生冲突
-- 因此 `saveConfig()` 后应先留一个短延迟，再执行自定义写入
+- 录制配置覆盖当前按 key `MyGO` 读写
+- `window.saveConfig()` 会触发异步 IndexedDB 写入
+- 调用 `saveConfig()` 后不能立即访问同一 store
+- 需要保留一个短延迟，再执行自定义写回
 
-这条规则比“脚本看起来是否同步”更重要。
+这条规则是实现约束，不是可选优化。
 
-## 命令示例
+## 录制参数边界
 
-导航测试：
+常用参数：
+
+| 参数 | 说明 |
+|------|------|
+| `--url` | 页面地址 |
+| `--output` | 输出文件 |
+| `--duration` | 最大录制时长 |
+| `--stop-on` | JS 停止条件 |
+| `--selector` | `auto` 或指定 CSS |
+| `--page-mode` | `webgal` / `generic` |
+| `--browser` | `chromium` / `msedge` / `firefox` / `webkit` |
+| `--record-audio` | 捕获页面音频 |
+| `--save-logs` | 把运行日志写到输出文件旁边 |
+| `--game-config` | JSON 形式的 IndexedDB 覆盖 |
+
+参数约束：
+
+- `--duration 0` 只有在同时提供 `--stop-on` 时才有效
+- PowerShell 里传 `#root` 需要写成 `--selector '#root'`
+- `--json` 模式下，日志走 `stderr`，最终结果 JSON 走 `stdout`
+
+## 常用命令
+
+导航：
 
 ```powershell
 .\.venv\Scripts\python.exe -m webgal_agent.browser.demo navigate --url https://example.com
 ```
 
-录制：
+录制 WebGal 页面：
 
 ```powershell
 .\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
   --url http://localhost:3001/games/MyGO3.0.0/ `
   --output data/browser/recordings/output.mp4 `
   --fps 60 --width 1920 --height 1080 `
-  --format jpeg --record-audio
+  --record-audio --save-logs
 ```
 
-录制普通测试页面（跳过 WebGal 注入和 `changeScene`）：
+录制通用页面：
 
 ```powershell
 .\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
@@ -151,34 +154,7 @@ demo.py
   --output data/browser/recordings/output.mp4
 ```
 
-保存运行日志：
-
-```powershell
-.\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
-  --url http://localhost:3001/games/MyGO3.0.0/ `
-  --output data/browser/recordings/output.mp4 `
-  --record-audio `
-  --save-logs
-```
-
-启用后会在输出视频旁边生成 `*.log` 日志文件，记录 CLI、录制器和 FFmpeg 相关输出。
-
-启用音画同步调试脉冲：
-
-```powershell
-.\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
-  --url http://localhost:3001/games/MyGO3.0.0/ `
-  --output data/browser/recordings/output.mp4 `
-  --record-audio `
-  --av-sync-debug-interval 2 `
-  --av-sync-debug-flash-ms 120 `
-  --av-sync-debug-tone-ms 120 `
-  --av-sync-debug-frequency 880
-```
-
-该模式会周期性触发一次全屏纯红覆盖层，并同时发出方波脉冲，便于肉眼检查成片中的音画同步。
-
-无固定时长，依赖停止条件：
+停止条件驱动录制：
 
 ```powershell
 .\.venv\Scripts\python.exe -m webgal_agent.browser.demo record `
@@ -187,44 +163,17 @@ demo.py
   --stop-on "window.__webgal.sceneManager.sceneData.currentScene.sceneUrl === './game/scene/start.txt'"
 ```
 
-## 常用参数
-
-| 参数 | 说明 |
-|------|------|
-| `--url` | 页面地址 |
-| `--output` | 输出文件路径 |
-| `--duration` | 最大录制时长；`0` 表示依赖 `--stop-on` |
-| `--stop-on` | JS 表达式，truthy 时结束 |
-| `--fps` | 输出帧率 |
-| `--width` / `--height` | 视口大小 |
-| `--selector` | `auto` 或指定 CSS |
-| `--page-mode` | `webgal` / `generic` |
-| `--format` | `jpeg` / `png` |
-| `--record-audio` | 开启音频捕获 |
-| `--av-sync-debug-interval` | 每隔多少秒触发一次纯红闪屏 + 方波脉冲，`0` 为关闭 |
-| `--av-sync-debug-flash-ms` | 纯红闪屏持续时长（毫秒） |
-| `--av-sync-debug-tone-ms` | 方波脉冲持续时长（毫秒） |
-| `--av-sync-debug-frequency` | 方波频率（Hz） |
-| `--save-logs` | 将运行日志保存到输出视频旁边 |
-| `--game-config` | 注入游戏配置 JSON |
-| `--json` | 机器可读输出模式 |
-
 ## Windows 注意事项
 
-在 Windows 上，`demo.py` 必须在导入 Playwright 之前设置：
+Windows 上需要在入口点先设置：
 
 ```python
 asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 ```
 
-不要把这个设置挪到 `client.py`、`screencast.py` 或 API 业务层。
+当前允许设置的位置：
 
-## 当前文档约束
+- `src/webgal_agent/__main__.py`
+- `src/webgal_agent/browser/demo.py`
 
-更新 browser 文档时，必须与以下事实保持一致：
-
-- 当前录制器是 `ScreencastRecorder`
-- 当前帧缓存策略是“写临时目录后离线编码”
-- 当前 API 录制模式是“子进程调用 demo CLI”
-- 当前 WebGal 配置注入依赖 `saveConfig()` 后短延迟
-- `page-mode=generic` 时不得执行任何 WebGal 专属准备逻辑
+不要把它挪到 `client.py`、`screencast.py` 或 API 业务模块。
