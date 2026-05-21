@@ -64,7 +64,7 @@ def _forward_signal(_signum: int, _frame: object) -> None:
     sys.exit(0)
 
 
-def start_dev(backend_host: str, backend_port: int) -> None:
+def start_dev(backend_host: str, backend_port: int, frontend_port: int) -> None:
     """开发模式：同时启动 Vite（前端 HMR）和 uvicorn（后端热重载）。"""
     npm = find_npm()
 
@@ -76,11 +76,14 @@ def start_dev(backend_host: str, backend_port: int) -> None:
         **os.environ,
         "WEBGAL_KNOWLEDGE_DIR": "data/knowledge",
         "WEBGAL_PROVIDERS_PATH": "src/configs/providers.yaml",
+        "WEBGAL_BACKEND_HOST": backend_host,
+        "WEBGAL_BACKEND_PORT": str(backend_port),
+        "WEBGAL_FRONTEND_PORT": str(frontend_port),
     }
 
     print("=== 启动开发模式 ===")
     print(f"  后端: http://{backend_host}:{backend_port} (uvicorn --reload)")
-    print(f"  前端: http://localhost:5173 (Vite HMR → 代理到后端)")
+    print(f"  前端: http://localhost:{frontend_port} (Vite HMR → 代理到后端)")
     print("  按 Ctrl+C 停止所有服务\n")
 
     backend = subprocess.Popen(
@@ -96,6 +99,7 @@ def start_dev(backend_host: str, backend_port: int) -> None:
 
     frontend = subprocess.Popen(
         [npm, "run", "dev", "--prefix", str(FRONTEND_DIR)],
+        env=backend_env,
     )
     _children.append(frontend)
 
@@ -142,12 +146,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="一键启动 WebGalAgent 服务")
     parser.add_argument("--host", default="127.0.0.1", help="后端绑定主机 (默认: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="后端绑定端口 (默认: 8000)")
+    parser.add_argument("--frontend-port", type=int, default=5173, help="前端 Vite 端口 (默认: 5173)")
     parser.add_argument("--dev", action="store_true", help="开发模式：前端 Vite HMR + 后端热重载")
     parser.add_argument("--skip-build", action="store_true", help="生产模式跳过前端构建")
     args = parser.parse_args()
 
     if args.dev:
-        start_dev(args.host, args.port)
+        start_dev(args.host, args.port, args.frontend_port)
     else:
         if not args.skip_build:
             try:
