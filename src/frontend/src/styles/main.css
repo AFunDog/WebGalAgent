@@ -96,7 +96,7 @@ pre,
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: 252px 1fr;
+  grid-template-columns: 196px 1fr;
   grid-template-rows: 86px 1fr;
   min-height: 100vh;
 }
@@ -164,18 +164,19 @@ pre,
   background:
     linear-gradient(180deg, rgba(21, 21, 21, 0.95), rgba(14, 14, 14, 0.98));
   border-right: 1px solid var(--border);
-  padding: 18px 14px;
+  padding: 14px 10px;
 }
 .sidebar a {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
-  margin-bottom: 8px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
   border: 1px solid transparent;
   border-radius: 14px;
   color: var(--text-muted);
   font-size: 14px;
+  line-height: 1.2;
   font-weight: 600;
   transition: all 0.18s ease;
 }

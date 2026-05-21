@@ -104,6 +104,12 @@ class UpdateStepRequest(BaseModel):
     content: str
 
 
+class UpdateTaskContentRequest(BaseModel):
+    """更新任务原始输入请求体。"""
+
+    content: str
+
+
 class ReviseStepRequest(BaseModel):
     """按额外引导提示重生成步骤结果。"""
 

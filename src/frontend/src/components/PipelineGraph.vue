@@ -1,97 +1,43 @@
 <template>
   <div class="pipeline-graph">
-    <svg :width="svgWidth" :height="svgHeight" :viewBox="`0 0 ${svgWidth} ${svgHeight}`">
-      <!-- 连线层：表达步骤间的数据流与当前激活链路 -->
-      <template v-for="(edge, i) in edges" :key="'e' + i">
-        <line
-          :x1="edge.x1" :y1="edge.y1"
-          :x2="edge.x2" :y2="edge.y2"
-          :stroke="edge.active ? 'var(--primary-hover)' : 'var(--border)'"
-          :stroke-width="edge.active ? 2.5 : 1.5"
-          :stroke-dasharray="edge.active ? '8,4' : 'none'"
-        />
-        <!-- 箭头 -->
-        <polygon
-          :points="arrowPoints(edge.x2, edge.y2, edge.x1, edge.y1)"
-          :fill="edge.active ? 'var(--primary-hover)' : 'var(--border)'"
-        />
-        <!-- 数据标签 -->
-        <text
-          :x="(edge.x1 + edge.x2) / 2"
-          :y="(edge.y1 + edge.y2) / 2 - 8"
-          text-anchor="middle"
-          fill="var(--text-muted)"
-          font-size="11"
-        >{{ edge.label }}</text>
-      </template>
-
-      <!-- 节点层：展示每个 agent 的名称、状态、输入输出摘要与 token 消耗 -->
-      <g v-for="(node, i) in nodes" :key="'n' + i" :transform="`translate(${node.x}, ${node.y})`">
-        <!-- 背景框 -->
-        <rect
-          :width="nodeW" :height="nodeH" :rx="8"
-          :fill="nodeFill(node)"
-          :stroke="nodeStroke(node)"
-          :stroke-width="node.status === 'running' ? 2 : 1"
-        />
-        <!-- 运行中脉冲动画 -->
-        <rect
-          v-if="node.status === 'running'"
-          :width="nodeW" :height="nodeH" :rx="8"
-          fill="none"
-          stroke="var(--primary-hover)"
-          stroke-width="2"
-          opacity="0.6"
-        >
-          <animate attributeName="opacity" values="0.6;0.1;0.6" dur="1.5s" repeatCount="indefinite" />
-        </rect>
-
-        <!-- 步骤标签 -->
-        <text
-          :x="12" :y="22"
-          fill="var(--text-muted)" font-size="10" font-weight="600"
-        >{{ node.stepLabel }}</text>
-
-        <!-- 名称 -->
-        <text
-          :x="12" :y="40"
-          fill="var(--text)" font-size="13" font-weight="700"
-        >{{ node.label }}</text>
-
-        <!-- 状态 -->
-        <text
-          :x="12" :y="56"
-          :fill="statusColor(node.status)" font-size="11" font-weight="500"
-        >{{ statusText(node.status) }}</text>
-
-        <!-- 模型 -->
-        <text
-          :x="nodeW - 12" :y="22"
-          text-anchor="end"
-          fill="var(--text-muted)" font-size="10"
-        >{{ node.model }}</text>
-
-        <!-- 输入/输出预览 -->
-        <text
-          v-if="node.inputPreview"
-          :x="12" :y="72"
-          fill="var(--text-muted)" font-size="10"
-        >📥 {{ node.inputPreview }}</text>
-        <text
-          v-if="node.outputPreview"
-          :x="12" :y="86"
-          fill="var(--text-muted)" font-size="10"
-        >📤 {{ node.outputPreview }}</text>
-
-        <!-- Token 消耗 -->
-        <text
-          v-if="node.tokenUsage > 0"
-          :x="nodeW - 12" :y="56"
-          text-anchor="end"
-          fill="#d97706" font-size="10" font-weight="500"
-        >⚡{{ formatTokenCount(node.tokenUsage) }}</text>
-      </g>
-    </svg>
+    <button
+      v-for="(node, index) in nodes"
+      :key="node.name"
+      class="pipeline-node"
+      :class="[
+        `pipeline-node--${node.status}`,
+        { 'pipeline-node--selected': selectedNode === node.name },
+      ]"
+      type="button"
+      @click="$emit('select-node', node.name)"
+    >
+      <div class="pipeline-node__topline">
+        <span class="pipeline-node__step">{{ node.stepLabel }}</span>
+        <span v-if="node.tokenUsage > 0" class="pipeline-node__token">
+          {{ formatTokenCount(node.tokenUsage) }}
+        </span>
+      </div>
+      <div class="pipeline-node__title">{{ node.label }}</div>
+      <div class="pipeline-node__status">
+        <span class="pipeline-node__dot"></span>
+        {{ statusText(node.status) }}
+      </div>
+      <div class="pipeline-node__model">{{ node.model || '未配置模型' }}</div>
+      <div class="pipeline-node__preview">
+        <div class="pipeline-node__preview-line">
+          <span class="pipeline-node__preview-label">IN</span>
+          <span>{{ node.inputPreview || '等待输入' }}</span>
+        </div>
+        <div class="pipeline-node__preview-line">
+          <span class="pipeline-node__preview-label">OUT</span>
+          <span>{{ node.outputPreview || '尚无输出' }}</span>
+        </div>
+      </div>
+      <div v-if="index < nodes.length - 1" class="pipeline-node__connector" aria-hidden="true">
+        <span class="pipeline-node__connector-line"></span>
+        <span class="pipeline-node__connector-head"></span>
+      </div>
+    </button>
   </div>
 </template>
 
@@ -103,183 +49,106 @@ const props = defineProps<{
   agents: AgentInfo[]
   messages: TaskMessage[]
   activeAgent: string
+  selectedNode?: string
   tokenUsageByStep?: Record<string, { prompt_tokens: number; completion_tokens: number; total_tokens: number }>
 }>()
 
-// 图结构保持固定三步，页面只传运行时状态与消息摘要。
+defineEmits<{
+  (e: 'select-node', nodeName: string): void
+}>()
+
 const AGENT_LABELS: Record<string, string> = {
   outline_writer: '大纲编写',
   script_writer: '剧本生成',
   script_converter: '脚本转换',
 }
+
 const STEP_LABELS = ['A', 'B', 'C']
 const AGENT_ORDER = ['outline_writer', 'script_writer', 'script_converter']
-
-const nodeW = 180
-const nodeH = 96
-const gapX = 60
-const gapY = 40
-const paddingX = 20
-const paddingY = 20
 
 interface PipelineNode {
   name: string
   label: string
   stepLabel: string
   model: string
-  x: number
-  y: number
   status: 'idle' | 'running' | 'done' | 'error'
   inputPreview: string
   outputPreview: string
   tokenUsage: number
 }
 
-interface PipelineEdge {
-  x1: number
-  y1: number
-  x2: number
-  y2: number
-  label: string
-  active: boolean
+function findLastMessage(predicate: (message: TaskMessage) => boolean): TaskMessage | undefined {
+  for (let i = props.messages.length - 1; i >= 0; i -= 1) {
+    const message = props.messages[i]
+    if (message && predicate(message)) return message
+  }
+  return undefined
 }
 
-// 节点状态优先从 result 消息推断，其次才回退到 activeAgent 和前序完成情况。
 function getNodeStatus(name: string): PipelineNode['status'] {
-  const resultMsg = props.messages.find(m => m.type === 'result' && m.sender === name)
+  const resultMsg = findLastMessage(m => m.type === 'result' && m.sender === name)
   if (resultMsg) {
-    // 检查是否有错误
-    const tc = resultMsg.metadata?.tool_calls as Array<{ success: boolean }> | undefined
-    if (tc && tc.some(t => !t.success)) return 'error'
+    const toolCalls = resultMsg.metadata?.tool_calls as Array<{ success: boolean }> | undefined
+    if (toolCalls && toolCalls.some(call => !call.success)) return 'error'
     return 'done'
   }
   if (props.activeAgent === name) return 'running'
-  // 如果前一个节点完成了，这个节点应该运行中或已完成
   const idx = AGENT_ORDER.indexOf(name)
   if (idx > 0) {
-    const prevResult = props.messages.find(m => m.type === 'result' && m.sender === AGENT_ORDER[idx - 1])
-    if (prevResult && !resultMsg) return 'running'
+    const prevResult = findLastMessage(
+      m => m.type === 'result' && m.sender === AGENT_ORDER[idx - 1],
+    )
+    if (prevResult) return 'running'
   }
   return 'idle'
 }
 
-function getPreview(content: string, maxLen = 20): string {
-  const first = content.split('\n').find(l => l.trim()) ?? ''
+function getPreview(content: string, maxLen = 28): string {
+  const first = content.split('\n').find(line => line.trim()) ?? ''
   if (first.length <= maxLen) return first
   return first.slice(0, maxLen) + '…'
 }
 
-// 输入/输出摘要只取首个非空行，避免图节点被长文本撑破。
 function getInputPreview(name: string): string {
-  const taskMsg = props.messages.find(m => m.type === 'task' && m.receiver === name)
+  const taskMsg = findLastMessage(m => m.type === 'task' && m.receiver === name)
   if (taskMsg) return getPreview(taskMsg.content)
-  // 对于 B 和 C，输入是前一个节点的输出
   const idx = AGENT_ORDER.indexOf(name)
   if (idx > 0) {
-    const prevResult = props.messages.find(m => m.type === 'result' && m.sender === AGENT_ORDER[idx - 1])
+    const prevResult = findLastMessage(
+      m => m.type === 'result' && m.sender === AGENT_ORDER[idx - 1],
+    )
     if (prevResult) return getPreview(prevResult.content)
   }
   return ''
 }
 
 function getOutputPreview(name: string): string {
-  const resultMsg = props.messages.find(m => m.type === 'result' && m.sender === name)
-  if (resultMsg) return getPreview(resultMsg.content)
-  return ''
+  const resultMsg = findLastMessage(m => m.type === 'result' && m.sender === name)
+  return resultMsg ? getPreview(resultMsg.content) : ''
 }
 
-const nodes = computed<PipelineNode[]>(() => {
-  const agentNames = AGENT_ORDER
-  const cols = 3
-  return agentNames.map((name, i) => {
-    const col = i % cols
-    const row = Math.floor(i / cols)
-    const agent = props.agents.find(a => a.name === name)
+const nodes = computed<PipelineNode[]>(() =>
+  AGENT_ORDER.map((name, index) => {
+    const agent = props.agents.find(item => item.name === name)
     return {
       name,
       label: AGENT_LABELS[name] ?? name,
-      stepLabel: STEP_LABELS[i] ?? String(i + 1),
+      stepLabel: STEP_LABELS[index] ?? String(index + 1),
       model: agent?.model ?? '',
-      x: paddingX + col * (nodeW + gapX),
-      y: paddingY + row * (nodeH + gapY),
       status: getNodeStatus(name),
       inputPreview: getInputPreview(name),
       outputPreview: getOutputPreview(name),
-      tokenUsage: props.tokenUsageByStep?.[String(i)]?.total_tokens ?? 0,
+      tokenUsage: props.tokenUsageByStep?.[String(index)]?.total_tokens ?? 0,
     }
-  })
-})
-
-// 边的高亮语义是“上一步已完成，且下一步已进入运行或完成状态”。
-const edges = computed<PipelineEdge[]>(() => {
-  const result: PipelineEdge[] = []
-  const edgeLabels = ['大纲', '剧本']
-  for (let i = 0; i < nodes.value.length - 1; i++) {
-    const from = nodes.value[i]!
-    const to = nodes.value[i + 1]!
-    const isActive = from.status === 'done' && (to.status === 'running' || to.status === 'done')
-    result.push({
-      x1: from.x + nodeW,
-      y1: from.y + nodeH / 2,
-      x2: to.x,
-      y2: to.y + nodeH / 2,
-      label: edgeLabels[i] ?? '',
-      active: isActive,
-    })
-  }
-  return result
-})
-
-const svgWidth = computed(() => paddingX * 2 + 3 * nodeW + 2 * gapX)
-const svgHeight = computed(() => paddingY * 2 + nodeH)
-
-function arrowPoints(tipX: number, tipY: number, fromX: number, fromY: number): string {
-  const size = 6
-  const dx = tipX - fromX
-  const dy = tipY - fromY
-  const len = Math.sqrt(dx * dx + dy * dy) || 1
-  const ux = dx / len
-  const uy = dy / len
-  const px = tipX - ux * size
-  const py = tipY - uy * size
-  const nx = -uy * size * 0.5
-  const ny = ux * size * 0.5
-  return `${tipX},${tipY} ${px + nx},${py + ny} ${px - nx},${py - ny}`
-}
-
-function nodeFill(node: PipelineNode): string {
-  switch (node.status) {
-    case 'running': return 'rgba(99,102,241,0.12)'
-    case 'done': return 'rgba(34,197,94,0.08)'
-    case 'error': return 'rgba(239,68,68,0.08)'
-    default: return 'var(--bg-input)'
-  }
-}
-
-function nodeStroke(node: PipelineNode): string {
-  switch (node.status) {
-    case 'running': return 'var(--primary-hover)'
-    case 'done': return 'var(--success)'
-    case 'error': return 'var(--danger)'
-    default: return 'var(--border)'
-  }
-}
-
-function statusColor(status: PipelineNode['status']): string {
-  switch (status) {
-    case 'running': return 'var(--primary-hover)'
-    case 'done': return 'var(--success)'
-    case 'error': return 'var(--danger)'
-    default: return 'var(--text-muted)'
-  }
-}
+  }),
+)
 
 function statusText(status: PipelineNode['status']): string {
   switch (status) {
-    case 'running': return '运行中...'
+    case 'running': return '运行中'
     case 'done': return '已完成'
-    case 'error': return '出错'
-    default: return '等待中'
+    case 'error': return '异常'
+    default: return '待执行'
   }
 }
 
@@ -292,14 +161,170 @@ function formatTokenCount(n: number): string {
 
 <style scoped>
 .pipeline-graph {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px;
-  overflow-x: auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
 }
-.pipeline-graph text {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  user-select: none;
+
+.pipeline-node {
+  position: relative;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(28, 28, 28, 0.96), rgba(18, 18, 18, 0.98));
+  padding: 14px;
+  min-height: 172px;
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.pipeline-node:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+}
+
+.pipeline-node--selected {
+  border-color: rgba(247, 99, 12, 0.42);
+  box-shadow: 0 0 0 3px rgba(247, 99, 12, 0.12);
+}
+
+.pipeline-node--running {
+  border-color: rgba(247, 99, 12, 0.32);
+  background: linear-gradient(180deg, rgba(247, 99, 12, 0.12), rgba(18, 18, 18, 0.98));
+}
+
+.pipeline-node--done {
+  border-color: rgba(93, 211, 158, 0.24);
+}
+
+.pipeline-node--error {
+  border-color: rgba(255, 107, 87, 0.26);
+}
+
+.pipeline-node__topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.pipeline-node__step {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.pipeline-node__token {
+  font-size: 10px;
+  color: #ffb488;
+  background: rgba(247, 99, 12, 0.12);
+  border: 1px solid rgba(247, 99, 12, 0.18);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+.pipeline-node__title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.pipeline-node__status {
+  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-soft);
+}
+
+.pipeline-node__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.pipeline-node--running .pipeline-node__dot {
+  background: var(--primary-hover);
+  box-shadow: 0 0 0 4px rgba(247, 99, 12, 0.16);
+}
+
+.pipeline-node--done .pipeline-node__dot {
+  background: var(--success);
+}
+
+.pipeline-node--error .pipeline-node__dot {
+  background: var(--danger);
+}
+
+.pipeline-node__model {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.pipeline-node__preview {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pipeline-node__preview-line {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+.pipeline-node__preview-label {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.pipeline-node__connector {
+  position: absolute;
+  top: 50%;
+  right: -18px;
+  width: 18px;
+  height: 14px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+}
+
+.pipeline-node__connector-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border-strong);
+}
+
+.pipeline-node__connector-head {
+  width: 6px;
+  height: 6px;
+  border-top: 1px solid var(--border-strong);
+  border-right: 1px solid var(--border-strong);
+  transform: rotate(45deg);
+  margin-left: -1px;
+}
+
+@media (max-width: 1080px) {
+  .pipeline-graph {
+    grid-template-columns: 1fr;
+  }
+
+  .pipeline-node {
+    min-height: auto;
+  }
+
+  .pipeline-node__connector {
+    display: none;
+  }
 }
 </style>

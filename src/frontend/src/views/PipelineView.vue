@@ -1,386 +1,451 @@
 <template>
   <div>
-    <h2 class="page-title">流水线</h2>
-
-    <!-- 顶部总览：展示固定三步流水线与当前任务的 token 消耗 -->
-    <details class="details-panel" style="margin-bottom:12px">
-      <summary>
-        <span>流水线总览</span>
-        <span class="summary-chevron">▶</span>
-      </summary>
-      <div class="details-panel__body" style="padding:8px">
-        <PipelineGraph
-          :agents="agentDefs"
-          :messages="[]"
-          active-agent=""
-          :token-usage-by-step="activeTask?.token_usage_by_step"
-        />
+    <div class="pipeline-header">
+      <div>
+        <h2 class="page-title">流水线控制台</h2>
+        <p class="section-intro">点击节点，在右侧完成输入查看、输入修改、节点执行、输出修订和按反馈重生成。</p>
       </div>
-    </details>
-
-    <!-- 任务创建区：支持从任意步骤开始，并为跳过步骤预填结果 -->
-    <div class="card">
-      <div class="card-header"><h3>创建新任务</h3></div>
-      <p class="section-intro">只保留必要输入。跳过前序步骤时，才需要补录依赖输出。</p>
-      <div class="form-group">
-        <label>任务内容</label>
-        <textarea
-          v-model="newTaskContent"
-          class="form-textarea"
-          placeholder="请输入任务描述..."
-          rows="4"
-          @keyup.ctrl.enter="createTask"
-        />
+      <div v-if="activeTask" class="pipeline-header__meta">
+        <span class="badge" :class="statusBadgeClass(activeTask.status)">{{ statusLabel(activeTask.status) }}</span>
+        <span class="compact-meta">{{ activeTask.title || activeTask.content.slice(0, 28) }}</span>
       </div>
-      <div class="form-group">
-        <label>起始步骤</label>
-        <div class="compact-toolbar" style="margin-bottom:0">
-          <button
-            v-for="(step, idx) in pipelineSteps"
-            :key="step.name"
-            class="btn btn-sm"
-            :class="startStep === idx ? 'btn-primary' : ''"
-            @click="setStartStep(idx)"
-          >
-            {{ String.fromCharCode(65 + idx) }}. {{ step.label }}
-          </button>
-        </div>
-        <div v-if="startStep > 0" style="margin-top:4px;font-size:12px;color:var(--text-muted)">
-          将跳过 {{ pipelineSteps.slice(0, startStep).map(s => s.label).join('、') }}，请提供 {{ requiredStepLabels }} 的内容
-        </div>
-      </div>
-      <!-- 依赖补录区：只显示当前起始步骤真正依赖的前序输出 -->
-      <div v-for="depIdx in requiredPrevStepIndices" :key="'input-' + depIdx" class="form-group" style="margin-top:8px">
-        <label>{{ pipelineSteps[depIdx]?.label }} 的输出内容</label>
-        <textarea
-          v-model="stepInputs[String(depIdx)]"
-          class="form-textarea"
-          :placeholder="'请输入 ' + pipelineSteps[depIdx]?.label + ' 的输出...'"
-          rows="6"
-          style="font-size:12px;font-family:monospace"
-        />
-      </div>
-      <button class="btn btn-primary" :disabled="creating" @click="createTask">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-        创建任务
-      </button>
     </div>
 
-    <!-- 当前任务区：负责逐步执行、编辑中间结果和展示状态 -->
-    <div v-if="activeTask" class="card" style="margin-top:24px">
-      <div class="card-header">
-        <h3>{{ activeTask.title || activeTask.content.slice(0, 40) }}</h3>
-        <span class="badge" :class="statusBadgeClass(activeTask.status)">{{ statusLabel(activeTask.status) }}</span>
-      </div>
-
-      <!-- 步骤列表：复用共享步骤定义，按 current_step 渲染状态 -->
-      <div class="step-list">
-        <div
-          v-for="(step, idx) in pipelineSteps"
-          :key="step.name"
-          class="step-item"
-          :class="{
-            'step-done': idx < activeTask.current_step,
-            'step-active': idx === activeTask.current_step && activeTask.status !== 'completed',
-            'step-pending': idx > activeTask.current_step || (idx === activeTask.current_step && activeTask.status === 'completed'),
-          }"
-        >
-          <div class="step-header">
-            <span class="step-index">{{ String.fromCharCode(65 + idx) }}</span>
-            <span class="step-name">{{ step.label }}</span>
-            <span class="step-status" :class="'step-status-' + getStepStatus(idx)">
-              {{ getStepStatusText(idx) }}
-            </span>
-            <span v-if="getStepTokenUsage(idx)" class="step-token-badge">
-              {{ formatTokenCount(getStepTokenUsage(idx)!.total_tokens) }} tokens
-            </span>
-          </div>
-
-          <!-- 当前步骤操作区 -->
-          <button
-            v-if="idx === activeTask.current_step && activeTask.status !== 'running' && activeTask.status !== 'completed'"
-            class="btn btn-primary btn-sm"
-            :disabled="runningStep"
-            @click="runStep"
-            style="margin-top:8px"
-          >
-            {{ runningStep ? '执行中...' : '执行此步骤' }}
-          </button>
-
-          <!-- 已完成步骤的结果查看与手工修订区 -->
-          <div v-if="idx < activeTask.current_step" class="step-result">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-              <span style="font-size:12px;color:var(--text-muted)">输出结果</span>
-              <button
-                v-if="editingStep !== idx"
-                class="btn btn-sm"
-                style="font-size:11px;padding:2px 8px"
-                @click="startEdit(idx)"
-              >编辑</button>
-              <div v-else style="display:flex;gap:4px">
-                <button class="btn btn-primary btn-sm" style="font-size:11px;padding:2px 8px" @click="saveEdit(idx)">保存</button>
-                <button class="btn btn-sm" style="font-size:11px;padding:2px 8px" @click="cancelEdit">取消</button>
-              </div>
-            </div>
-            <textarea
-              v-if="editingStep === idx"
-              v-model="editContent"
-              class="form-textarea"
-              rows="8"
-              style="font-size:12px;font-family:monospace"
-            />
-            <pre v-else class="step-result-preview">{{ getStepResult(idx) }}</pre>
-            <div class="step-revise-box">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                <span style="font-size:12px;color:var(--text-muted)">额外修订要求</span>
-                <button
-                  class="btn btn-primary btn-sm"
-                  style="font-size:11px;padding:2px 8px"
-                  :disabled="runningStep || !activeTask || !getRevisionInstruction(idx).trim()"
-                  @click="reviseStep(idx)"
-                >按反馈重生成</button>
-              </div>
-              <textarea
-                :value="getRevisionInstruction(idx)"
-                class="form-textarea"
-                rows="3"
-                placeholder="例如：保留剧情结构，但减少旁白，增强人物对话冲突。"
-                style="font-size:12px"
-                @input="setRevisionInstruction(idx, ($event.target as HTMLTextAreaElement).value)"
-              />
-            </div>
-          </div>
-
-          <!-- 运行中反馈区 -->
-          <div v-if="idx === activeTask.current_step && activeTask.status === 'running'" class="step-running">
-            <span class="pulse-dot"></span> 正在执行...
-            <button class="btn btn-danger btn-sm" style="margin-left:8px" @click="cancelTask">终止</button>
-          </div>
-        </div>
-      </div>
-
-      <div style="margin-top:10px">
-        <!-- 底部摘要：给出当前任务总 token 消耗和历史入口 -->
-        <div v-if="activeTask.total_tokens > 0" class="token-summary-bar">
-          <span class="token-summary-label">Token 消耗</span>
-          <span class="token-summary-value">
-            {{ formatTokenCount(activeTask.total_tokens) }}
-            <span style="color:var(--text-muted);font-size:11px;margin-left:4px">
-              (输入 {{ formatTokenCount(activeTask.total_prompt_tokens) }} / 输出 {{ formatTokenCount(activeTask.total_completion_tokens) }})
-            </span>
+    <div class="pipeline-workbench">
+      <section class="pipeline-canvas card">
+        <div class="card-header">
+          <h3>节点视图</h3>
+          <span class="compact-meta">
+            {{ activeTask ? `任务 ${activeTask.id}` : '尚未创建任务' }}
           </span>
         </div>
-        <details class="details-panel">
-          <summary>
-            <span>更多</span>
-            <span class="summary-chevron">▶</span>
-          </summary>
-          <div class="details-panel__body">
-            <router-link :to="{ name: 'tasks' }">查看所有任务历史</router-link>
-          </div>
-        </details>
-      </div>
-    </div>
+        <PipelineGraph
+          :agents="agentDefs"
+          :messages="activeTask?.messages ?? []"
+          :active-agent="activeAgentName"
+          :selected-node="selectedNodeName"
+          :token-usage-by-step="activeTask?.token_usage_by_step"
+          @select-node="selectNode"
+        />
+      </section>
 
-    <!-- 空状态：尚未创建或恢复可继续执行的任务 -->
-    <div v-else-if="!creating" class="empty-state" style="margin-top:16px">
-      <p>创建任务后，可逐步执行每个智能体</p>
+      <aside class="pipeline-panel card">
+        <div class="card-header">
+          <div>
+            <h3>{{ selectedStepLabel }}</h3>
+            <div class="compact-meta">{{ selectedStepName }}</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="badge" :class="selectedStatusBadgeClass">{{ selectedStatusText }}</span>
+            <span v-if="selectedTokenUsage > 0" class="tag">{{ formatTokenCount(selectedTokenUsage) }} tokens</span>
+          </div>
+        </div>
+
+        <template v-if="!activeTask">
+          <div class="stack-tight">
+            <div class="form-group">
+              <label>任务原始输入</label>
+              <textarea
+                v-model="newTaskContent"
+                class="form-textarea"
+                rows="6"
+                placeholder="输入故事目标、风格约束、角色要求等。"
+              />
+            </div>
+            <div class="form-group">
+              <label>从当前节点开始</label>
+              <div class="compact-meta">
+                当前将从 {{ selectedStepLabel }} 开始；如果不是 A 节点，需要补齐依赖输出。
+              </div>
+            </div>
+            <div
+              v-for="depIdx in selectedPrevStepIndices"
+              :key="`create-${depIdx}`"
+              class="form-group"
+            >
+              <label>{{ pipelineSteps[depIdx]?.label }} 输出</label>
+              <textarea
+                v-model="stepInputs[String(depIdx)]"
+                class="form-textarea"
+                rows="5"
+                :placeholder="`请输入 ${pipelineSteps[depIdx]?.label} 的输出`"
+              />
+            </div>
+            <button class="btn btn-primary" :disabled="creating" @click="createTaskFromSelectedNode">
+              {{ creating ? '创建中...' : `从 ${selectedStepLabel} 创建任务` }}
+            </button>
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="stack-tight">
+            <section class="node-section">
+              <div class="node-section__header">
+                <h4>节点输入</h4>
+                <span class="compact-meta">{{ selectedStepIndex === 0 ? '原始任务输入' : '来自上游节点' }}</span>
+              </div>
+
+              <div v-if="selectedStepIndex === 0" class="form-group">
+                <label>任务原始输入</label>
+                <textarea
+                  v-model="taskContentDraft"
+                  class="form-textarea"
+                  rows="6"
+                  placeholder="请输入任务描述"
+                />
+                <div class="node-actions">
+                  <button class="btn btn-sm btn-primary" @click="saveTaskContent">保存输入</button>
+                </div>
+              </div>
+
+              <template v-else>
+                <details class="details-panel" open>
+                  <summary>
+                    <span>查看组合输入</span>
+                    <span class="summary-chevron">▶</span>
+                  </summary>
+                  <div class="details-panel__body">
+                    <pre class="node-preview">{{ selectedEffectiveInput }}</pre>
+                  </div>
+                </details>
+
+                <div
+                  v-for="depIdx in selectedPrevStepIndices"
+                  :key="`dep-${depIdx}`"
+                  class="form-group"
+                >
+                  <label>{{ pipelineSteps[depIdx]?.label }} 输出</label>
+                  <textarea
+                    :value="getDependencyDraft(depIdx)"
+                    class="form-textarea"
+                    rows="5"
+                    @input="setDependencyDraft(depIdx, ($event.target as HTMLTextAreaElement).value)"
+                  />
+                  <div class="node-actions">
+                    <button class="btn btn-sm btn-primary" @click="saveDependencyOutput(depIdx)">保存为上游输入</button>
+                  </div>
+                </div>
+              </template>
+            </section>
+
+            <section class="node-section">
+              <div class="node-section__header">
+                <h4>节点输出</h4>
+                <span class="compact-meta">
+                  {{ isSelectedCompleted ? '可直接编辑' : '节点未完成，暂无输出' }}
+                </span>
+              </div>
+              <textarea
+                v-model="outputDraft"
+                class="form-textarea"
+                rows="8"
+                :disabled="!isSelectedCompleted"
+                :placeholder="isSelectedCompleted ? '编辑该节点输出' : '节点完成后会在这里显示输出'"
+              />
+              <div v-if="isSelectedCompleted" class="node-actions">
+                <button class="btn btn-sm btn-primary" @click="saveSelectedOutput">保存输出</button>
+              </div>
+            </section>
+
+            <section class="node-section">
+              <div class="node-section__header">
+                <h4>节点操作</h4>
+                <span class="compact-meta">执行、终止或按反馈重生成当前节点</span>
+              </div>
+              <div class="node-actions node-actions--wrap">
+                <button
+                  v-if="canRunSelectedNode"
+                  class="btn btn-primary"
+                  :disabled="runningStep"
+                  @click="runSelectedNode"
+                >
+                  {{ runningStep ? '执行中...' : '执行节点' }}
+                </button>
+                <button
+                  v-if="canCancelSelectedNode"
+                  class="btn btn-danger"
+                  @click="cancelTask"
+                >
+                  终止节点
+                </button>
+              </div>
+            </section>
+
+            <section v-if="isSelectedCompleted" class="node-section">
+              <div class="node-section__header">
+                <h4>反馈重生成</h4>
+                <span class="compact-meta">仅从当前节点重新开始，后续节点结果会失效</span>
+              </div>
+              <textarea
+                v-model="revisionDraft"
+                class="form-textarea"
+                rows="4"
+                placeholder="例如：减少旁白，增强冲突，对白更口语化。"
+              />
+              <div class="node-actions">
+                <button
+                  class="btn btn-primary"
+                  :disabled="runningStep || !revisionDraft.trim()"
+                  @click="reviseSelectedNode"
+                >
+                  按反馈重生成
+                </button>
+              </div>
+            </section>
+
+            <details class="details-panel">
+              <summary>
+                <span>节点消息与调试信息</span>
+                <span class="summary-chevron">▶</span>
+              </summary>
+              <div class="details-panel__body">
+                <div v-if="selectedMessages.length === 0" class="compact-meta">当前节点暂无消息。</div>
+                <div v-else class="stack-tight">
+                  <div v-for="message in selectedMessages" :key="message.id" class="node-message">
+                    <div class="node-message__meta">
+                      <span>{{ message.type }}</span>
+                      <span>{{ message.sender }} → {{ message.receiver }}</span>
+                    </div>
+                    <pre class="node-preview">{{ message.content }}</pre>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+        </template>
+      </aside>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import PipelineGraph from '../components/PipelineGraph.vue'
-import { useTaskPolling } from '../composables/useTaskPolling'
 import { PIPELINE_STEPS } from '../constants/pipeline'
-import type { AgentInfo, Task } from '../types'
-import { formatTokenCount, getStepStatusText as getTaskStepStatusText, statusBadgeClass, statusLabel } from '../utils/taskDisplay'
+import type { AgentInfo, Task, TaskMessage } from '../types'
+import { formatTokenCount, statusBadgeClass, statusLabel } from '../utils/taskDisplay'
 
 const agentDefs = ref<AgentInfo[]>([])
+const activeTask = ref<Task | null>(null)
+const selectedNodeName = ref(PIPELINE_STEPS[0]?.name ?? 'outline_writer')
 const newTaskContent = ref('')
+const stepInputs = ref<Record<string, string>>({})
+const taskContentDraft = ref('')
+const outputDraft = ref('')
+const revisionDraft = ref('')
+const dependencyDrafts = ref<Record<string, string>>({})
 const creating = ref(false)
 const runningStep = ref(false)
-const activeTask = ref<Task | null>(null)
-const editingStep = ref<number | null>(null)
-const editContent = ref('')
-const revisionInstructions = ref<Record<string, string>>({})
-const startStep = ref(0)
-const stepInputs = ref<Record<string, string>>({})
-const { startSingleTaskPolling } = useTaskPolling()
 
-// 页面状态分为三组：
-// 1. 创建任务表单
-// 2. 当前激活任务
-// 3. 单任务轮询控制
-
-// 流水线静态定义来自共享常量；页面只负责交互，不再重复维护步骤元数据。
 const pipelineSteps = PIPELINE_STEPS
 
-// 当用户选择从中间步骤开始时，只要求填写当前步骤真正依赖的前序结果。
-const requiredPrevStepIndices = computed(() => {
-  if (startStep.value === 0) return []
-  const step = pipelineSteps[startStep.value]
-  if (!step) return []
-  return (step.deps ?? [])
-    .map(name => pipelineSteps.findIndex(s => s.name === name))
-    .filter(idx => idx >= 0)
-})
-
-const requiredStepLabels = computed(() =>
-  requiredPrevStepIndices.value
-    .map(idx => pipelineSteps[idx]?.label)
-    .filter(Boolean)
-    .join('、')
+const selectedStepIndex = computed(() =>
+  Math.max(0, pipelineSteps.findIndex(step => step.name === selectedNodeName.value)),
 )
 
-// 展示层状态统一从 activeTask 推导，避免维护额外的步骤状态副本。
-function getStepStatus(idx: number): string {
-  if (!activeTask.value) return 'pending'
-  return idx < activeTask.value.current_step
-    ? 'done'
-    : idx === activeTask.value.current_step
-      ? activeTask.value.status === 'running'
-        ? 'running'
-        : activeTask.value.status === 'completed'
-          ? 'done'
-          : 'ready'
-      : 'pending'
+const selectedStep = computed(() => pipelineSteps[selectedStepIndex.value] ?? pipelineSteps[0]!)
+const selectedStepLabel = computed(() => selectedStep.value.label)
+const selectedStepName = computed(() => selectedStep.value.name)
+
+const selectedPrevStepIndices = computed(() =>
+  (selectedStep.value.deps ?? [])
+    .map(name => pipelineSteps.findIndex(step => step.name === name))
+    .filter(index => index >= 0),
+)
+
+const activeAgentName = computed(() => {
+  if (!activeTask.value || activeTask.value.status !== 'running') return ''
+  return pipelineSteps[activeTask.value.current_step]?.name ?? ''
+})
+
+function isStepCompleted(task: Task | null, stepIndex: number): boolean {
+  if (!task) return false
+  return stepIndex < task.current_step || (task.status === 'completed' && stepIndex === task.current_step)
 }
 
-function getStepStatusText(idx: number): string {
-  if (!activeTask.value) return '等待中'
-  return getTaskStepStatusText(activeTask.value, idx)
-}
+const isSelectedCompleted = computed(() => isStepCompleted(activeTask.value, selectedStepIndex.value))
 
-function getStepResult(idx: number): string {
+const selectedStatusText = computed(() => {
+  if (!activeTask.value) return '未创建'
+  if (activeTask.value.status === 'running' && activeTask.value.current_step === selectedStepIndex.value) return '运行中'
+  if (isSelectedCompleted.value) return '已完成'
+  if (activeTask.value.current_step === selectedStepIndex.value) return '待执行'
+  if (selectedStepIndex.value > activeTask.value.current_step) return '等待上游'
+  return '已完成'
+})
+
+const selectedStatusBadgeClass = computed(() => {
+  if (!activeTask.value) return 'badge-muted'
+  if (activeTask.value.status === 'running' && activeTask.value.current_step === selectedStepIndex.value) return 'badge-warning'
+  if (activeTask.value.errors.length > 0 && activeTask.value.current_step === selectedStepIndex.value) return 'badge-danger'
+  if (isSelectedCompleted.value) return 'badge-success'
+  return 'badge-muted'
+})
+
+const selectedTokenUsage = computed(() =>
+  activeTask.value?.token_usage_by_step?.[String(selectedStepIndex.value)]?.total_tokens ?? 0,
+)
+
+const canRunSelectedNode = computed(() =>
+  !!activeTask.value &&
+  activeTask.value.current_step === selectedStepIndex.value &&
+  activeTask.value.status !== 'running' &&
+  activeTask.value.status !== 'completed',
+)
+
+const canCancelSelectedNode = computed(() =>
+  !!activeTask.value &&
+  activeTask.value.current_step === selectedStepIndex.value &&
+  activeTask.value.status === 'running',
+)
+
+const selectedMessages = computed<TaskMessage[]>(() => {
+  if (!activeTask.value) return []
+  const nodeName = selectedStepName.value
+  return activeTask.value.messages.filter(
+    message => message.sender === nodeName || message.receiver === nodeName,
+  )
+})
+
+const selectedEffectiveInput = computed(() => {
   if (!activeTask.value) return ''
-  return activeTask.value.step_results[String(idx)] || ''
-}
-
-function getStepTokenUsage(idx: number): { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null {
-  if (!activeTask.value) return null
-  return activeTask.value.token_usage_by_step?.[String(idx)] ?? null
-}
-
-function startEdit(idx: number) {
-  editingStep.value = idx
-  editContent.value = getStepResult(idx)
-}
-
-function cancelEdit() {
-  editingStep.value = null
-  editContent.value = ''
-}
-
-function getRevisionInstruction(idx: number): string {
-  if (!activeTask.value) return ''
-  return revisionInstructions.value[`${activeTask.value.id}-${idx}`] || ''
-}
-
-function setRevisionInstruction(idx: number, value: string) {
-  if (!activeTask.value) return
-  revisionInstructions.value[`${activeTask.value.id}-${idx}`] = value
-}
-
-async function saveEdit(idx: number) {
-  if (!activeTask.value) return
-  try {
-    const updated = await api.updateStepResult(activeTask.value.id, idx, editContent.value)
-    activeTask.value = updated
-    editingStep.value = null
-    editContent.value = ''
-  } catch (e) {
-    alert('保存失败: ' + (e instanceof Error ? e.message : String(e)))
+  const parts: string[] = []
+  if (activeTask.value.content) {
+    parts.push(`【用户输入】\n${activeTask.value.content}`)
   }
+  for (const depIdx of selectedPrevStepIndices.value) {
+    const depName = pipelineSteps[depIdx]?.name
+    const depLabel = pipelineSteps[depIdx]?.label
+    const depOutput = activeTask.value.step_results[String(depIdx)] || ''
+    if (depName && depOutput) {
+      parts.push(`【${depLabel}】\n${depOutput}`)
+    }
+  }
+  return parts.join('\n\n')
+})
+
+function selectNode(nodeName: string) {
+  selectedNodeName.value = nodeName
 }
 
-async function reviseStep(idx: number) {
-  if (!activeTask.value) return
-  const instruction = getRevisionInstruction(idx).trim()
-  if (!instruction) {
-    alert('请先填写额外修订要求')
+function syncDrafts() {
+  if (!activeTask.value) {
+    taskContentDraft.value = newTaskContent.value
+    outputDraft.value = ''
+    revisionDraft.value = ''
+    dependencyDrafts.value = {}
     return
   }
-  runningStep.value = true
-  try {
-    const updated = await api.reviseStep(activeTask.value.id, idx, instruction)
-    activeTask.value = updated
-    startSingleTaskPolling(updated.id, task => {
-      activeTask.value = task
-    })
-  } catch (e) {
-    alert('重生成失败: ' + (e instanceof Error ? e.message : String(e)))
-  } finally {
-    runningStep.value = false
+  taskContentDraft.value = activeTask.value.content
+  outputDraft.value = activeTask.value.step_results[String(selectedStepIndex.value)] || ''
+  revisionDraft.value = ''
+  const nextDrafts: Record<string, string> = {}
+  for (const depIdx of selectedPrevStepIndices.value) {
+    nextDrafts[String(depIdx)] = activeTask.value.step_results[String(depIdx)] || ''
   }
+  dependencyDrafts.value = nextDrafts
 }
 
-// 创建任务阶段只做参数校验与预填充，不会自动开始运行步骤。
-async function createTask() {
+watch([activeTask, selectedNodeName], syncDrafts, { immediate: true })
+
+function getDependencyDraft(stepIndex: number): string {
+  return dependencyDrafts.value[String(stepIndex)] || ''
+}
+
+function setDependencyDraft(stepIndex: number, value: string) {
+  dependencyDrafts.value[String(stepIndex)] = value
+}
+
+async function createTaskFromSelectedNode() {
   const content = newTaskContent.value.trim()
-  if (!content) return
-  // 检查依赖步骤的输入是否都已填写
-  if (startStep.value > 0) {
-    for (const idx of requiredPrevStepIndices.value) {
-      if (!stepInputs.value[String(idx)]?.trim()) {
-        alert(`请填写「${pipelineSteps[idx]?.label}」的输出内容`)
-        return
-      }
+  if (!content) {
+    alert('请先填写任务原始输入')
+    return
+  }
+  for (const depIdx of selectedPrevStepIndices.value) {
+    if (!stepInputs.value[String(depIdx)]?.trim()) {
+      alert(`请填写「${pipelineSteps[depIdx]?.label}」的输出内容`)
+      return
     }
   }
   creating.value = true
   try {
     const task = await api.createTask(content, {
-      startStep: startStep.value,
-      stepInputs: startStep.value > 0 ? stepInputs.value : undefined,
+      startStep: selectedStepIndex.value,
+      stepInputs: selectedPrevStepIndices.value.length > 0 ? stepInputs.value : undefined,
     })
-    newTaskContent.value = ''
-    startStep.value = 0
-    stepInputs.value = {}
     activeTask.value = task
-  } catch (e) {
-    alert('创建任务失败: ' + (e instanceof Error ? e.message : String(e)))
+    taskContentDraft.value = task.content
+  } catch (error) {
+    alert('创建任务失败: ' + (error instanceof Error ? error.message : String(error)))
   } finally {
     creating.value = false
   }
 }
 
-function setStartStep(idx: number) {
-  startStep.value = idx
-  // 切换起始步骤时收缩输入集，只保留新步骤仍然需要的依赖内容。
-  const newInputs: Record<string, string> = {}
-  if (idx > 0) {
-    const step = pipelineSteps[idx]
-    if (step) {
-      for (const depName of step.deps ?? []) {
-        const depIdx = pipelineSteps.findIndex(s => s.name === depName)
-        if (depIdx >= 0) {
-          newInputs[String(depIdx)] = stepInputs.value[String(depIdx)] || ''
-        }
-      }
-    }
+async function saveTaskContent() {
+  if (!activeTask.value) return
+  try {
+    activeTask.value = await api.updateTaskContent(activeTask.value.id, taskContentDraft.value)
+  } catch (error) {
+    alert('保存任务输入失败: ' + (error instanceof Error ? error.message : String(error)))
   }
-  stepInputs.value = newInputs
 }
 
-async function runStep() {
+async function saveDependencyOutput(stepIndex: number) {
+  if (!activeTask.value) return
+  try {
+    activeTask.value = await api.updateStepResult(
+      activeTask.value.id,
+      stepIndex,
+      getDependencyDraft(stepIndex),
+    )
+  } catch (error) {
+    alert('保存上游输出失败: ' + (error instanceof Error ? error.message : String(error)))
+  }
+}
+
+async function saveSelectedOutput() {
+  if (!activeTask.value) return
+  try {
+    activeTask.value = await api.updateStepResult(
+      activeTask.value.id,
+      selectedStepIndex.value,
+      outputDraft.value,
+    )
+  } catch (error) {
+    alert('保存节点输出失败: ' + (error instanceof Error ? error.message : String(error)))
+  }
+}
+
+async function runSelectedNode() {
   if (!activeTask.value) return
   runningStep.value = true
   try {
     const updated = await api.runStep(activeTask.value.id)
     activeTask.value = updated
-    // 轮询只在后台步骤真正开始后接管，避免页面自己维护额外状态机。
-    if (updated.status === 'running') {
-      startSingleTaskPolling(updated.id, task => {
-        activeTask.value = task
-      })
-    }
-  } catch (e) {
-    alert('执行步骤失败: ' + (e instanceof Error ? e.message : String(e)))
+    await pollTaskUntilIdle(updated.id)
+  } catch (error) {
+    alert('执行节点失败: ' + (error instanceof Error ? error.message : String(error)))
+  } finally {
+    runningStep.value = false
+  }
+}
+
+async function reviseSelectedNode() {
+  if (!activeTask.value) return
+  if (!revisionDraft.value.trim()) {
+    alert('请先填写反馈要求')
+    return
+  }
+  runningStep.value = true
+  try {
+    const updated = await api.reviseStep(activeTask.value.id, selectedStepIndex.value, revisionDraft.value)
+    activeTask.value = updated
+    await pollTaskUntilIdle(updated.id)
+  } catch (error) {
+    alert('重生成失败: ' + (error instanceof Error ? error.message : String(error)))
   } finally {
     runningStep.value = false
   }
@@ -389,31 +454,37 @@ async function runStep() {
 async function cancelTask() {
   if (!activeTask.value) return
   try {
-    const updated = await api.cancelTask(activeTask.value.id)
-    activeTask.value = updated
-  } catch (e) {
-    alert('终止任务失败: ' + (e instanceof Error ? e.message : String(e)))
+    activeTask.value = await api.cancelTask(activeTask.value.id)
+  } catch (error) {
+    alert('终止任务失败: ' + (error instanceof Error ? error.message : String(error)))
+  }
+}
+
+async function pollTaskUntilIdle(taskId: string) {
+  while (true) {
+    const latest = await api.getTask(taskId)
+    activeTask.value = latest
+    if (latest.status !== 'running') return
+    await new Promise(resolve => setTimeout(resolve, 1200))
   }
 }
 
 onMounted(async () => {
-  // 页面初始化分两段：先拉静态流水线信息，再恢复最近一个未完成任务。
   try {
     const info = await api.getPipeline()
     agentDefs.value = info.agents
-  } catch (e) {
-    console.error('Failed to load pipeline info:', e)
+  } catch (error) {
+    console.error('Failed to load pipeline info:', error)
   }
-  // 如果有最近的任务，加载它
+
   try {
     const tasks = await api.getTasks()
     const lastTask = tasks[tasks.length - 1]
-    if (lastTask && (lastTask.status === 'pending' || lastTask.status === 'paused' || lastTask.status === 'running')) {
+    if (lastTask && ['pending', 'paused', 'running'].includes(lastTask.status)) {
       activeTask.value = lastTask
+      selectedNodeName.value = pipelineSteps[lastTask.current_step]?.name ?? selectedNodeName.value
       if (lastTask.status === 'running') {
-        startSingleTaskPolling(lastTask.id, task => {
-          activeTask.value = task
-        })
+        await pollTaskUntilIdle(lastTask.id)
       }
     }
   } catch {
@@ -423,128 +494,104 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.step-list {
+.pipeline-header {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.step-item {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  transition: border-color 0.2s;
-}
-.step-item.step-active {
-  border-color: var(--primary-hover);
-  background: rgba(247, 99, 12, 0.05);
-}
-.step-item.step-done {
-  border-color: var(--success);
-  background: rgba(93, 211, 158, 0.04);
-}
-.step-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.step-index {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
-  background: var(--border);
-}
-.step-active .step-index { background: var(--primary-hover); }
-.step-done .step-index { background: var(--success); }
-.step-name {
-  font-weight: 600;
-  font-size: 13px;
-}
-.step-status {
-  margin-left: auto;
-  font-size: 11px;
-  font-weight: 500;
-}
-.step-status-done { color: var(--success); }
-.step-status-running { color: var(--primary-hover); }
-.step-status-ready { color: var(--warning); }
-.step-status-pending { color: var(--text-muted); }
-.step-result {
-  margin-top: 8px;
-}
-.step-revise-box {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px dashed var(--border);
-}
-.step-result-preview {
-  background: var(--bg-input);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px;
-  font-size: 11px;
-  font-family: monospace;
-  max-height: 200px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  margin: 0;
-}
-.step-running {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  color: var(--primary-hover);
-  font-size: 12px;
-}
-.pulse-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--primary-hover);
-  animation: pulse 1.2s infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-.badge-info {
-  background: rgba(99,102,241,0.12);
-  color: var(--primary-hover);
-}
-.step-token-badge {
-  margin-left: 8px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 500;
-  background: rgba(245,158,11,0.12);
-  color: #d97706;
-}
-.token-summary-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: rgba(245,158,11,0.06);
-  border: 1px solid rgba(245,158,11,0.2);
-  border-radius: var(--radius);
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
   margin-bottom: 12px;
 }
-.token-summary-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #d97706;
+
+.pipeline-header__meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
-.token-summary-value {
+
+.pipeline-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(340px, 0.95fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.pipeline-canvas,
+.pipeline-panel {
+  min-width: 0;
+}
+
+.pipeline-panel {
+  position: sticky;
+  top: 18px;
+}
+
+.node-section {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.node-section__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 10px;
+}
+
+.node-section__header h4 {
   font-size: 13px;
-  font-weight: 700;
-  color: var(--text);
+  font-weight: 800;
+}
+
+.node-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.node-actions--wrap {
+  flex-wrap: wrap;
+}
+
+.node-preview {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-soft);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.node-message {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.node-message__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+@media (max-width: 1180px) {
+  .pipeline-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .pipeline-panel {
+    position: static;
+  }
 }
 </style>

@@ -8,7 +8,13 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from webgal_agent.api.models import CreateTaskRequest, ReviseStepRequest, TaskResponse, UpdateStepRequest
+from webgal_agent.api.models import (
+    CreateTaskRequest,
+    ReviseStepRequest,
+    TaskResponse,
+    UpdateStepRequest,
+    UpdateTaskContentRequest,
+)
 from webgal_agent.api.workflow_definition import PIPELINE_ORDER
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -108,6 +114,19 @@ async def update_step_result(task_id: str, step_index: int, req: UpdateStepReque
     manager = get_task_manager()
     try:
         task = manager.update_step_result(task_id, step_index, req.content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return TaskResponse(**task.to_dict())
+
+
+@router.put("/{task_id}/content", response_model=TaskResponse)
+async def update_task_content(task_id: str, req: UpdateTaskContentRequest) -> TaskResponse:
+    """更新任务原始输入。"""
+    from webgal_agent.api.app import get_task_manager
+
+    manager = get_task_manager()
+    try:
+        task = manager.update_task_content(task_id, req.content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return TaskResponse(**task.to_dict())

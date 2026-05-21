@@ -300,6 +300,22 @@ class TaskManager:
         save_task_to_disk(task, self._task_dir)
         return task
 
+    def update_task_content(self, task_id: str, content: str) -> TaskInfo:
+        """更新任务原始输入内容。"""
+        task = self._tasks.get(task_id)
+        if task is None:
+            raise ValueError(f"任务 {task_id} 不存在")
+        if task.status == "running":
+            raise ValueError("任务正在执行中，无法修改")
+
+        new_content = content.strip()
+        if not new_content:
+            raise ValueError("任务输入不能为空")
+
+        task.content = new_content
+        save_task_to_disk(task, self._task_dir)
+        return task
+
     def get_task(self, task_id: str) -> TaskInfo | None:
         return self._tasks.get(task_id)
 
