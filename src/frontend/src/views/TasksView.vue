@@ -113,6 +113,25 @@
               style="font-size:12px;font-family:monospace"
             />
             <pre v-else class="step-result-preview">{{ getStepResult(task, idx) }}</pre>
+            <div class="step-revise-box">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                <span style="font-size:12px;color:var(--text-muted)">额外修订要求</span>
+                <button
+                  class="btn btn-primary btn-sm"
+                  style="font-size:11px;padding:2px 8px"
+                  :disabled="runningTasks.has(task.id) || !getRevisionInstruction(task.id, idx).trim()"
+                  @click="reviseStep(task.id, idx)"
+                >按反馈重生成</button>
+              </div>
+              <textarea
+                :value="getRevisionInstruction(task.id, idx)"
+                class="form-textarea"
+                rows="3"
+                placeholder="例如：保留结构，但对白更自然，减少解释性旁白。"
+                style="font-size:12px"
+                @input="setRevisionInstruction(task.id, idx, ($event.target as HTMLTextAreaElement).value)"
+              />
+            </div>
           </div>
 
           <!-- 运行中反馈区 -->
@@ -151,6 +170,7 @@ const tasks = ref<Task[]>([])
 const runningTasks = ref(new Set<string>())
 const editingKey = ref<string | null>(null)
 const editContent = ref('')
+const revisionInstructions = ref<Record<string, string>>({})
 const tokenSummary = ref<TokenSummary | null>(null)
 const { startMultiTaskPolling, stopAllMultiPolling } = useTaskPolling()
 
@@ -179,6 +199,14 @@ function cancelEdit() {
   editContent.value = ''
 }
 
+function getRevisionInstruction(taskId: string, idx: number): string {
+  return revisionInstructions.value[`${taskId}-${idx}`] || ''
+}
+
+function setRevisionInstruction(taskId: string, idx: number, value: string) {
+  revisionInstructions.value[`${taskId}-${idx}`] = value
+}
+
 async function saveEdit(taskId: string, idx: number) {
   try {
     const updated = await api.updateStepResult(taskId, idx, editContent.value)
@@ -188,6 +216,30 @@ async function saveEdit(taskId: string, idx: number) {
     editContent.value = ''
   } catch (e) {
     alert('保存失败: ' + (e instanceof Error ? e.message : String(e)))
+  }
+}
+
+async function reviseStep(taskId: string, idx: number) {
+  const instruction = getRevisionInstruction(taskId, idx).trim()
+  if (!instruction) {
+    alert('请先填写额外修订要求')
+    return
+  }
+  runningTasks.value.add(taskId)
+  try {
+    const updated = await api.reviseStep(taskId, idx, instruction)
+    const i = tasks.value.findIndex(t => t.id === taskId)
+    if (i !== -1) tasks.value[i] = updated
+    if (updated.status === 'running') {
+      startMultiTaskPolling(taskId, task => {
+        const index = tasks.value.findIndex(t => t.id === task.id)
+        if (index !== -1) tasks.value[index] = task
+      })
+    }
+  } catch (e) {
+    alert('重生成失败: ' + (e instanceof Error ? e.message : String(e)))
+  } finally {
+    runningTasks.value.delete(taskId)
   }
 }
 
@@ -311,6 +363,11 @@ onUnmounted(() => {
 .step-status-pending { color: var(--text-muted); }
 .step-result {
   margin-top: 8px;
+}
+.step-revise-box {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
 }
 .step-result-preview {
   background: var(--bg-input);

@@ -149,7 +149,47 @@ class TaskManager:
 
         return task
 
-    async def _run_step_background(self, task: TaskInfo) -> None:
+    async def revise_step(self, task_id: str, step_index: int, instruction: str) -> TaskInfo:
+        """按额外引导提示重生成指定已完成步骤。"""
+        task = self._tasks.get(task_id)
+        if task is None:
+            raise ValueError(f"任务 {task_id} 不存在")
+        if self._running_task is not None:
+            raise ValueError("已有任务正在执行中，请等待完成或取消后再试")
+        if task.status == "running":
+            raise ValueError("任务正在执行中，请等待完成")
+        if step_index < 0 or step_index >= task.current_step:
+            raise ValueError(f"步骤索引 {step_index} 无效（已完成步骤: 0~{task.current_step - 1}）")
+
+        cleaned_instruction = instruction.strip()
+        if not cleaned_instruction:
+            raise ValueError("修订提示词不能为空")
+
+        task.discard_from_step(step_index, PIPELINE_ORDER)
+        task.errors = []
+        agent_name = PIPELINE_ORDER[step_index]
+        task.messages.append(
+            Message(
+                type=MessageType.FEEDBACK,
+                sender="user",
+                receiver=agent_name,
+                content=cleaned_instruction,
+                metadata={
+                    "step": agent_name,
+                    "step_index": step_index,
+                    "kind": "revision_instruction",
+                },
+            )
+        )
+        task.status = "running"
+        save_task_to_disk(task, self._task_dir)
+
+        self._running_task = asyncio.create_task(
+            self._run_step_background(task, revision_instruction=cleaned_instruction)
+        )
+        return task
+
+    async def _run_step_background(self, task: TaskInfo, revision_instruction: str | None = None) -> None:
         """在后台执行单步智能体。
 
         这是任务状态流转的关键节点：
@@ -172,7 +212,13 @@ class TaskManager:
             agent = agents[agent_name]
 
             knowledge_contexts = self._build_all_knowledge_contexts()
-            context_content = build_step_input(task, agent_name, step_index, knowledge_contexts)
+            context_content = build_step_input(
+                task,
+                agent_name,
+                step_index,
+                knowledge_contexts,
+                revision_instruction=revision_instruction,
+            )
 
             current_msg = Message(
                 type=MessageType.TASK,
@@ -182,6 +228,7 @@ class TaskManager:
                 metadata={
                     "user_input": task.content,
                     "step": agent_name,
+                    "revision_instruction": revision_instruction or "",
                 },
             )
 
@@ -204,7 +251,7 @@ class TaskManager:
                 task.recalc_token_totals()
 
             # outline_writer 完成后提取标题
-            if agent_name == "outline_writer" and not task.title:
+            if agent_name == "outline_writer":
                 task.title = extract_title(result.content)
 
             # 判断是否全部完成

@@ -102,3 +102,9 @@ class UpdateStepRequest(BaseModel):
     """更新步骤结果请求体。"""
 
     content: str
+
+
+class ReviseStepRequest(BaseModel):
+    """按额外引导提示重生成步骤结果。"""
+
+    instruction: str

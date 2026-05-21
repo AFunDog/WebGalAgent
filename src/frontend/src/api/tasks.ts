@@ -14,6 +14,11 @@ export const tasksApi = {
     }),
   getTask: (id: string) => request<Task>(`/tasks/${id}`),
   runStep: (id: string) => request<Task>(`/tasks/${id}/run-step`, { method: 'POST' }),
+  reviseStep: (id: string, stepIndex: number, instruction: string) =>
+    request<Task>(`/tasks/${id}/steps/${stepIndex}/revise`, {
+      method: 'POST',
+      body: JSON.stringify({ instruction }),
+    }),
   updateStepResult: (id: string, stepIndex: number, content: string) =>
     request<Task>(`/tasks/${id}/steps/${stepIndex}`, {
       method: 'PUT',

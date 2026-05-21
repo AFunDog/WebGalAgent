@@ -124,6 +124,25 @@
               style="font-size:12px;font-family:monospace"
             />
             <pre v-else class="step-result-preview">{{ getStepResult(idx) }}</pre>
+            <div class="step-revise-box">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                <span style="font-size:12px;color:var(--text-muted)">额外修订要求</span>
+                <button
+                  class="btn btn-primary btn-sm"
+                  style="font-size:11px;padding:2px 8px"
+                  :disabled="runningStep || !activeTask || !getRevisionInstruction(idx).trim()"
+                  @click="reviseStep(idx)"
+                >按反馈重生成</button>
+              </div>
+              <textarea
+                :value="getRevisionInstruction(idx)"
+                class="form-textarea"
+                rows="3"
+                placeholder="例如：保留剧情结构，但减少旁白，增强人物对话冲突。"
+                style="font-size:12px"
+                @input="setRevisionInstruction(idx, ($event.target as HTMLTextAreaElement).value)"
+              />
+            </div>
           </div>
 
           <!-- 运行中反馈区 -->
@@ -172,6 +191,7 @@ const runningStep = ref(false)
 const activeTask = ref<Task | null>(null)
 const editingStep = ref<number | null>(null)
 const editContent = ref('')
+const revisionInstructions = ref<Record<string, string>>({})
 const startStep = ref(0)
 const stepInputs = ref<Record<string, string>>({})
 const { startSingleTaskPolling } = useTaskPolling()
@@ -240,6 +260,16 @@ function cancelEdit() {
   editContent.value = ''
 }
 
+function getRevisionInstruction(idx: number): string {
+  if (!activeTask.value) return ''
+  return revisionInstructions.value[`${activeTask.value.id}-${idx}`] || ''
+}
+
+function setRevisionInstruction(idx: number, value: string) {
+  if (!activeTask.value) return
+  revisionInstructions.value[`${activeTask.value.id}-${idx}`] = value
+}
+
 async function saveEdit(idx: number) {
   if (!activeTask.value) return
   try {
@@ -249,6 +279,27 @@ async function saveEdit(idx: number) {
     editContent.value = ''
   } catch (e) {
     alert('保存失败: ' + (e instanceof Error ? e.message : String(e)))
+  }
+}
+
+async function reviseStep(idx: number) {
+  if (!activeTask.value) return
+  const instruction = getRevisionInstruction(idx).trim()
+  if (!instruction) {
+    alert('请先填写额外修订要求')
+    return
+  }
+  runningStep.value = true
+  try {
+    const updated = await api.reviseStep(activeTask.value.id, idx, instruction)
+    activeTask.value = updated
+    startSingleTaskPolling(updated.id, task => {
+      activeTask.value = task
+    })
+  } catch (e) {
+    alert('重生成失败: ' + (e instanceof Error ? e.message : String(e)))
+  } finally {
+    runningStep.value = false
   }
 }
 
@@ -409,6 +460,11 @@ onMounted(async () => {
 .step-status-pending { color: var(--text-muted); }
 .step-result {
   margin-top: 8px;
+}
+.step-revise-box {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
 }
 .step-result-preview {
   background: var(--bg-input);

@@ -75,6 +75,27 @@ class TaskInfo:
             usage.get("total_tokens", 0) for usage in self.token_usage_by_step.values()
         )
 
+    def discard_from_step(self, step_index: int, pipeline_order: list[str]) -> None:
+        """清理某一步及其之后的结果、消息和 token 统计。"""
+        if step_index < 0:
+            return
+
+        self.step_results = {
+            idx: value for idx, value in self.step_results.items() if idx < step_index
+        }
+        self.token_usage_by_step = {
+            idx: value for idx, value in self.token_usage_by_step.items() if idx < step_index
+        }
+
+        affected_agents = set(pipeline_order[step_index:])
+        self.messages = [
+            msg for msg in self.messages
+            if msg.sender not in affected_agents and msg.receiver not in affected_agents
+        ]
+
+        self.current_step = step_index
+        self.recalc_token_totals()
+
     def to_dict(self) -> dict[str, object]:
         return {
             "id": self.id,

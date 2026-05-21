@@ -27,6 +27,18 @@ class StubAgent(Agent):
         )
 
 
+class CapturingStubAgent(StubAgent):
+    """额外记录收到的输入内容。"""
+
+    def __init__(self, name: str, content: str, token_usage: dict[str, int] | None = None) -> None:
+        super().__init__(name, content, token_usage=token_usage)
+        self.last_message: Message | None = None
+
+    async def run(self, message: Message) -> Message:
+        self.last_message = message
+        return await super().run(message)
+
+
 def _make_task_dir() -> Path:
     task_dir = Path("data/temp") / f"pytest_task_manager_{uuid.uuid4().hex[:8]}"
     task_dir.mkdir(parents=True, exist_ok=True)
@@ -115,5 +127,58 @@ async def test_cancel_pending_task_marks_task_cancelled() -> None:
         assert stored is not None
         assert stored.status == "cancelled"
         assert stored.errors[-1] == "任务已被用户终止"
+    finally:
+        shutil.rmtree(task_dir, ignore_errors=True)
+
+
+@pytest.mark.asyncio
+async def test_revise_step_restarts_from_target_step_and_appends_instruction() -> None:
+    task_dir = _make_task_dir()
+    try:
+        manager = TaskManager(task_dir=task_dir)
+        task = await manager.start_task(
+            "把校园故事转换成脚本",
+            start_step=2,
+            step_inputs={
+                "0": "# 初稿标题\n大纲内容",
+                "1": "旧剧本正文",
+            },
+        )
+        task.step_results[2] = "旧 WebGal 脚本"
+        task.current_step = 3
+        task.status = "completed"
+        converter = CapturingStubAgent(
+            "script_converter",
+            "新 WebGal 脚本",
+            {"prompt_tokens": 9, "completion_tokens": 11, "total_tokens": 20},
+        )
+
+        manager._build_agents = lambda task_id="": {  # type: ignore[method-assign]
+            "outline_writer": StubAgent("outline_writer", "unused"),
+            "script_writer": StubAgent("script_writer", "unused"),
+            "script_converter": converter,
+        }
+        manager._build_all_knowledge_contexts = lambda: {}  # type: ignore[method-assign]
+
+        updated = await manager.revise_step(task.id, 2, "请减少旁白，增加对白张力")
+        background_task = manager._running_task
+        assert updated.status == "running"
+        assert updated.current_step == 2
+        assert 2 not in updated.step_results
+        assert background_task is not None
+
+        await background_task
+
+        stored = manager.get_task(task.id)
+        assert stored is not None
+        assert stored.status == "completed"
+        assert stored.current_step == 3
+        assert stored.step_results[2] == "新 WebGal 脚本"
+        assert stored.total_tokens == 20
+        assert converter.last_message is not None
+        assert "【script_writer 的输出】\n旧剧本正文" in converter.last_message.content
+        assert "【本轮修订要求】" in converter.last_message.content
+        assert "请减少旁白，增加对白张力" in converter.last_message.content
+        assert any(msg.type == MessageType.FEEDBACK for msg in stored.messages)
     finally:
         shutil.rmtree(task_dir, ignore_errors=True)

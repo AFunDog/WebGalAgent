@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
 from webgal_agent.api.task_state import TaskInfo
+from webgal_agent.api.workflow_definition import PIPELINE_ORDER
 from webgal_agent.core.message import Message, MessageType
 
 DEFAULT_TASK_DIR = "data/tasks"
@@ -51,12 +54,20 @@ def save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) -
         encoding="utf-8",
     )
 
+    result_file = task_path / "result.txt"
     if task.messages:
         (task_path / "result.txt").write_text(task.messages[-1].content, encoding="utf-8")
+    elif result_file.exists():
+        result_file.unlink()
 
-    for i, msg in enumerate(task.messages):
-        if msg.type == MessageType.RESULT:
-            (task_path / f"step_{i + 1}_{msg.sender}.txt").write_text(msg.content, encoding="utf-8")
+    for old_step_file in task_path.glob("step_*_*.txt"):
+        with suppress(OSError, PermissionError):
+            os.chmod(old_step_file, 0o666)
+            old_step_file.unlink()
+
+    for step_index, content in sorted(task.step_results.items()):
+        agent_name = PIPELINE_ORDER[step_index] if step_index < len(PIPELINE_ORDER) else str(step_index)
+        (task_path / f"step_{step_index + 1}_{agent_name}.txt").write_text(content, encoding="utf-8")
 
     return task_path
 

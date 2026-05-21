@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
-from webgal_agent.api.models import CreateTaskRequest, TaskResponse, UpdateStepRequest
+from webgal_agent.api.models import CreateTaskRequest, ReviseStepRequest, TaskResponse, UpdateStepRequest
 from webgal_agent.api.workflow_definition import PIPELINE_ORDER
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -108,6 +108,19 @@ async def update_step_result(task_id: str, step_index: int, req: UpdateStepReque
     manager = get_task_manager()
     try:
         task = manager.update_step_result(task_id, step_index, req.content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return TaskResponse(**task.to_dict())
+
+
+@router.post("/{task_id}/steps/{step_index}/revise", response_model=TaskResponse)
+async def revise_step(task_id: str, step_index: int, req: ReviseStepRequest) -> TaskResponse:
+    """按额外引导提示重生成某一步。"""
+    from webgal_agent.api.app import get_task_manager
+
+    manager = get_task_manager()
+    try:
+        task = await manager.revise_step(task_id, step_index, req.instruction)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return TaskResponse(**task.to_dict())

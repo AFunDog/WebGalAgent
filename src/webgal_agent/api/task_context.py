@@ -68,6 +68,7 @@ def build_step_input(
     agent_name: str,
     step_index: int,
     knowledge_contexts: dict[str, str],
+    revision_instruction: str | None = None,
 ) -> str:
     """构建当前步骤给 agent 的输入文本。"""
     context_parts: list[str] = []
@@ -87,5 +88,12 @@ def build_step_input(
         prev_output = task.step_results.get(idx, "")
         if prev_output:
             context_parts.append(f"【{prev_name} 的输出】\n{prev_output}")
+
+    if revision_instruction:
+        context_parts.append(
+            "【本轮修订要求】\n"
+            "请基于已有上下文重新生成当前步骤结果，并严格响应下面的额外要求。\n"
+            f"{revision_instruction}"
+        )
 
     return "\n\n".join(context_parts) if context_parts else task.content
