@@ -3,32 +3,37 @@
     <h2 class="page-title">任务历史</h2>
 
     <!-- 顶部汇总：跨任务统计整体 token 消耗 -->
-    <div v-if="tokenSummary && tokenSummary.total_tokens > 0" class="card" style="margin-bottom:16px">
-      <div class="card-header"><h3>Token 消耗统计</h3></div>
-      <div class="token-stats-grid">
-        <div class="token-stat-item">
-          <div class="token-stat-value">{{ formatTokenCount(tokenSummary.total_tokens) }}</div>
-          <div class="token-stat-label">总消耗</div>
+    <details v-if="tokenSummary && tokenSummary.total_tokens > 0" class="details-panel" style="margin-bottom:12px">
+      <summary>
+        <span>Token 消耗统计</span>
+        <span class="summary-chevron">▶</span>
+      </summary>
+      <div class="details-panel__body">
+        <div class="token-stats-grid">
+          <div class="token-stat-item">
+            <div class="token-stat-value">{{ formatTokenCount(tokenSummary.total_tokens) }}</div>
+            <div class="token-stat-label">总消耗</div>
+          </div>
+          <div class="token-stat-item">
+            <div class="token-stat-value">{{ formatTokenCount(tokenSummary.total_prompt_tokens) }}</div>
+            <div class="token-stat-label">输入</div>
+          </div>
+          <div class="token-stat-item">
+            <div class="token-stat-value">{{ formatTokenCount(tokenSummary.total_completion_tokens) }}</div>
+            <div class="token-stat-label">输出</div>
+          </div>
+          <div class="token-stat-item">
+            <div class="token-stat-value">{{ tokenSummary.total_tasks }}</div>
+            <div class="token-stat-label">任务数</div>
+          </div>
         </div>
-        <div class="token-stat-item">
-          <div class="token-stat-value">{{ formatTokenCount(tokenSummary.total_prompt_tokens) }}</div>
-          <div class="token-stat-label">输入</div>
-        </div>
-        <div class="token-stat-item">
-          <div class="token-stat-value">{{ formatTokenCount(tokenSummary.total_completion_tokens) }}</div>
-          <div class="token-stat-label">输出</div>
-        </div>
-        <div class="token-stat-item">
-          <div class="token-stat-value">{{ tokenSummary.total_tasks }}</div>
-          <div class="token-stat-label">任务数</div>
+        <div v-if="Object.keys(tokenSummary.by_step).length > 0" class="token-by-step">
+          <span v-for="(usage, name) in tokenSummary.by_step" :key="name" class="token-step-badge">
+            {{ agentLabel(name) }}: {{ formatTokenCount(usage.total_tokens) }}
+          </span>
         </div>
       </div>
-      <div v-if="Object.keys(tokenSummary.by_step).length > 0" class="token-by-step">
-        <span v-for="(usage, name) in tokenSummary.by_step" :key="name" class="token-step-badge">
-          {{ agentLabel(name) }}: {{ formatTokenCount(usage.total_tokens) }}
-        </span>
-      </div>
-    </div>
+    </details>
 
     <!-- 空状态：当前还没有任何落盘任务 -->
     <div v-if="tasks.length === 0" class="empty-state">
@@ -313,35 +318,35 @@ onUnmounted(() => {
 .step-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 .step-item {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px 16px;
+  padding: 10px 12px;
   transition: border-color 0.2s;
 }
 .step-item.step-active {
   border-color: var(--primary-hover);
-  background: rgba(99,102,241,0.04);
+  background: rgba(247, 99, 12, 0.05);
 }
 .step-item.step-done {
   border-color: var(--success);
-  background: rgba(34,197,94,0.03);
+  background: rgba(93, 211, 158, 0.04);
 }
 .step-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .step-index {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   color: #fff;
   background: var(--border);
@@ -350,11 +355,11 @@ onUnmounted(() => {
 .step-done .step-index { background: var(--success); }
 .step-name {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
 }
 .step-status {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
 }
 .step-status-done { color: var(--success); }
@@ -372,9 +377,9 @@ onUnmounted(() => {
 .step-result-preview {
   background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 8px;
-  font-size: 12px;
+  font-size: 11px;
   font-family: monospace;
   max-height: 200px;
   overflow-y: auto;
@@ -388,7 +393,7 @@ onUnmounted(() => {
   gap: 8px;
   margin-top: 8px;
   color: var(--primary-hover);
-  font-size: 13px;
+  font-size: 12px;
 }
 .pulse-dot {
   width: 8px;
@@ -409,7 +414,7 @@ onUnmounted(() => {
   margin-left: 8px;
   padding: 1px 8px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   background: rgba(245,158,11,0.12);
   color: #d97706;
@@ -417,36 +422,36 @@ onUnmounted(() => {
 .token-stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-top: 8px;
+  gap: 10px;
+  margin-top: 6px;
 }
 .token-stat-item {
   text-align: center;
-  padding: 8px;
+  padding: 8px 6px;
   background: var(--bg-input);
   border-radius: var(--radius);
   border: 1px solid var(--border);
 }
 .token-stat-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text);
 }
 .token-stat-label {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-muted);
   margin-top: 2px;
 }
 .token-by-step {
   display: flex;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 6px;
   flex-wrap: wrap;
 }
 .token-step-badge {
   padding: 2px 10px;
   border-radius: 12px;
-  font-size: 12px;
+  font-size: 11px;
   background: rgba(245,158,11,0.08);
   color: #d97706;
   border: 1px solid rgba(245,158,11,0.2);

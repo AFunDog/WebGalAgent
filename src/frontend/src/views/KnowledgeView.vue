@@ -3,43 +3,48 @@
     <h2 class="page-title">知识库</h2>
 
     <!-- 智能体知识需求：保留系统视角，方便核对知识路由 -->
-    <div v-if="requirements.length > 0" class="card" style="margin-bottom:20px">
-      <div class="card-header"><h3>智能体知识需求</h3></div>
-      <div class="agent-req-grid">
-        <div v-for="req in requirements" :key="req.agent" class="agent-req-item">
-          <div class="agent-req-name">{{ AGENT_LABELS[req.agent] ?? req.agent }}</div>
-          <div class="agent-req-details">
-            <div v-if="req.categories.length">
-              <span class="agent-req-label">分类:</span>
-              <span
-                v-for="cat in req.categories"
-                :key="cat"
-                class="tag tag-clickable"
-                @click="filterByCategory(cat)"
-              >{{ cat }}</span>
-            </div>
-            <div v-if="req.tags.length">
-              <span class="agent-req-label">标签:</span>
-              <span
-                v-for="tag in req.tags"
-                :key="tag"
-                class="tag tag-clickable tag-accent"
-                @click="filterByTag(tag)"
-              >{{ tag }}</span>
-            </div>
-            <div
-              v-if="!req.categories.length && !req.tags.length"
-              style="color:var(--text-muted);font-size:12px"
-            >
-              无筛选 — 加载全部知识
+    <details v-if="requirements.length > 0" class="details-panel" style="margin-bottom:12px">
+      <summary>
+        <span>智能体知识需求</span>
+        <span class="summary-chevron">▶</span>
+      </summary>
+      <div class="details-panel__body">
+        <div class="agent-req-grid">
+          <div v-for="req in requirements" :key="req.agent" class="agent-req-item">
+            <div class="agent-req-name">{{ AGENT_LABELS[req.agent] ?? req.agent }}</div>
+            <div class="agent-req-details">
+              <div v-if="req.categories.length">
+                <span class="agent-req-label">分类:</span>
+                <span
+                  v-for="cat in req.categories"
+                  :key="cat"
+                  class="tag tag-clickable"
+                  @click="filterByCategory(cat)"
+                >{{ cat }}</span>
+              </div>
+              <div v-if="req.tags.length">
+                <span class="agent-req-label">标签:</span>
+                <span
+                  v-for="tag in req.tags"
+                  :key="tag"
+                  class="tag tag-clickable tag-accent"
+                  @click="filterByTag(tag)"
+                >{{ tag }}</span>
+              </div>
+              <div
+                v-if="!req.categories.length && !req.tags.length"
+                style="color:var(--text-muted);font-size:12px"
+              >
+                无筛选，加载全部知识
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </details>
 
     <!-- 筛选工具栏：保留底层 category/tag 过滤，但主浏览方式改为人类可读分组 -->
-    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+    <div class="compact-toolbar">
       <select v-model="filterCategory" class="form-select" style="width:auto">
         <option value="">全部分类</option>
         <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
@@ -53,7 +58,7 @@
       />
       <button class="btn btn-primary btn-sm" @click="loadEntries">筛选</button>
       <button class="btn btn-ghost btn-sm" @click="clearFilter">重置</button>
-      <span style="margin-left:auto;color:var(--text-muted);font-size:13px">
+      <span style="margin-left:auto" class="compact-meta">
         {{ entries.length }} 条记录
       </span>
     </div>
@@ -379,9 +384,9 @@ onMounted(loadAll)
 </script>
 
 <style scoped>
-.tag-filter-row {
-  display: flex;
-  flex-wrap: wrap;
+  .tag-filter-row {
+    display: flex;
+    flex-wrap: wrap;
   gap: 6px;
   align-items: center;
   margin-bottom: 8px;
@@ -398,8 +403,8 @@ onMounted(loadAll)
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 16px;
-}
+    margin-top: 10px;
+  }
 
 .knowledge-tab {
   display: inline-flex;
@@ -441,21 +446,21 @@ onMounted(loadAll)
 .knowledge-section-stack {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .knowledge-group {
   background: rgba(30, 41, 59, 0.42);
   border: 1px solid var(--border);
   border-radius: 12px;
-  padding: 16px;
+  padding: 12px;
 }
 
 .knowledge-group-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .knowledge-group-header h3 {
@@ -478,8 +483,8 @@ onMounted(loadAll)
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px 18px;
-  margin-bottom: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
   cursor: pointer;
   transition: border-color 0.15s;
 }
@@ -503,7 +508,7 @@ onMounted(loadAll)
 }
 
 .knowledge-card-title h3 {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -534,8 +539,8 @@ onMounted(loadAll)
 }
 
 .knowledge-card-preview {
-  margin-top: 8px;
-  font-size: 13px;
+  margin-top: 6px;
+  font-size: 12px;
   color: var(--text-muted);
   line-height: 1.5;
   white-space: nowrap;
@@ -544,8 +549,8 @@ onMounted(loadAll)
 }
 
 .knowledge-card-body {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid var(--border);
 }
 
@@ -558,7 +563,7 @@ onMounted(loadAll)
 
 .knowledge-card-body pre {
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
   white-space: pre-wrap;
   font-family: inherit;
   margin: 0;
@@ -567,19 +572,19 @@ onMounted(loadAll)
 
 .agent-req-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
 }
 
 .agent-req-item {
   background: var(--bg-input);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px 16px;
+  padding: 10px 12px;
 }
 
 .agent-req-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   margin-bottom: 8px;
   color: var(--text);

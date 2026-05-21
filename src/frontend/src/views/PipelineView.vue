@@ -3,17 +3,25 @@
     <h2 class="page-title">流水线</h2>
 
     <!-- 顶部总览：展示固定三步流水线与当前任务的 token 消耗 -->
-    <PipelineGraph
-      :agents="agentDefs"
-      :messages="[]"
-      active-agent=""
-      :token-usage-by-step="activeTask?.token_usage_by_step"
-      style="margin-bottom:24px"
-    />
+    <details class="details-panel" style="margin-bottom:12px">
+      <summary>
+        <span>流水线总览</span>
+        <span class="summary-chevron">▶</span>
+      </summary>
+      <div class="details-panel__body" style="padding:8px">
+        <PipelineGraph
+          :agents="agentDefs"
+          :messages="[]"
+          active-agent=""
+          :token-usage-by-step="activeTask?.token_usage_by_step"
+        />
+      </div>
+    </details>
 
     <!-- 任务创建区：支持从任意步骤开始，并为跳过步骤预填结果 -->
     <div class="card">
       <div class="card-header"><h3>创建新任务</h3></div>
+      <p class="section-intro">只保留必要输入。跳过前序步骤时，才需要补录依赖输出。</p>
       <div class="form-group">
         <label>任务内容</label>
         <textarea
@@ -26,7 +34,7 @@
       </div>
       <div class="form-group">
         <label>起始步骤</label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="compact-toolbar" style="margin-bottom:0">
           <button
             v-for="(step, idx) in pipelineSteps"
             :key="step.name"
@@ -153,7 +161,7 @@
         </div>
       </div>
 
-      <div style="margin-top:12px">
+      <div style="margin-top:10px">
         <!-- 底部摘要：给出当前任务总 token 消耗和历史入口 -->
         <div v-if="activeTask.total_tokens > 0" class="token-summary-bar">
           <span class="token-summary-label">Token 消耗</span>
@@ -164,7 +172,15 @@
             </span>
           </span>
         </div>
-        <router-link :to="{ name: 'tasks' }">查看所有任务历史</router-link>
+        <details class="details-panel">
+          <summary>
+            <span>更多</span>
+            <span class="summary-chevron">▶</span>
+          </summary>
+          <div class="details-panel__body">
+            <router-link :to="{ name: 'tasks' }">查看所有任务历史</router-link>
+          </div>
+        </details>
       </div>
     </div>
 
@@ -410,35 +426,35 @@ onMounted(async () => {
 .step-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 .step-item {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 12px 16px;
+  padding: 10px 12px;
   transition: border-color 0.2s;
 }
 .step-item.step-active {
   border-color: var(--primary-hover);
-  background: rgba(99,102,241,0.04);
+  background: rgba(247, 99, 12, 0.05);
 }
 .step-item.step-done {
   border-color: var(--success);
-  background: rgba(34,197,94,0.03);
+  background: rgba(93, 211, 158, 0.04);
 }
 .step-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 .step-index {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   color: #fff;
   background: var(--border);
@@ -447,11 +463,11 @@ onMounted(async () => {
 .step-done .step-index { background: var(--success); }
 .step-name {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 13px;
 }
 .step-status {
   margin-left: auto;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
 }
 .step-status-done { color: var(--success); }
@@ -469,9 +485,9 @@ onMounted(async () => {
 .step-result-preview {
   background: var(--bg-input);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 8px;
   padding: 8px;
-  font-size: 12px;
+  font-size: 11px;
   font-family: monospace;
   max-height: 200px;
   overflow-y: auto;
@@ -485,7 +501,7 @@ onMounted(async () => {
   gap: 8px;
   margin-top: 8px;
   color: var(--primary-hover);
-  font-size: 13px;
+  font-size: 12px;
 }
 .pulse-dot {
   width: 8px;
@@ -506,7 +522,7 @@ onMounted(async () => {
   margin-left: 8px;
   padding: 1px 8px;
   border-radius: 10px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   background: rgba(245,158,11,0.12);
   color: #d97706;
@@ -522,12 +538,12 @@ onMounted(async () => {
   margin-bottom: 12px;
 }
 .token-summary-label {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   color: #d97706;
 }
 .token-summary-value {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   color: var(--text);
 }

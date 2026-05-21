@@ -12,6 +12,7 @@
     <!-- 录制配置区：聚合 URL、浏览器、画质、音频和游戏覆盖配置 -->
     <div class="card" style="margin-bottom:16px">
       <div class="card-header"><h3>录制配置</h3></div>
+      <p class="section-intro">默认只展示高频配置。调试项、游戏注入项和输出细节已折叠。</p>
 
       <!-- 基础目标配置 -->
       <div class="form-group">
@@ -22,20 +23,6 @@
           class="form-input"
           placeholder="https://example.com"
         />
-      </div>
-
-      <div class="form-group">
-        <label>场景路径 (changeScene)</label>
-        <input
-          v-model="config.scene_path"
-          type="text"
-          class="form-input"
-          placeholder="index.txt"
-          :disabled="config.page_mode !== 'webgal'"
-        />
-        <small style="color:var(--text-muted);font-size:11px">
-          仅 WebGal 模式使用，调用 window.changeScene(path, 1) 时传入的场景文件路径
-        </small>
       </div>
 
       <div class="form-group">
@@ -50,19 +37,6 @@
       </div>
 
       <!-- 停止与定位配置 -->
-      <div class="form-group">
-        <label>停止条件（可选 JS 表达式）</label>
-        <input
-          v-model="config.stop_condition"
-          type="text"
-          class="form-input"
-          placeholder="window.__webgal?.sceneManager?.sceneData?.currentScene?.sceneUrl === './game/scene/start.txt'"
-        />
-        <small style="color:var(--text-muted);font-size:11px">
-          录制期间每 0.5 秒在页面求值，返回 truthy 时提前终止录制
-        </small>
-      </div>
-
       <div class="form-group">
         <label>录制目标选择器</label>
         <input
@@ -121,178 +95,197 @@
       </div>
 
       <!-- 浏览器启动选项 -->
-      <div class="form-group">
-        <label>浏览器类型</label>
-        <select v-model="config.browser_type" class="form-select">
-          <option value="chromium">Chromium</option>
-          <option value="msedge">Edge</option>
-          <option value="firefox">Firefox</option>
-          <option value="webkit">WebKit</option>
-        </select>
-      </div>
-
-      <!-- 音频与游戏配置扩展项 -->
-      <div class="form-group">
-        <label>
-          <input v-model="config.headless" type="checkbox" />
-          无头模式（不显示浏览器窗口）
-        </label>
-      </div>
-
-      <div class="form-group">
-        <label>
+      <div class="compact-toolbar" style="margin-top:4px">
+        <label class="inline-check">
           <input v-model="config.record_audio" type="checkbox" />
-          录制音频（WebAudio + HTMLAudio 全局捕获）
+          录制音频
+        </label>
+        <label class="inline-check">
+          <input v-model="config.headless" type="checkbox" />
+          无头模式
         </label>
       </div>
 
-      <fieldset class="debug-fieldset">
-        <legend>调试模式</legend>
-        <div class="form-group" style="margin-bottom:12px">
-          <label>
+      <details class="details-panel" style="margin-bottom:12px">
+        <summary>
+          <span>高级录制设置</span>
+          <span class="summary-chevron">▶</span>
+        </summary>
+        <div class="details-panel__body">
+          <div class="form-group">
+            <label>场景路径 (changeScene)</label>
             <input
-              :checked="avSyncDebugEnabled"
-              type="checkbox"
-              @change="toggleAvSyncDebug(($event.target as HTMLInputElement).checked)"
-            />
-            启用音画同步调试脉冲
-          </label>
-        </div>
-        <div v-if="avSyncDebugEnabled" class="form-row">
-          <div class="form-group" style="flex:1">
-            <label>触发间隔（秒）</label>
-            <input
-              v-model.number="config.av_sync_debug_interval"
-              type="number"
+              v-model="config.scene_path"
+              type="text"
               class="form-input"
-              min="0.1"
-              step="0.1"
-            />
-          </div>
-          <div class="form-group" style="flex:1">
-            <label>闪屏时长（毫秒）</label>
-            <input
-              v-model.number="config.av_sync_debug_flash_ms"
-              type="number"
-              class="form-input"
-              min="1"
-            />
-          </div>
-        </div>
-        <div v-if="avSyncDebugEnabled" class="form-row">
-          <div class="form-group" style="flex:1">
-            <label>音频脉冲时长（毫秒）</label>
-            <input
-              v-model.number="config.av_sync_debug_tone_ms"
-              type="number"
-              class="form-input"
-              min="1"
-            />
-          </div>
-          <div class="form-group" style="flex:1">
-            <label>音频脉冲频率（Hz）</label>
-            <input
-              v-model.number="config.av_sync_debug_frequency"
-              type="number"
-              class="form-input"
-              min="1"
-              step="1"
-            />
-          </div>
-        </div>
-        <small v-if="avSyncDebugEnabled" class="helper-text" style="margin-bottom:12px">
-          录制期间会周期性触发一次全屏红色闪屏和方波脉冲，便于检查成片中的音画同步。建议同时开启“录制音频”。
-        </small>
-        <div class="form-group" style="margin-bottom:8px">
-          <label>
-            <input v-model="config.save_logs" type="checkbox" />
-            将运行日志保存到输出视频旁边
-          </label>
-        </div>
-        <small class="helper-text">
-          启用后会把 CLI 和录制器输出的运行日志写到输出视频同目录，例如 `record_xxx.mp4.log`
-        </small>
-      </fieldset>
-
-      <fieldset style="border:1px solid var(--border); border-radius:8px; padding:12px 16px; margin-bottom:16px">
-        <legend style="color:var(--text-muted);font-size:13px">游戏配置覆盖（IndexedDB 注入，可选）</legend>
-        <div class="form-row">
-          <div class="form-group" style="flex:1">
-            <label>自动播放速度 (autoSpeed)</label>
-            <input
-              v-model.number="config.game_autoSpeed"
-              type="number"
-              class="form-input"
-              min="1"
-              max="100"
-              placeholder="不修改"
+              placeholder="index.txt"
               :disabled="config.page_mode !== 'webgal'"
             />
           </div>
-          <div class="form-group" style="flex:1">
-            <label>文字显示速度 (textSpeed)</label>
+
+          <div class="form-group">
+            <label>停止条件（可选 JS 表达式）</label>
             <input
-              v-model.number="config.game_textSpeed"
-              type="number"
+              v-model="config.stop_condition"
+              type="text"
               class="form-input"
-              min="1"
-              max="100"
-              placeholder="不修改"
-              :disabled="config.page_mode !== 'webgal'"
+              placeholder="window.__webgal?.sceneManager?.sceneData?.currentScene?.sceneUrl === './game/scene/start.txt'"
+            />
+          </div>
+
+          <div class="form-group">
+            <label>浏览器类型</label>
+            <select v-model="config.browser_type" class="form-select">
+              <option value="chromium">Chromium</option>
+              <option value="msedge">Edge</option>
+              <option value="firefox">Firefox</option>
+              <option value="webkit">WebKit</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>浏览器可执行文件路径（可选）</label>
+            <input
+              v-model="config.executable_path"
+              type="text"
+              class="form-input"
+              placeholder="留空使用默认浏览器"
+            />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label>截图格式</label>
+              <select v-model="config.format" class="form-select">
+                <option value="jpeg">JPEG</option>
+                <option value="png">PNG</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:1">
+              <label>截图质量</label>
+              <input
+                v-model.number="config.quality"
+                type="number"
+                class="form-input"
+                min="1"
+                max="100"
+              />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>输出路径（可选）</label>
+            <input
+              v-model="config.output_path"
+              type="text"
+              class="form-input"
+              placeholder="留空使用默认路径: data/browser/recordings/record_xxx.mp4"
             />
           </div>
         </div>
-        <small style="color:var(--text-muted);font-size:11px">
-          仅 WebGal 模式使用。修改后通过 IndexedDB 注入，调用 loadConfig() 生效。留空则不修改
-        </small>
-      </fieldset>
+      </details>
 
-      <div class="form-group">
-        <label>浏览器可执行文件路径（可选）</label>
-        <input
-          v-model="config.executable_path"
-          type="text"
-          class="form-input"
-          placeholder="留空使用默认浏览器"
-        />
-        <small style="color:var(--text-muted);font-size:11px">
-          如使用 chrome-headless-shell 可获得更好的录制效果
-        </small>
-      </div>
-
-      <!-- 输出质量与落盘位置 -->
-      <div class="form-row">
-        <div class="form-group" style="flex:1">
-          <label>截图格式</label>
-          <select v-model="config.format" class="form-select">
-            <option value="jpeg">JPEG（有损，小文件）</option>
-            <option value="png">PNG（无损，画质最好）</option>
-          </select>
+      <details class="details-panel" style="margin-bottom:12px">
+        <summary>
+          <span>游戏配置覆盖</span>
+          <span class="summary-chevron">▶</span>
+        </summary>
+        <div class="details-panel__body">
+          <div class="form-row">
+            <div class="form-group" style="flex:1">
+              <label>自动播放速度 (autoSpeed)</label>
+              <input
+                v-model.number="config.game_autoSpeed"
+                type="number"
+                class="form-input"
+                min="1"
+                max="100"
+                placeholder="不修改"
+                :disabled="config.page_mode !== 'webgal'"
+              />
+            </div>
+            <div class="form-group" style="flex:1">
+              <label>文字显示速度 (textSpeed)</label>
+              <input
+                v-model.number="config.game_textSpeed"
+                type="number"
+                class="form-input"
+                min="1"
+                max="100"
+                placeholder="不修改"
+                :disabled="config.page_mode !== 'webgal'"
+              />
+            </div>
+          </div>
         </div>
-        <div class="form-group" style="flex:1">
-          <label>截图质量</label>
-          <input
-            v-model.number="config.quality"
-            type="number"
-            class="form-input"
-            min="1"
-            max="100"
-          />
-          <small style="color:var(--text-muted);font-size:11px">
-            1-100，仅 JPEG 格式有效
-          </small>
-        </div>
-      </div>
+      </details>
 
-      <div class="form-group">
-        <label>输出路径（可选）</label>
-        <input
-          v-model="config.output_path"
-          type="text"
-          class="form-input"
-          placeholder="留空使用默认路径: data/browser/recordings/record_xxx.mp4"
-        />
-      </div>
+      <details class="details-panel" style="margin-bottom:16px">
+        <summary>
+          <span>调试模式</span>
+          <span class="summary-chevron">▶</span>
+        </summary>
+        <div class="details-panel__body">
+          <div class="form-group" style="margin-bottom:10px">
+            <label class="inline-check">
+              <input
+                :checked="avSyncDebugEnabled"
+                type="checkbox"
+                @change="toggleAvSyncDebug(($event.target as HTMLInputElement).checked)"
+              />
+              启用音画同步调试脉冲
+            </label>
+          </div>
+          <div v-if="avSyncDebugEnabled" class="form-row">
+            <div class="form-group" style="flex:1">
+              <label>触发间隔（秒）</label>
+              <input
+                v-model.number="config.av_sync_debug_interval"
+                type="number"
+                class="form-input"
+                min="0.1"
+                step="0.1"
+              />
+            </div>
+            <div class="form-group" style="flex:1">
+              <label>闪屏时长（毫秒）</label>
+              <input
+                v-model.number="config.av_sync_debug_flash_ms"
+                type="number"
+                class="form-input"
+                min="1"
+              />
+            </div>
+          </div>
+          <div v-if="avSyncDebugEnabled" class="form-row">
+            <div class="form-group" style="flex:1">
+              <label>音频脉冲时长（毫秒）</label>
+              <input
+                v-model.number="config.av_sync_debug_tone_ms"
+                type="number"
+                class="form-input"
+                min="1"
+              />
+            </div>
+            <div class="form-group" style="flex:1">
+              <label>音频脉冲频率（Hz）</label>
+              <input
+                v-model.number="config.av_sync_debug_frequency"
+                type="number"
+                class="form-input"
+                min="1"
+                step="1"
+              />
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label class="inline-check">
+              <input v-model="config.save_logs" type="checkbox" />
+              保存运行日志
+            </label>
+          </div>
+        </div>
+      </details>
 
       <!-- 操作区：开始后进入状态轮询，停止通过后端子进程控制 -->
       <div style="display:flex;gap:8px">
@@ -633,23 +626,14 @@ function openFile(path: string) {
 <style scoped>
 .form-row {
   display: flex;
-  gap: 16px;
+  gap: 12px;
 }
-.debug-fieldset {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-}
-.debug-fieldset legend {
-  color: var(--text-muted);
-  font-size: 13px;
-}
-.helper-text {
-  display: block;
-  margin-top: 8px;
-  color: var(--text-muted);
-  font-size: 11px;
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-soft);
 }
 .result-info {
   display: flex;
@@ -665,13 +649,13 @@ function openFile(path: string) {
 .result-label {
   min-width: 80px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
 }
 code {
   background: var(--bg-input);
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 12px;
 }
 .progress-bar {
   height: 8px;

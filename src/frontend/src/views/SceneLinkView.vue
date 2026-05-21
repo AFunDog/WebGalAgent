@@ -9,31 +9,34 @@
           {{ loading ? '刷新中...' : '刷新' }}
         </button>
       </div>
-      <div v-if="linkStatus" class="link-status">
-        <div class="status-row">
-          <span class="status-label">链接路径:</span>
-          <code>{{ linkStatus.path }}</code>
-        </div>
-        <div class="status-row">
-          <span class="status-label">存在:</span>
-          <span :class="linkStatus.exists ? 'text-success' : 'text-muted'">
-            {{ linkStatus.exists ? '是' : '否' }}
+      <div v-if="linkStatus" class="stack-tight">
+        <div class="status-pills">
+          <span class="badge" :class="linkStatus.exists ? 'badge-success' : 'badge-muted'">
+            {{ linkStatus.exists ? '路径存在' : '路径不存在' }}
+          </span>
+          <span class="badge" :class="linkStatus.valid ? 'badge-success' : 'badge-danger'">
+            {{ linkStatus.valid ? '链接有效' : '链接无效' }}
+          </span>
+          <span class="badge badge-muted">
+            {{ linkStatus.is_symlink ? '符号链接' : (linkStatus.exists ? '普通目录' : '未创建') }}
           </span>
         </div>
-        <div class="status-row">
-          <span class="status-label">类型:</span>
-          <span>{{ linkStatus.is_symlink ? '符号链接' : (linkStatus.exists ? '普通目录' : '-') }}</span>
-        </div>
-        <div v-if="linkStatus.target" class="status-row">
-          <span class="status-label">指向:</span>
-          <code>{{ linkStatus.target }}</code>
-        </div>
-        <div class="status-row">
-          <span class="status-label">有效:</span>
-          <span :class="linkStatus.valid ? 'text-success' : 'text-danger'">
-            {{ linkStatus.valid ? '是' : '否' }}
-          </span>
-        </div>
+        <details class="details-panel">
+          <summary>
+            <span>查看完整路径信息</span>
+            <span class="summary-chevron">▶</span>
+          </summary>
+          <div class="details-panel__body link-status">
+            <div class="status-row">
+              <span class="status-label">链接路径</span>
+              <code>{{ linkStatus.path }}</code>
+            </div>
+            <div v-if="linkStatus.target" class="status-row">
+              <span class="status-label">当前指向</span>
+              <code>{{ linkStatus.target }}</code>
+            </div>
+          </div>
+        </details>
       </div>
       <div v-else class="empty-state">
         <p>加载中...</p>
@@ -216,11 +219,16 @@ onMounted(async () => {
   gap: 12px;
 }
 .status-label {
-  min-width: 80px;
+  min-width: 68px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
 }
 .quick-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.status-pills {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -229,7 +237,8 @@ code {
   background: var(--bg-input);
   padding: 2px 8px;
   border-radius: 4px;
-  font-size: 13px;
+  font-size: 12px;
+  word-break: break-all;
 }
 .text-success {
   color: var(--success);

@@ -1,7 +1,7 @@
 <template>
   <div>
     <h2 class="page-title">提供商配置</h2>
-    <p style="color:var(--text-muted);font-size:14px;margin-bottom:20px">
+    <p class="section-intro">
       配置每个智能体使用的 LLM 提供商、模型和参数。未单独配置的智能体将使用默认配置。
     </p>
 
@@ -11,11 +11,20 @@
         <h3>默认配置</h3>
         <button class="btn btn-ghost btn-sm" @click="openEdit('__defaults__')">编辑</button>
       </div>
-      <ProviderFields :config="defaults" />
+      <div class="compact-meta" style="margin-bottom:8px">{{ defaults.provider }} / {{ defaults.model }}</div>
+      <details class="details-panel">
+        <summary>
+          <span>查看默认配置明细</span>
+          <span class="summary-chevron">▶</span>
+        </summary>
+        <div class="details-panel__body">
+          <ProviderFields :config="defaults" />
+        </div>
+      </details>
     </div>
 
     <!-- 智能体配置 -->
-    <h3 style="margin:24px 0 16px;font-size:16px">智能体配置</h3>
+    <h3 style="margin:18px 0 10px;font-size:14px">智能体配置</h3>
     <div v-for="(cfg, name) in agents" :key="name" class="card">
       <div class="card-header">
         <h3>{{ AGENT_LABELS[name] ?? name }}</h3>
@@ -24,7 +33,15 @@
           <button class="btn btn-ghost btn-sm" @click="openEdit(name)">编辑</button>
         </div>
       </div>
-      <ProviderFields :config="cfg" />
+      <details class="details-panel">
+        <summary>
+          <span>查看该智能体配置明细</span>
+          <span class="summary-chevron">▶</span>
+        </summary>
+        <div class="details-panel__body">
+          <ProviderFields :config="cfg" />
+        </div>
+      </details>
     </div>
 
     <!-- 编辑模态框 -->
