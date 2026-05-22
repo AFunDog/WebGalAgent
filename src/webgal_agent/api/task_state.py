@@ -32,6 +32,7 @@ class AgentInfoDict(TypedDict):
     state: str
     provider: str
     model: str
+    tools: list[dict[str, str]]
 
 
 class WorkflowInfoDict(TypedDict):

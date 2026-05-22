@@ -21,6 +21,7 @@
         </div>
         <PipelineGraph
           :agents="agentDefs"
+          :knowledge-requirements="knowledgeRequirements"
           :messages="activeTask?.messages ?? []"
           :active-agent="activeAgentName"
           :selected-node="selectedNodeName"
@@ -43,6 +44,46 @@
 
         <template v-if="!activeTask">
           <div class="stack-tight">
+            <section class="node-section node-section--summary">
+              <div class="node-section__header">
+                <h4>节点资源</h4>
+                <span class="compact-meta">执行前可见的知识与工具</span>
+              </div>
+              <div class="resource-grid">
+                <div class="resource-block">
+                  <div class="resource-block__label">知识库输入</div>
+                  <div v-if="selectedKnowledgeCategories.length || selectedKnowledgeTags.length" class="resource-chip-list">
+                    <span
+                      v-for="category in selectedKnowledgeCategories"
+                      :key="`create-category-${category}`"
+                      class="tag tag-subtle"
+                    >
+                      分类 · {{ category }}
+                    </span>
+                    <span
+                      v-for="tag in selectedKnowledgeTags"
+                      :key="`create-tag-${tag}`"
+                      class="tag tag-accent tag-subtle"
+                    >
+                      标签 · {{ tag }}
+                    </span>
+                  </div>
+                  <div v-else class="compact-meta">当前节点未声明额外知识库筛选条件。</div>
+                </div>
+
+                <div class="resource-block">
+                  <div class="resource-block__label">可调用工具</div>
+                  <div v-if="selectedTools.length" class="resource-tool-list">
+                    <div v-for="tool in selectedTools" :key="`create-tool-${tool.name}`" class="resource-tool-item">
+                      <div class="resource-tool-item__title">{{ tool.name }}</div>
+                      <div class="compact-meta">{{ tool.description || '未提供工具说明' }}</div>
+                    </div>
+                  </div>
+                  <div v-else class="compact-meta">当前节点没有额外工具。</div>
+                </div>
+              </div>
+            </section>
+
             <div class="form-group">
               <label>任务原始输入</label>
               <textarea
@@ -79,6 +120,46 @@
 
         <template v-else>
           <div class="stack-tight">
+            <section class="node-section node-section--summary">
+              <div class="node-section__header">
+                <h4>节点资源</h4>
+                <span class="compact-meta">本节点会读取的知识库和可调用工具</span>
+              </div>
+              <div class="resource-grid">
+                <div class="resource-block">
+                  <div class="resource-block__label">知识库输入</div>
+                  <div v-if="selectedKnowledgeCategories.length || selectedKnowledgeTags.length" class="resource-chip-list">
+                    <span
+                      v-for="category in selectedKnowledgeCategories"
+                      :key="`category-${category}`"
+                      class="tag tag-subtle"
+                    >
+                      分类 · {{ category }}
+                    </span>
+                    <span
+                      v-for="tag in selectedKnowledgeTags"
+                      :key="`tag-${tag}`"
+                      class="tag tag-accent tag-subtle"
+                    >
+                      标签 · {{ tag }}
+                    </span>
+                  </div>
+                  <div v-else class="compact-meta">当前节点未声明额外知识库筛选条件。</div>
+                </div>
+
+                <div class="resource-block">
+                  <div class="resource-block__label">可调用工具</div>
+                  <div v-if="selectedTools.length" class="resource-tool-list">
+                    <div v-for="tool in selectedTools" :key="tool.name" class="resource-tool-item">
+                      <div class="resource-tool-item__title">{{ tool.name }}</div>
+                      <div class="compact-meta">{{ tool.description || '未提供工具说明' }}</div>
+                    </div>
+                  </div>
+                  <div v-else class="compact-meta">当前节点没有额外工具。</div>
+                </div>
+              </div>
+            </section>
+
             <section class="node-section">
               <div class="node-section__header">
                 <h4>节点输入</h4>
@@ -223,10 +304,11 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import PipelineGraph from '../components/PipelineGraph.vue'
 import { PIPELINE_STEPS } from '../constants/pipeline'
-import type { AgentInfo, Task, TaskMessage } from '../types'
+import type { AgentInfo, AgentKnowledgeRequirements, AgentToolInfo, Task, TaskMessage } from '../types'
 import { formatTokenCount, statusBadgeClass, statusLabel } from '../utils/taskDisplay'
 
 const agentDefs = ref<AgentInfo[]>([])
+const knowledgeRequirements = ref<AgentKnowledgeRequirements[]>([])
 const activeTask = ref<Task | null>(null)
 const selectedNodeName = ref(PIPELINE_STEPS[0]?.name ?? 'outline_writer')
 const newTaskContent = ref('')
@@ -247,6 +329,15 @@ const selectedStepIndex = computed(() =>
 const selectedStep = computed(() => pipelineSteps[selectedStepIndex.value] ?? pipelineSteps[0]!)
 const selectedStepLabel = computed(() => selectedStep.value.label)
 const selectedStepName = computed(() => selectedStep.value.name)
+const selectedAgent = computed(() =>
+  agentDefs.value.find(agent => agent.name === selectedStepName.value) ?? null,
+)
+const selectedKnowledgeRequirement = computed(() =>
+  knowledgeRequirements.value.find(item => item.agent === selectedStepName.value) ?? null,
+)
+const selectedKnowledgeCategories = computed(() => selectedKnowledgeRequirement.value?.categories ?? [])
+const selectedKnowledgeTags = computed(() => selectedKnowledgeRequirement.value?.tags ?? [])
+const selectedTools = computed<AgentToolInfo[]>(() => selectedAgent.value?.tools ?? [])
 
 const selectedPrevStepIndices = computed(() =>
   (selectedStep.value.deps ?? [])
@@ -471,8 +562,12 @@ async function pollTaskUntilIdle(taskId: string) {
 
 onMounted(async () => {
   try {
-    const info = await api.getPipeline()
+    const [info, requirements] = await Promise.all([
+      api.getPipeline(),
+      api.getAgentRequirements(),
+    ])
     agentDefs.value = info.agents
+    knowledgeRequirements.value = requirements
   } catch (error) {
     console.error('Failed to load pipeline info:', error)
   }
@@ -546,6 +641,58 @@ onMounted(async () => {
   font-weight: 800;
 }
 
+.node-section--summary {
+  background:
+    linear-gradient(180deg, rgba(247, 99, 12, 0.06), rgba(255, 255, 255, 0.015));
+  border-color: rgba(247, 99, 12, 0.14);
+}
+
+.resource-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.resource-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resource-block__label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffb488;
+}
+
+.resource-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.resource-tool-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resource-tool-item {
+  padding: 10px 11px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+}
+
+.resource-tool-item__title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
 .node-actions {
   margin-top: 8px;
   display: flex;
@@ -583,6 +730,10 @@ onMounted(async () => {
   flex-wrap: wrap;
   font-size: 11px;
   color: var(--text-muted);
+}
+
+:deep(.tag-subtle) {
+  margin-right: 0;
 }
 
 @media (max-width: 1180px) {

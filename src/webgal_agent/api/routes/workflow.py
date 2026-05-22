@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from webgal_agent.api.models import AgentInfoResponse, WorkflowInfoResponse
+from webgal_agent.api.models import AgentInfoResponse, AgentToolResponse, WorkflowInfoResponse
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
 
@@ -33,6 +33,13 @@ async def get_pipeline_info() -> WorkflowInfoResponse:
                 state=a["state"],
                 provider=a.get("provider", ""),
                 model=a.get("model", ""),
+                tools=[
+                    AgentToolResponse(
+                        name=tool["name"],
+                        description=tool.get("description", ""),
+                    )
+                    for tool in a.get("tools", [])
+                ],
             )
             for a in agents_info
         ],
@@ -52,6 +59,13 @@ async def get_agents_status() -> list[AgentInfoResponse]:
             state=a["state"],
             provider=a.get("provider", ""),
             model=a.get("model", ""),
+            tools=[
+                AgentToolResponse(
+                    name=tool["name"],
+                    description=tool.get("description", ""),
+                )
+                for tool in a.get("tools", [])
+            ],
         )
         for a in agents_info
     ]

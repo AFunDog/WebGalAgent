@@ -19,12 +19,18 @@ export interface AgentKnowledgeRequirements {
 
 // ===== 工作流 =====
 
+export interface AgentToolInfo {
+  name: string
+  description: string
+}
+
 export interface AgentInfo {
   name: string
   description: string
   state: string
   provider: string
   model: string
+  tools: AgentToolInfo[]
 }
 
 export interface WorkflowInfo {

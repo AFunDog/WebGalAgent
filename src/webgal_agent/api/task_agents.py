@@ -67,6 +67,13 @@ def build_agent_info(agents: dict[str, Agent]) -> list[AgentInfoDict]:
             "state": agent.state.value,
             "provider": agent._config.provider,
             "model": agent._config.model,
+            "tools": [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                }
+                for tool in agent.tools.values()
+            ],
         }
         for agent in agents.values()
     ]

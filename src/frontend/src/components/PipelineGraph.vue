@@ -33,6 +33,10 @@
           <span>{{ node.outputPreview || '尚无输出' }}</span>
         </div>
       </div>
+      <div class="pipeline-node__capabilities">
+        <span class="pipeline-node__meta-chip">知识 {{ node.knowledgeCount }}</span>
+        <span class="pipeline-node__meta-chip">工具 {{ node.toolCount }}</span>
+      </div>
       <div v-if="index < nodes.length - 1" class="pipeline-node__connector" aria-hidden="true">
         <span class="pipeline-node__connector-line"></span>
         <span class="pipeline-node__connector-head"></span>
@@ -43,10 +47,11 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AgentInfo, TaskMessage } from '../types'
+import type { AgentInfo, AgentKnowledgeRequirements, TaskMessage } from '../types'
 
 const props = defineProps<{
   agents: AgentInfo[]
+  knowledgeRequirements?: AgentKnowledgeRequirements[]
   messages: TaskMessage[]
   activeAgent: string
   selectedNode?: string
@@ -75,6 +80,8 @@ interface PipelineNode {
   inputPreview: string
   outputPreview: string
   tokenUsage: number
+  knowledgeCount: number
+  toolCount: number
 }
 
 function findLastMessage(predicate: (message: TaskMessage) => boolean): TaskMessage | undefined {
@@ -130,6 +137,7 @@ function getOutputPreview(name: string): string {
 const nodes = computed<PipelineNode[]>(() =>
   AGENT_ORDER.map((name, index) => {
     const agent = props.agents.find(item => item.name === name)
+    const requirement = props.knowledgeRequirements?.find(item => item.agent === name)
     return {
       name,
       label: AGENT_LABELS[name] ?? name,
@@ -139,6 +147,8 @@ const nodes = computed<PipelineNode[]>(() =>
       inputPreview: getInputPreview(name),
       outputPreview: getOutputPreview(name),
       tokenUsage: props.tokenUsageByStep?.[String(index)]?.total_tokens ?? 0,
+      knowledgeCount: (requirement?.categories.length ?? 0) + (requirement?.tags.length ?? 0),
+      toolCount: agent?.tools.length ?? 0,
     }
   }),
 )
@@ -272,6 +282,27 @@ function formatTokenCount(n: number): string {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.pipeline-node__capabilities {
+  margin-top: 14px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pipeline-node__meta-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .pipeline-node__preview-line {

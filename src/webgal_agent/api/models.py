@@ -32,6 +32,13 @@ class AgentKnowledgeRequirementsResponse(BaseModel):
 
 # ---------- 工作流 ----------
 
+class AgentToolResponse(BaseModel):
+    """智能体可调用工具信息。"""
+
+    name: str
+    description: str = ""
+
+
 class AgentInfoResponse(BaseModel):
     """智能体状态信息。"""
 
@@ -40,6 +47,7 @@ class AgentInfoResponse(BaseModel):
     state: str
     provider: str = ""
     model: str = ""
+    tools: list[AgentToolResponse] = Field(default_factory=list)
 
 
 class WorkflowInfoResponse(BaseModel):
