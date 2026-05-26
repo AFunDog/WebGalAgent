@@ -24,7 +24,7 @@ def build_agents(
     from webgal_agent.tools.read_model import ReadModelTool
 
     result_dir = str(Path(task_dir) / task_id / "result") if task_id else None
-    common_tools: list[Tool] = [ReadFileTool(result_dir=result_dir)]
+    read_file_tool = ReadFileTool(result_dir=result_dir)
 
     asset_tool = AssetQueryTool()
     read_model_tool = ReadModelTool()
@@ -33,7 +33,7 @@ def build_agents(
     agent_tools: dict[str, list[Tool]] = {
         "outline_writer": [],
         "script_writer": [],
-        "script_converter": [asset_tool, read_model_tool]
+        "script_converter": [read_file_tool, asset_tool, read_model_tool]
         + ([write_result_tool] if write_result_tool else []),
     }
 
@@ -46,7 +46,7 @@ def build_agents(
 
             config = AgentConfig(name=name, description=AGENT_DESCRIPTIONS.get(name, ""))
 
-        tools = common_tools + agent_tools.get(name, [])
+        tools = agent_tools.get(name, [])
         prompt = prompts.get(name, "")
 
         if name == "outline_writer":
