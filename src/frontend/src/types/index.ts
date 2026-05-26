@@ -11,10 +11,19 @@ export interface KnowledgeEntry {
   updated_at: string
 }
 
+export interface KnowledgeReference {
+  id: string
+  category: string
+  title: string
+  source: string
+  tags: string[]
+}
+
 export interface AgentKnowledgeRequirements {
   agent: string
   categories: string[]
   tags: string[]
+  entries: KnowledgeReference[]
 }
 
 // ===== 工作流 =====

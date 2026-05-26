@@ -68,7 +68,28 @@
                       标签 · {{ tag }}
                     </span>
                   </div>
-                  <div v-else class="compact-meta">当前节点未声明额外知识库筛选条件。</div>
+                  <div v-if="selectedKnowledgeEntries.length" class="resource-knowledge-list">
+                    <div
+                      v-for="entry in selectedKnowledgeEntries"
+                      :key="`create-entry-${entry.id}`"
+                      class="resource-knowledge-item"
+                    >
+                      <div class="resource-knowledge-item__title">{{ entry.title }}</div>
+                      <div class="compact-meta">{{ entry.category }} · {{ entry.source }}</div>
+                    </div>
+                  </div>
+                  <div
+                    v-if="!selectedKnowledgeCategories.length && !selectedKnowledgeTags.length && selectedKnowledgeEntries.length"
+                    class="compact-meta"
+                  >
+                    当前节点未声明筛选条件，将读取全部知识库条目。
+                  </div>
+                  <div
+                    v-else-if="!selectedKnowledgeCategories.length && !selectedKnowledgeTags.length && !selectedKnowledgeEntries.length"
+                    class="compact-meta"
+                  >
+                    当前节点未声明额外知识库筛选条件。
+                  </div>
                 </div>
 
                 <div class="resource-block">
@@ -144,7 +165,28 @@
                       标签 · {{ tag }}
                     </span>
                   </div>
-                  <div v-else class="compact-meta">当前节点未声明额外知识库筛选条件。</div>
+                  <div v-if="selectedKnowledgeEntries.length" class="resource-knowledge-list">
+                    <div
+                      v-for="entry in selectedKnowledgeEntries"
+                      :key="entry.id"
+                      class="resource-knowledge-item"
+                    >
+                      <div class="resource-knowledge-item__title">{{ entry.title }}</div>
+                      <div class="compact-meta">{{ entry.category }} · {{ entry.source }}</div>
+                    </div>
+                  </div>
+                  <div
+                    v-if="!selectedKnowledgeCategories.length && !selectedKnowledgeTags.length && selectedKnowledgeEntries.length"
+                    class="compact-meta"
+                  >
+                    当前节点未声明筛选条件，将读取全部知识库条目。
+                  </div>
+                  <div
+                    v-else-if="!selectedKnowledgeCategories.length && !selectedKnowledgeTags.length && !selectedKnowledgeEntries.length"
+                    class="compact-meta"
+                  >
+                    当前节点未声明额外知识库筛选条件。
+                  </div>
                 </div>
 
                 <div class="resource-block">
@@ -337,6 +379,7 @@ const selectedKnowledgeRequirement = computed(() =>
 )
 const selectedKnowledgeCategories = computed(() => selectedKnowledgeRequirement.value?.categories ?? [])
 const selectedKnowledgeTags = computed(() => selectedKnowledgeRequirement.value?.tags ?? [])
+const selectedKnowledgeEntries = computed(() => selectedKnowledgeRequirement.value?.entries ?? [])
 const selectedTools = computed<AgentToolInfo[]>(() => selectedAgent.value?.tools ?? [])
 
 const selectedPrevStepIndices = computed(() =>
@@ -677,6 +720,26 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.resource-knowledge-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.resource-knowledge-item {
+  padding: 10px 11px;
+  border-radius: 12px;
+  background: rgba(247, 99, 12, 0.06);
+  border: 1px solid rgba(247, 99, 12, 0.14);
+}
+
+.resource-knowledge-item__title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 2px;
 }
 
 .resource-tool-item {

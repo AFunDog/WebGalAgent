@@ -147,7 +147,7 @@ const nodes = computed<PipelineNode[]>(() =>
       inputPreview: getInputPreview(name),
       outputPreview: getOutputPreview(name),
       tokenUsage: props.tokenUsageByStep?.[String(index)]?.total_tokens ?? 0,
-      knowledgeCount: (requirement?.categories.length ?? 0) + (requirement?.tags.length ?? 0),
+      knowledgeCount: requirement?.entries.length ?? 0,
       toolCount: agent?.tools.length ?? 0,
     }
   }),

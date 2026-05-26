@@ -22,12 +22,23 @@ class KnowledgeResponse(BaseModel):
     updated_at: datetime
 
 
+class KnowledgeReferenceResponse(BaseModel):
+    """轻量知识条目摘要，用于资源面板展示。"""
+
+    id: str
+    category: str
+    title: str
+    source: str
+    tags: list[str] = Field(default_factory=list)
+
+
 class AgentKnowledgeRequirementsResponse(BaseModel):
     """从 prompts.yaml 配置的各智能体知识库需求。"""
 
     agent: str
     categories: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    entries: list[KnowledgeReferenceResponse] = Field(default_factory=list)
 
 
 # ---------- 工作流 ----------

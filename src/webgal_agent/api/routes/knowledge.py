@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
-from webgal_agent.api.models import AgentKnowledgeRequirementsResponse, KnowledgeResponse
+from webgal_agent.api.models import (
+    AgentKnowledgeRequirementsResponse,
+    KnowledgeReferenceResponse,
+    KnowledgeResponse,
+)
 from webgal_agent.knowledge import FileKnowledgeStore, KnowledgeEntry
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
@@ -35,6 +39,42 @@ def _entry_to_response(entry: KnowledgeEntry) -> KnowledgeResponse:
         created_at=entry.created_at,
         updated_at=entry.updated_at,
     )
+
+
+def _entry_to_reference(entry: KnowledgeEntry) -> KnowledgeReferenceResponse:
+    return KnowledgeReferenceResponse(
+        id=entry.id,
+        category=entry.category,
+        title=entry.title,
+        source=entry.source,
+        tags=entry.tags,
+    )
+
+
+def _resolve_requirement_entries(
+    store: FileKnowledgeStore,
+    categories: list[str],
+    tags: list[str],
+) -> list[KnowledgeEntry]:
+    if not categories and not tags:
+        return store.list_all()
+
+    entries_by_category: list[KnowledgeEntry] = []
+    entries_by_tags: list[KnowledgeEntry] = []
+    if categories:
+        for category in categories:
+            entries_by_category.extend(store.query(category=category))
+    if tags:
+        entries_by_tags = store.query(tags=tags)
+
+    seen_ids: set[str] = set()
+    entries: list[KnowledgeEntry] = []
+    for entry in entries_by_category + entries_by_tags:
+        if entry.id in seen_ids:
+            continue
+        seen_ids.add(entry.id)
+        entries.append(entry)
+    return entries
 
 
 @router.get("", response_model=list[KnowledgeResponse])
@@ -79,12 +119,21 @@ async def list_tags() -> list[str]:
 async def get_agent_requirements() -> list[AgentKnowledgeRequirementsResponse]:
     """获取 prompts.yaml 中配置的各智能体知识库需求。"""
     tm = _get_task_manager()
+    store = _get_store()
     requirements = tm._knowledge_requirements
     return [
         AgentKnowledgeRequirementsResponse(
             agent=name,
             categories=req.get("categories", []),
             tags=req.get("tags", []),
+            entries=[
+                _entry_to_reference(entry)
+                for entry in _resolve_requirement_entries(
+                    store,
+                    req.get("categories", []),
+                    req.get("tags", []),
+                )
+            ],
         )
         for name, req in requirements.items()
     ]
