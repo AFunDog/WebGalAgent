@@ -40,125 +40,135 @@
       <p>暂无任务，前往<router-link :to="{ name: 'pipeline' }">流水线</router-link>创建新任务</p>
     </div>
 
-    <!-- 任务列表：按时间倒序展示，每个任务保留步骤级操作能力 -->
-    <div v-for="task in reversedTasks" :key="task.id" class="card" style="margin-bottom:16px">
-      <div class="card-header">
-        <h3>{{ task.title || task.content.slice(0, 60) }}</h3>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span class="badge" :class="statusBadgeClass(task.status)">{{ statusLabel(task.status) }}</span>
-        </div>
-      </div>
-      <p style="color:var(--text-muted);font-size:12px">
-        ID: {{ task.id }} · {{ formatTime(task.created_at) }} · 步骤: {{ task.current_step }}/{{ pipelineSteps.length }}
-        <span v-if="task.total_tokens > 0" style="margin-left:8px;color:#d97706">
-          · {{ formatTokenCount(task.total_tokens) }} tokens
-        </span>
-      </p>
-      <p
-        v-if="task.errors.length"
-        style="color:var(--danger);font-size:12px;margin-top:4px"
-      >{{ task.errors.join('; ') }}</p>
-
-      <!-- 步骤列表：与流水线页保持一致的视觉结构，但支持多任务并发观察 -->
-      <div class="step-list" style="margin-top:12px">
-        <div
-          v-for="(step, idx) in pipelineSteps"
-          :key="step.name"
-          class="step-item"
-          :class="{
-            'step-done': idx < task.current_step,
-            'step-active': idx === task.current_step && task.status !== 'completed',
-            'step-pending': idx > task.current_step,
-          }"
-        >
-          <div class="step-header">
-            <span class="step-index">{{ String.fromCharCode(65 + idx) }}</span>
-            <span class="step-name">{{ step.label }}</span>
-            <span class="step-status" :class="'step-status-' + getStepStatus(task, idx)">
-              {{ getStepStatusText(task, idx) }}
-            </span>
-            <span v-if="task.token_usage_by_step?.[String(idx)]" class="step-token-badge">
-              {{ formatTokenCount(task.token_usage_by_step?.[String(idx)]?.total_tokens ?? 0) }} tokens
-            </span>
+    <!-- 任务列表：按时间倒序展示，默认折叠，仅在展开时显示完整步骤与消息 -->
+    <details v-for="task in reversedTasks" :key="task.id" class="task-card card">
+      <summary class="task-card__summary">
+        <div class="task-card__summary-main">
+          <div class="task-card__title-row">
+            <h3 class="task-card__title">{{ task.title || task.content.slice(0, 60) }}</h3>
+            <span class="badge" :class="statusBadgeClass(task.status)">{{ statusLabel(task.status) }}</span>
           </div>
+          <div class="task-card__meta">
+            <span>任务 {{ task.id }}</span>
+            <span>{{ formatTime(task.created_at) }}</span>
+            <span>步骤 {{ task.current_step }}/{{ pipelineSteps.length }}</span>
+            <span v-if="task.total_tokens > 0">{{ formatTokenCount(task.total_tokens) }} tokens</span>
+            <span v-if="task.errors.length" class="task-card__error-count">{{ task.errors.length }} 个错误</span>
+          </div>
+          <div class="task-card__preview">
+            {{ getTaskPreview(task) }}
+          </div>
+        </div>
+        <span class="summary-chevron task-card__chevron">▶</span>
+      </summary>
 
-          <!-- 当前步骤操作区 -->
-          <button
-            v-if="idx === task.current_step && task.status !== 'running' && task.status !== 'completed'"
-            class="btn btn-primary btn-sm"
-            :disabled="runningTasks.has(task.id)"
-            @click="runStep(task.id)"
-            style="margin-top:8px"
+      <div class="task-card__body">
+        <p
+          v-if="task.errors.length"
+          style="color:var(--danger);font-size:12px;margin-bottom:8px"
+        >{{ task.errors.join('; ') }}</p>
+
+        <!-- 步骤列表：与流水线页保持一致的视觉结构，但支持多任务并发观察 -->
+        <div class="step-list">
+          <div
+            v-for="(step, idx) in pipelineSteps"
+            :key="step.name"
+            class="step-item"
+            :class="{
+              'step-done': idx < task.current_step,
+              'step-active': idx === task.current_step && task.status !== 'completed',
+              'step-pending': idx > task.current_step,
+            }"
           >
-            {{ runningTasks.has(task.id) ? '执行中...' : '执行此步骤' }}
-          </button>
-
-          <!-- 历史结果查看与修订区 -->
-          <div v-if="idx < task.current_step" class="step-result">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-              <span style="font-size:12px;color:var(--text-muted)">输出结果</span>
-              <div style="display:flex;gap:4px">
-                <button
-                  v-if="editingKey !== `${task.id}-${idx}`"
-                  class="btn btn-sm"
-                  style="font-size:11px;padding:2px 8px"
-                  @click="startEdit(task.id, idx, getStepResult(task, idx))"
-                >编辑</button>
-                <template v-else>
-                  <button class="btn btn-primary btn-sm" style="font-size:11px;padding:2px 8px" @click="saveEdit(task.id, idx)">保存</button>
-                  <button class="btn btn-sm" style="font-size:11px;padding:2px 8px" @click="cancelEdit">取消</button>
-                </template>
-              </div>
+            <div class="step-header">
+              <span class="step-index">{{ String.fromCharCode(65 + idx) }}</span>
+              <span class="step-name">{{ step.label }}</span>
+              <span class="step-status" :class="'step-status-' + getStepStatus(task, idx)">
+                {{ getStepStatusText(task, idx) }}
+              </span>
+              <span v-if="task.token_usage_by_step?.[String(idx)]" class="step-token-badge">
+                {{ formatTokenCount(task.token_usage_by_step?.[String(idx)]?.total_tokens ?? 0) }} tokens
+              </span>
             </div>
-            <textarea
-              v-if="editingKey === `${task.id}-${idx}`"
-              v-model="editContent"
-              class="form-textarea"
-              rows="8"
-              style="font-size:12px;font-family:monospace"
-            />
-            <pre v-else class="step-result-preview">{{ getStepResult(task, idx) }}</pre>
-            <div class="step-revise-box">
+
+            <!-- 当前步骤操作区 -->
+            <button
+              v-if="idx === task.current_step && task.status !== 'running' && task.status !== 'completed'"
+              class="btn btn-primary btn-sm"
+              :disabled="runningTasks.has(task.id)"
+              @click="runStep(task.id)"
+              style="margin-top:8px"
+            >
+              {{ runningTasks.has(task.id) ? '执行中...' : '执行此步骤' }}
+            </button>
+
+            <!-- 历史结果查看与修订区 -->
+            <div v-if="idx < task.current_step" class="step-result">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                <span style="font-size:12px;color:var(--text-muted)">额外修订要求</span>
-                <button
-                  class="btn btn-primary btn-sm"
-                  style="font-size:11px;padding:2px 8px"
-                  :disabled="runningTasks.has(task.id) || !getRevisionInstruction(task.id, idx).trim()"
-                  @click="reviseStep(task.id, idx)"
-                >按反馈重生成</button>
+                <span style="font-size:12px;color:var(--text-muted)">输出结果</span>
+                <div style="display:flex;gap:4px">
+                  <button
+                    v-if="editingKey !== `${task.id}-${idx}`"
+                    class="btn btn-sm"
+                    style="font-size:11px;padding:2px 8px"
+                    @click="startEdit(task.id, idx, getStepResult(task, idx))"
+                  >编辑</button>
+                  <template v-else>
+                    <button class="btn btn-primary btn-sm" style="font-size:11px;padding:2px 8px" @click="saveEdit(task.id, idx)">保存</button>
+                    <button class="btn btn-sm" style="font-size:11px;padding:2px 8px" @click="cancelEdit">取消</button>
+                  </template>
+                </div>
               </div>
               <textarea
-                :value="getRevisionInstruction(task.id, idx)"
+                v-if="editingKey === `${task.id}-${idx}`"
+                v-model="editContent"
                 class="form-textarea"
-                rows="3"
-                placeholder="例如：保留结构，但对白更自然，减少解释性旁白。"
-                style="font-size:12px"
-                @input="setRevisionInstruction(task.id, idx, ($event.target as HTMLTextAreaElement).value)"
+                rows="8"
+                style="font-size:12px;font-family:monospace"
               />
+              <pre v-else class="step-result-preview">{{ getStepResult(task, idx) }}</pre>
+              <div class="step-revise-box">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                  <span style="font-size:12px;color:var(--text-muted)">额外修订要求</span>
+                  <button
+                    class="btn btn-primary btn-sm"
+                    style="font-size:11px;padding:2px 8px"
+                    :disabled="runningTasks.has(task.id) || !getRevisionInstruction(task.id, idx).trim()"
+                    @click="reviseStep(task.id, idx)"
+                  >按反馈重生成</button>
+                </div>
+                <textarea
+                  :value="getRevisionInstruction(task.id, idx)"
+                  class="form-textarea"
+                  rows="3"
+                  placeholder="例如：保留结构，但对白更自然，减少解释性旁白。"
+                  style="font-size:12px"
+                  @input="setRevisionInstruction(task.id, idx, ($event.target as HTMLTextAreaElement).value)"
+                />
+              </div>
+            </div>
+
+            <!-- 运行中反馈区 -->
+            <div v-if="idx === task.current_step && task.status === 'running'" class="step-running">
+              <span class="pulse-dot"></span> 正在执行...
+              <button class="btn btn-danger btn-sm" style="margin-left:8px" @click="cancelTask(task.id)">终止</button>
             </div>
           </div>
+        </div>
 
-          <!-- 运行中反馈区 -->
-          <div v-if="idx === task.current_step && task.status === 'running'" class="step-running">
-            <span class="pulse-dot"></span> 正在执行...
-            <button class="btn btn-danger btn-sm" style="margin-left:8px" @click="cancelTask(task.id)">终止</button>
+        <!-- 明细消息区：保留完整消息链，便于排查 agent 输出 -->
+        <details style="margin-top:12px">
+          <summary style="cursor:pointer;color:var(--text-muted);font-size:13px">查看详细消息</summary>
+          <div style="margin-top:8px">
+            <MessageBubble
+              v-for="msg in task.messages"
+              :key="msg.id"
+              :message="msg"
+            />
           </div>
-        </div>
+        </details>
       </div>
-
-      <!-- 明细消息区：保留完整消息链，便于排查 agent 输出 -->
-      <details style="margin-top:12px">
-        <summary style="cursor:pointer;color:var(--text-muted);font-size:13px">查看详细消息</summary>
-        <div style="margin-top:8px">
-          <MessageBubble
-            v-for="msg in task.messages"
-            :key="msg.id"
-            :message="msg"
-          />
-        </div>
-      </details>
-    </div>
+    </details>
   </div>
 </template>
 
@@ -188,6 +198,13 @@ const reversedTasks = computed(() => [...tasks.value].reverse())
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleString()
+}
+
+function getTaskPreview(task: Task): string {
+  const contentPreview = task.title || task.content.slice(0, 80)
+  const cleaned = contentPreview.replace(/\s+/g, ' ').trim()
+  if (cleaned.length <= 80) return cleaned || '无标题任务'
+  return cleaned.slice(0, 80) + '…'
 }
 
 function getStepResult(task: Task, idx: number): string {
@@ -319,6 +336,103 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.task-card {
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+.task-card__summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+}
+
+.task-card__summary::-webkit-details-marker {
+  display: none;
+}
+
+.task-card__summary-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.task-card__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.task-card__title {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.task-card__meta span {
+  position: relative;
+}
+
+.task-card__meta span:not(:last-child)::after {
+  content: '·';
+  margin-left: 10px;
+  color: var(--text-muted);
+}
+
+.task-card__preview {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-soft);
+  line-height: 1.5;
+  max-width: 920px;
+}
+
+.task-card__error-count {
+  color: var(--danger);
+}
+
+.task-card__chevron {
+  margin-top: 2px;
+  transition: transform 0.18s ease;
+}
+
+.task-card[open] .task-card__chevron {
+  transform: rotate(90deg);
+}
+
+.task-card__body {
+  padding: 0 16px 16px;
+}
+
+.task-card > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.task-card[open] > summary {
+  border-bottom-color: rgba(255, 255, 255, 0.06);
+}
+
+.task-card:hover > summary {
+  background: rgba(255, 255, 255, 0.02);
 }
 .step-item {
   border: 1px solid var(--border);
