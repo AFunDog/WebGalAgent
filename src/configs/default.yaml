@@ -4,10 +4,16 @@ app:
   name: AgentWorkflow
   debug: false
 
-# WebGal 游戏素材目录（绝对路径或相对于项目根目录）
-# 只有 animation/background/bgm/figure 子目录会被扫描
+# WebGal 游戏素材目录配置
+# - 可只配置 game_dir，然后默认使用其中的 animation/background/bgm/figure/vocal 子目录
+# - 也可按类型单独覆盖，例如 background_dir / figure_dir / bgm_dir
 assets:
   game_dir: D:\Data\WebGal\games\MyGO3.0.0\game
+  # animation_dir: D:\Data\WebGal\games\MyGO3.0.0\game\animation
+  background_dir: D:\Data\WebGal\background
+  # bgm_dir: D:\Data\WebGal\games\MyGO3.0.0\game\bgm
+  figure_dir: D:\Data\WebGal\figure
+  # vocal_dir: D:\Data\WebGal\games\MyGO3.0.0\game\vocal
 
 llm:
   provider: openai

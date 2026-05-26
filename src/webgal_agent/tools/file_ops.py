@@ -5,19 +5,18 @@ from __future__ import annotations
 import pathlib
 
 from webgal_agent.tools.base import Tool, ToolResult
-from webgal_agent.tools._paths import resolve_game_dir
+from webgal_agent.tools._paths import resolve_asset_dirs
 
 
 def _resolve_allowed_dirs() -> list[pathlib.Path]:
     """解析允许读取的目录列表。
 
-    仅包括游戏目录（用于素材路径查询），实际文件读取由 result_dir 单独控制。
+    仅包括已配置的素材目录，实际文件读取由 result_dir 单独控制。
     """
     dirs: list[pathlib.Path] = []
 
-    game_dir = resolve_game_dir()
-    if game_dir:
-        dirs.append(game_dir.resolve())
+    for asset_dir in resolve_asset_dirs().values():
+        dirs.append(asset_dir.resolve())
 
     return dirs
 

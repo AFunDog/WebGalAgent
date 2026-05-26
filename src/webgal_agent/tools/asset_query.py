@@ -8,18 +8,7 @@ import pathlib
 from collections import defaultdict
 
 from webgal_agent.tools.base import Tool, ToolResult
-from webgal_agent.tools._paths import resolve_game_dir
-
-
-def _resolve_assets_base_dir() -> pathlib.Path:
-    """从环境变量或配置解析游戏素材根目录。
-
-    查找优先级：
-    1. 环境变量 WEBGAL_GAME_DIR
-    2. src/configs/default.yaml 中的 assets.game_dir
-    3. 回退到 data/assets
-    """
-    return resolve_game_dir() or pathlib.Path("data/assets")
+from webgal_agent.tools._paths import resolve_asset_dir
 
 
 class AssetQueryTool(Tool):
@@ -33,7 +22,7 @@ class AssetQueryTool(Tool):
         if assets_dir is not None:
             self._assets_dir = pathlib.Path(assets_dir)
         else:
-            self._assets_dir = _resolve_assets_base_dir()
+            self._assets_dir = pathlib.Path("data/assets")
 
     @property
     def name(self) -> str:
@@ -67,13 +56,13 @@ class AssetQueryTool(Tool):
         if not asset_type:
             return ToolResult(success=False, error="缺少 'asset_type' 参数")
 
-        # WebGal 游戏目录下的素材子目录映射
-        type_subdirs: dict[str, list[str]] = {
-            "character": ["figure"],
-            "background": ["background/BandDream背景与BGM/背景整理合集"],
-            "bgm": ["bgm"],
-            "effect": ["animation"],
-            "voice": ["vocal"],
+        # 素材类型对应的实际扫描目录类别
+        type_dirs: dict[str, str] = {
+            "character": "figure",
+            "background": "background",
+            "bgm": "bgm",
+            "effect": "animation",
+            "voice": "vocal",
         }
 
         # 每种素材类型对应的文件扩展名
@@ -85,7 +74,7 @@ class AssetQueryTool(Tool):
             "voice": {".mp3", ".ogg", ".wav", ".m4a"},
         }
 
-        subdirs = type_subdirs.get(str(asset_type), [])
+        resolved_type = type_dirs.get(str(asset_type), "")
         exts = supported_ext.get(str(asset_type), {".png", ".jpg", ".mp3"})
 
         # 每种素材类型对应的文件名过滤模式（None 表示不过滤）
@@ -108,7 +97,7 @@ class AssetQueryTool(Tool):
         }
         path_excludes = type_path_excludes.get(str(asset_type))
 
-        if not subdirs:
+        if not resolved_type:
             return ToolResult(
                 success=True,
                 output=json.dumps(
@@ -120,25 +109,10 @@ class AssetQueryTool(Tool):
         # 按子目录分组收集文件
         groups: dict[str, list[str]] = defaultdict(list)
         total_count = 0
-        base = self._assets_dir
+        asset_dir = resolve_asset_dir(resolved_type) or self._assets_dir / resolved_type
 
-        # 素材类型对应的 WebGal 引用根目录（changeBg/changeFigure 等指令的路径基准）
-        type_ref_roots: dict[str, str] = {
-            "character": "figure",
-            "background": "background",
-            "bgm": "bgm",
-            "effect": "animation",
-            "voice": "vocal",
-        }
-
-        for subdir in subdirs:
-            type_dir = base / subdir
-            if not type_dir.exists():
-                continue
-            # 计算引用路径时的基准目录：对于 background 类型是 base/background，
-            # 这样返回的路径可以直接用于 changeBg: 等指令
-            ref_root = base / type_ref_roots.get(str(asset_type), subdir)
-            for f in sorted(type_dir.rglob("*")):
+        if asset_dir.exists():
+            for f in sorted(asset_dir.rglob("*")):
                 if f.is_file() and f.suffix.lower() in exts:
                     if name_filters is not None and not any(
                         fnmatch.fnmatch(f.name, pat) for pat in name_filters
@@ -148,12 +122,13 @@ class AssetQueryTool(Tool):
                         pat in f.as_posix() for pat in path_excludes
                     ):
                         continue
-                    rel_path = f.relative_to(ref_root).as_posix()
-                    groups[subdir].append(rel_path)
+                    rel_path = f.relative_to(asset_dir).as_posix()
+                    group_name = rel_path.split("/", 1)[0] if "/" in rel_path else "."
+                    groups[group_name].append(rel_path)
                     total_count += 1
 
         if not groups:
-            note = f"素材目录不存在或为空: {', '.join(subdirs)}"
+            note = f"素材目录不存在或为空: {asset_dir.as_posix()}"
         else:
             note = f"共找到 {total_count} 个文件"
 

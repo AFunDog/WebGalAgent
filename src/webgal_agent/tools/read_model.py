@@ -6,20 +6,17 @@ import json
 import pathlib
 
 from webgal_agent.tools.base import Tool, ToolResult
-from webgal_agent.tools._paths import resolve_game_dir
+from webgal_agent.tools._paths import resolve_asset_dir
 
 
 class ReadModelTool(Tool):
-    """读取角色 model.json 文件，仅返回 motions（动作）和 expressions（表情）列表。
+    """读取角色 model.json 文件，仅返回 motions（动作）和 expressions（表情）列表。"""
 
-    传入 query_assets 返回的相对路径即可，工具自动解析到游戏 figure 目录。
-    """
-
-    def __init__(self, game_dir: str | pathlib.Path | None = None) -> None:
-        if game_dir is not None:
-            self._game_dir = pathlib.Path(game_dir)
+    def __init__(self, figure_dir: str | pathlib.Path | None = None) -> None:
+        if figure_dir is not None:
+            self._figure_dir = pathlib.Path(figure_dir)
         else:
-            self._game_dir = resolve_game_dir() or pathlib.Path("data/assets")
+            self._figure_dir = resolve_asset_dir("figure") or pathlib.Path("data/assets/figure")
 
     @property
     def name(self) -> str:
@@ -53,18 +50,12 @@ class ReadModelTool(Tool):
         if not rel_path:
             return ToolResult(success=False, error="缺少 'path' 参数")
 
-        # 路径解析：优先尝试相对于 game_dir/figure 目录
-        figure_dir = self._game_dir / "figure"
-        target = figure_dir / str(rel_path)
-
-        # 如果 figure 下不存在，回退到相对 game_dir 直接查找
-        if not target.exists():
-            target = self._game_dir / str(rel_path)
+        target = self._figure_dir / str(rel_path)
 
         if not target.exists():
             return ToolResult(
                 success=False,
-                error=f"模型文件不存在: {rel_path}（已尝试 figure/ 和游戏根目录）",
+                error=f"模型文件不存在: {rel_path}（已尝试 figure_dir）",
             )
 
         if not target.is_file():
