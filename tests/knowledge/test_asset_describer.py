@@ -12,6 +12,7 @@ from webgal_agent.knowledge.asset_describer import (
     DashScopeMultimodalAssetDescriber,
     OpenAIMultimodalAssetDescriber,
     _load_character_aliases,
+    _normalize_dashscope_sdk_base_url,
     _to_dashscope_file_uri,
     build_asset_describer,
     discover_character_assets,
@@ -61,6 +62,30 @@ def test_discover_character_assets_parses_prefixed_names() -> None:
         assert sorted(asset.media_type for asset in assets) == ["image", "video"]
         assert all(asset.display_name == "千早爱音" for asset in assets)
         assert {asset.relative_path for asset in assets} == {"alt/idle02.webm", "anon__smile01.png"}
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_discover_character_assets_scans_direct_asset_root() -> None:
+    temp_dir = _make_temp_dir()
+    asset_dir = temp_dir / "anon" / "compressed"
+    asset_dir.mkdir(parents=True)
+    (asset_dir / "anon__smile01.mp4").write_bytes(b"mp4")
+    (asset_dir / "anon__idle02.mp4").write_bytes(b"mp4")
+
+    try:
+        assets = discover_character_assets(
+            asset_dir,
+            {"anon": "千早爱音"},
+            character_filter={"anon"},
+        )
+
+        assert sorted(asset.state_name for asset in assets) == ["idle02", "smile01"]
+        assert all(asset.character_id == "anon" for asset in assets)
+        assert {asset.relative_path for asset in assets} == {
+            "anon__idle02.mp4",
+            "anon__smile01.mp4",
+        }
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -122,6 +147,20 @@ def test_build_asset_describer_selects_dashscope_provider() -> None:
     assert isinstance(describer, DashScopeMultimodalAssetDescriber)
 
 
+def test_build_asset_describer_selects_dashscope_backend_for_aliyun_provider() -> None:
+    describer = build_asset_describer(
+        ProviderConfig(
+            provider="aliyun",
+            model="qwen3.6-plus",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            api_key="test-key",
+        ),
+        "test prompt",
+    )
+
+    assert isinstance(describer, DashScopeMultimodalAssetDescriber)
+
+
 def test_build_asset_describer_defaults_to_openai_compatible() -> None:
     describer = build_asset_describer(
         ProviderConfig(
@@ -141,6 +180,12 @@ def test_to_dashscope_file_uri_uses_local_file_scheme() -> None:
     path = Path("D:/images/test.png")
 
     assert _to_dashscope_file_uri(path) == "file://D:/images/test.png"
+
+
+def test_normalize_dashscope_sdk_base_url_rewrites_compatible_mode_url() -> None:
+    assert _normalize_dashscope_sdk_base_url(
+        "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    ) == "https://dashscope.aliyuncs.com/api/v1"
 
 
 def test_load_asset_describer_prompt_reads_from_prompts_yaml() -> None:

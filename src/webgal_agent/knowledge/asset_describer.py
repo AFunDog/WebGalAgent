@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import base64
 import json
+import logging
 import mimetypes
 import os
 import re
@@ -18,6 +19,7 @@ from openai import AsyncOpenAI
 
 from webgal_agent.config.prompt_config import extract_system_prompts, load_prompt_config
 from webgal_agent.config.provider_manager import ProviderConfig, ProviderConfigManager
+from webgal_agent.utils.logging import get_logger, setup_logging
 
 DEFAULT_PROVIDER_SLOT = "asset_describer"
 DEFAULT_ASSET_ROOT = Path("data/figure_assets")
@@ -37,6 +39,7 @@ DEFAULT_ASSET_DESCRIBER_PROMPT = (
     "只描述素材里能稳定观察到的表情、视线、姿态、动作趋势和整体气质。"
     "不要编造剧情，不要复述文件名。"
 )
+logger = get_logger("webgal_agent.asset_describer")
 
 
 @dataclass(slots=True)
@@ -84,9 +87,17 @@ def _to_dashscope_file_uri(path: Path) -> str:
     return resolved.as_uri()
 
 
+def _normalize_dashscope_sdk_base_url(base_url: str) -> str:
+    normalized = base_url.strip()
+    if normalized.endswith("/compatible-mode/v1"):
+        return normalized[: -len("/compatible-mode/v1")] + "/api/v1"
+    return normalized
+
+
 def _load_character_aliases(alias_path: Path | None) -> dict[str, str]:
     aliases = dict(DEFAULT_CHARACTER_ALIASES)
     if alias_path is None or not alias_path.exists():
+        logger.debug("未提供别名映射文件，使用默认角色别名")
         return aliases
 
     if alias_path.suffix.lower() == ".json":
@@ -100,6 +111,7 @@ def _load_character_aliases(alias_path: Path | None) -> dict[str, str]:
         for key, value in data.items():
             if isinstance(key, str) and isinstance(value, str):
                 aliases[key] = value
+    logger.info("已加载角色别名映射: path=%s count=%s", alias_path, len(aliases))
     return aliases
 
 
@@ -107,6 +119,11 @@ def load_asset_describer_prompt(prompts_path: str | Path = DEFAULT_PROMPTS_PATH)
     prompt_config = load_prompt_config(prompts_path)
     prompts = extract_system_prompts(prompt_config)
     prompt = prompts.get("asset_describer", "").strip()
+    logger.info(
+        "已加载素材描述提示词: path=%s source=%s",
+        prompts_path,
+        "prompts.yaml" if prompt else "builtin-fallback",
+    )
     return prompt or DEFAULT_ASSET_DESCRIBER_PROMPT
 
 
@@ -135,6 +152,38 @@ def _extract_state_name(asset_path: Path, character_id: str) -> str | None:
     return state_name or None
 
 
+def _iter_media_files(scan_root: Path) -> list[Path]:
+    media_files: list[Path] = []
+    for asset_path in sorted(path for path in scan_root.rglob("*") if path.is_file()):
+        if not _is_supported_media(asset_path):
+            continue
+        relative_parts = asset_path.relative_to(scan_root).parts[:-1]
+        if any(part.startswith(".") for part in relative_parts):
+            continue
+        media_files.append(asset_path)
+    return media_files
+
+
+def _iter_direct_media_files(scan_root: Path) -> list[Path]:
+    media_files: list[Path] = []
+    for asset_path in sorted(path for path in scan_root.iterdir() if path.is_file()):
+        if _is_supported_media(asset_path):
+            media_files.append(asset_path)
+    return media_files
+
+
+def _resolve_direct_character_id(asset_root: Path, character_filter: set[str] | None) -> str:
+    if character_filter:
+        if len(character_filter) > 1:
+            raise ValueError("当 --asset-root 直接指向素材目录时，只能指定一个 --character-id")
+        return next(iter(character_filter))
+
+    parent_name = asset_root.parent.name.strip()
+    if parent_name:
+        return parent_name
+    return asset_root.name.strip() or "unknown"
+
+
 def discover_character_assets(
     asset_root: Path,
     alias_map: dict[str, str],
@@ -142,6 +191,53 @@ def discover_character_assets(
 ) -> list[CharacterAsset]:
     assets: list[CharacterAsset] = []
     if not asset_root.exists():
+        logger.warning("素材根目录不存在: %s", asset_root)
+        return assets
+
+    logger.info(
+        "开始扫描素材目录: root=%s character_filter=%s",
+        asset_root,
+        sorted(character_filter) if character_filter else "ALL",
+    )
+
+    direct_media_files = _iter_direct_media_files(asset_root)
+    if direct_media_files:
+        character_id = _resolve_direct_character_id(asset_root, character_filter)
+        display_name = alias_map.get(character_id, character_id)
+        logger.info(
+            "检测到直接素材目录模式: root=%s character_id=%s file_count=%s",
+            asset_root,
+            character_id,
+            len(direct_media_files),
+        )
+        for asset_path in direct_media_files:
+            state_name = _extract_state_name(asset_path, character_id)
+            if state_name is None:
+                logger.debug(
+                    "跳过无法匹配角色ID前缀的素材: character_id=%s path=%s",
+                    character_id,
+                    asset_path,
+                )
+                continue
+            assets.append(
+                CharacterAsset(
+                    character_id=character_id,
+                    display_name=display_name,
+                    asset_name=asset_path.stem,
+                    state_name=state_name,
+                    source_path=asset_path,
+                    relative_path=asset_path.relative_to(asset_root).as_posix(),
+                    media_type=_detect_media_type(asset_path),
+                )
+            )
+            logger.debug(
+                "发现素材: character_id=%s state=%s media_type=%s path=%s",
+                character_id,
+                state_name,
+                _detect_media_type(asset_path),
+                asset_path,
+            )
+        logger.info("素材扫描完成: total=%s", len(assets))
         return assets
 
     for character_dir in sorted(asset_root.iterdir()):
@@ -153,13 +249,7 @@ def discover_character_assets(
             continue
 
         display_name = alias_map.get(character_id, character_id)
-        for asset_path in sorted(path for path in character_dir.rglob("*") if path.is_file()):
-            if not _is_supported_media(asset_path):
-                continue
-            relative_parts = asset_path.relative_to(character_dir).parts[:-1]
-            if any(part.startswith(".") for part in relative_parts):
-                continue
-
+        for asset_path in _iter_media_files(character_dir):
             state_name = _extract_state_name(asset_path, character_id)
             if state_name is None:
                 continue
@@ -175,6 +265,14 @@ def discover_character_assets(
                     media_type=_detect_media_type(asset_path),
                 )
             )
+            logger.debug(
+                "发现素材: character_id=%s state=%s media_type=%s path=%s",
+                character_id,
+                state_name,
+                _detect_media_type(asset_path),
+                asset_path,
+            )
+    logger.info("素材扫描完成: total=%s", len(assets))
     return assets
 
 
@@ -192,8 +290,21 @@ class OpenAIMultimodalAssetDescriber:
             base_url=base_url,
             timeout=180.0,
         )
+        logger.info(
+            "初始化 OpenAI 兼容素材描述器: provider=%s model=%s base_url=%s",
+            provider_config.provider,
+            provider_config.model,
+            base_url,
+        )
 
     async def describe(self, asset: CharacterAsset) -> AssetDescription:
+        logger.info(
+            "开始描述素材: backend=openai action=%s/%s media_type=%s path=%s",
+            asset.character_id,
+            asset.state_name,
+            asset.media_type,
+            asset.source_path,
+        )
         content: list[dict[str, Any]] = [
             {
                 "type": "input_text",
@@ -237,7 +348,20 @@ class OpenAIMultimodalAssetDescriber:
             text={"verbosity": "low"},
             **extra_kwargs,
         )
-        return AssetDescription(text=_strip_markdown_fence(response.output_text))
+        description = AssetDescription(text=_strip_markdown_fence(response.output_text))
+        logger.info(
+            "素材描述完成: backend=openai action=%s/%s text_length=%s",
+            asset.character_id,
+            asset.state_name,
+            len(description.text),
+        )
+        logger.debug(
+            "素材描述文本: action=%s/%s text=%s",
+            asset.character_id,
+            asset.state_name,
+            description.text,
+        )
+        return description
 
 
 class DashScopeMultimodalAssetDescriber:
@@ -246,8 +370,23 @@ class DashScopeMultimodalAssetDescriber:
     def __init__(self, provider_config: ProviderConfig, system_prompt: str) -> None:
         self._config = provider_config
         self._system_prompt = system_prompt.strip() or DEFAULT_ASSET_DESCRIBER_PROMPT
+        self._sdk_base_url = _normalize_dashscope_sdk_base_url(provider_config.base_url)
+        logger.info(
+            "初始化 DashScope 素材描述器: provider=%s model=%s base_url=%s sdk_base_url=%s",
+            provider_config.provider,
+            provider_config.model,
+            provider_config.base_url,
+            self._sdk_base_url,
+        )
 
     async def describe(self, asset: CharacterAsset) -> AssetDescription:
+        logger.info(
+            "开始描述素材: backend=dashscope action=%s/%s media_type=%s path=%s",
+            asset.character_id,
+            asset.state_name,
+            asset.media_type,
+            asset.source_path,
+        )
         return await asyncio.to_thread(self._describe_sync, asset)
 
     def _describe_sync(self, asset: CharacterAsset) -> AssetDescription:
@@ -259,8 +398,9 @@ class DashScopeMultimodalAssetDescriber:
                 "DashScope provider 需要安装 `dashscope` 包。"
             ) from exc
 
-        if self._config.base_url:
-            dashscope.base_http_api_url = self._config.base_url
+        if self._sdk_base_url:
+            dashscope.base_http_api_url = self._sdk_base_url
+            logger.debug("设置 DashScope SDK base_http_api_url=%s", self._sdk_base_url)
 
         media_payload: dict[str, Any]
         if asset.media_type == "video":
@@ -297,12 +437,26 @@ class DashScopeMultimodalAssetDescriber:
         except (AttributeError, IndexError, KeyError, TypeError) as exc:
             raise RuntimeError(f"无法解析 DashScope 响应: {response}") from exc
 
-        return AssetDescription(text=_strip_markdown_fence(raw_text))
+        description = AssetDescription(text=_strip_markdown_fence(raw_text))
+        logger.info(
+            "素材描述完成: backend=dashscope action=%s/%s text_length=%s",
+            asset.character_id,
+            asset.state_name,
+            len(description.text),
+        )
+        logger.debug(
+            "素材描述文本: action=%s/%s text=%s",
+            asset.character_id,
+            asset.state_name,
+            description.text,
+        )
+        return description
 
 
 def build_asset_describer(provider_config: ProviderConfig, system_prompt: str) -> AssetDescriber:
     provider_name = provider_config.provider.lower().strip()
-    if provider_name == "dashscope":
+    logger.info("选择素材描述后端: provider=%s", provider_name)
+    if provider_name in {"dashscope", "aliyun"}:
         return DashScopeMultimodalAssetDescriber(provider_config, system_prompt)
     return OpenAIMultimodalAssetDescriber(provider_config, system_prompt)
 
@@ -330,8 +484,16 @@ async def generate_character_asset_json(
     for asset in assets:
         grouped[asset.display_name].append(asset)
 
+    logger.info("开始生成描述 JSON: characters=%s assets=%s", len(grouped), len(assets))
+
     written_paths: list[Path] = []
     for display_name, character_assets in grouped.items():
+        logger.info(
+            "处理角色素材组: display_name=%s character_id=%s asset_count=%s",
+            display_name,
+            character_assets[0].character_id,
+            len(character_assets),
+        )
         descriptions: dict[str, AssetDescription] = {}
         for asset in character_assets:
             descriptions[asset.relative_path] = await describer.describe(asset)
@@ -344,7 +506,11 @@ async def generate_character_asset_json(
                 json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
+            logger.info("已写入描述文件: path=%s item_count=%s", output_path, len(payload))
+        else:
+            logger.info("dry-run 跳过写文件: path=%s item_count=%s", output_path, len(payload))
         written_paths.append(output_path)
+    logger.info("描述 JSON 生成完成: files=%s", len(written_paths))
     return written_paths
 
 
@@ -386,11 +552,27 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=[],
         help="只处理指定角色ID，可重复传入",
     )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help="日志级别：DEBUG / INFO / WARNING / ERROR，默认 INFO",
+    )
     parser.add_argument("--dry-run", action="store_true", help="只演算不写文件")
     return parser
 
 
 async def _async_main(args: argparse.Namespace) -> int:
+    logger.info(
+        (
+            "启动素材描述任务: asset_root=%s output_root=%s "
+            "provider_slot=%s prompts_path=%s dry_run=%s"
+        ),
+        args.asset_root,
+        args.output_root,
+        args.provider_slot,
+        args.prompts_path,
+        args.dry_run,
+    )
     alias_path = Path(args.alias_map) if args.alias_map else None
     alias_map = _load_character_aliases(alias_path)
     provider_manager = ProviderConfigManager(args.providers_path)
@@ -423,6 +605,8 @@ async def _async_main(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = _build_arg_parser()
     args = parser.parse_args()
+    level = getattr(logging, str(args.log_level).upper(), logging.INFO)
+    setup_logging(level=level)
     return asyncio.run(_async_main(args))
 
 
