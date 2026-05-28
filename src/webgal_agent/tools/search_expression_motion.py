@@ -144,13 +144,6 @@ def _strip_markdown_fence(text: str) -> str:
     return text.strip()
 
 
-def _compact_description(text: str, limit: int = 120) -> str:
-    normalized = re.sub(r"\s+", " ", text).strip()
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: limit - 1].rstrip() + "…"
-
-
 def _extract_json_array(text: str) -> list[dict[str, object]] | None:
     stripped = _strip_markdown_fence(text)
     try:
@@ -289,7 +282,7 @@ class SearchExpressionMotionTool(Tool):
             key=lambda item: item["score"],
             reverse=True,
         )
-        shortlist = ranked[: min(max(top_k * 4, 8), len(ranked))]
+        shortlist = ranked
 
         if self._provider_config is not None:
             try:
@@ -300,13 +293,7 @@ class SearchExpressionMotionTool(Tool):
                     shortlist=shortlist,
                     top_k=top_k,
                 )
-                payload = {
-                    "character_id": character_id,
-                    "top_k": top_k,
-                    "source": source,
-                    "backend": "llm",
-                    "candidates": llm_candidates,
-                }
+                payload = {"candidates": llm_candidates}
                 return ToolResult(success=True, output=json.dumps(payload, ensure_ascii=False))
             except Exception as exc:
                 raw_output = exc.raw_output if isinstance(exc, LLMRerankError) else ""
@@ -316,13 +303,6 @@ class SearchExpressionMotionTool(Tool):
                     raw_output[:500] if raw_output else "<empty>",
                 )
                 payload = {
-                    "character_id": character_id,
-                    "top_k": top_k,
-                    "source": source,
-                    "backend": "heuristic_fallback",
-                    "warning": f"本地模型重排失败，已回退到启发式检索: {exc}",
-                    "llm_error": str(exc),
-                    "llm_raw_output": raw_output,
                     "candidates": [
                         {
                             "action": item["action"],
@@ -336,10 +316,6 @@ class SearchExpressionMotionTool(Tool):
                 return ToolResult(success=True, output=json.dumps(payload, ensure_ascii=False))
 
         payload = {
-            "character_id": character_id,
-            "top_k": top_k,
-            "source": source,
-            "backend": "heuristic",
             "candidates": [
                 {
                     "action": item["action"],
@@ -374,7 +350,7 @@ class SearchExpressionMotionTool(Tool):
         candidate_lines = [
             {
                 "action": str(item["action"]),
-                "description": _compact_description(str(item["description"])),
+                "description": str(item["description"]),
                 "heuristic_score": round(float(item["score"]), 4),
             }
             for item in shortlist
@@ -388,7 +364,7 @@ class SearchExpressionMotionTool(Tool):
                 "candidates": candidate_lines,
                 "output_rules": {
                     "must_choose_from_candidates_only": True,
-                    "must_return_non_empty_array": True,
+                    "allow_empty_array": True,
                     "max_items": top_k,
                     "return_json_only": True,
                 },
@@ -443,6 +419,4 @@ class SearchExpressionMotionTool(Tool):
             if len(candidates) >= top_k:
                 break
 
-        if not candidates:
-            raise LLMRerankError("重排模型未返回有效候选", raw_output=content)
         return candidates

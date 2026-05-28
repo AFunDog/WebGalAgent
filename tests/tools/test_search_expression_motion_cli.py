@@ -6,7 +6,7 @@ import json
 from webgal_agent.tools.search_expression_motion_cli import _async_main, build_parser
 
 
-def test_build_parser_accepts_allowed_action_and_query_text() -> None:
+def test_build_parser_accepts_character_id_and_query_text() -> None:
     parser = build_parser()
 
     args = parser.parse_args(
@@ -17,10 +17,6 @@ def test_build_parser_accepts_allowed_action_and_query_text() -> None:
             "她低头沉思。",
             "--top-k",
             "2",
-            "--allowed-action",
-            "anon/thinking02",
-            "--allowed-action",
-            "anon/sad01",
             "--no-llm",
         ]
     )
@@ -28,7 +24,6 @@ def test_build_parser_accepts_allowed_action_and_query_text() -> None:
     assert args.character_id == "anon"
     assert args.query_text == "她低头沉思。"
     assert args.top_k == 2
-    assert args.allowed_action == ["anon/thinking02", "anon/sad01"]
     assert args.no_llm is True
 
 
@@ -61,7 +56,6 @@ async def test_async_main_prints_final_output_without_llm(monkeypatch, capsys) -
         query_text="她低头沉思。",
         query_file=None,
         top_k=3,
-        allowed_action=["anon/thinking02"],
         providers_path="src/configs/providers.yaml",
         provider_slot="expression_motion_retriever",
         prompts_path="src/configs/prompts.yaml",

@@ -26,12 +26,6 @@ def build_parser() -> argparse.ArgumentParser:
     query_group.add_argument("--query-file", help="从文本文件读取 query_text")
     parser.add_argument("--top-k", type=int, default=3, help="返回候选数量，默认 3")
     parser.add_argument(
-        "--allowed-action",
-        action="append",
-        default=[],
-        help="限制候选 action，可重复传入，例如 --allowed-action anon/thinking02",
-    )
-    parser.add_argument(
         "--providers-path",
         default="src/configs/providers.yaml",
         help="providers.yaml 路径",
@@ -112,18 +106,19 @@ async def _async_main(args: argparse.Namespace) -> int:
     )
 
     logger.info(
-        "开始调用工具: tool=%s character_id=%s top_k=%s allowed_actions=%s query_length=%s",
+        (
+            "开始调用工具: tool=%s character_id=%s top_k=%s "
+            "candidates_scope=all_actions_of_character query_length=%s"
+        ),
         tool.name,
         args.character_id,
         args.top_k,
-        args.allowed_action or "ALL",
         len(query_text),
     )
     result = await tool.execute(
         character_id=args.character_id,
         query_text=query_text,
         top_k=args.top_k,
-        allowed_actions=args.allowed_action,
     )
     logger.info(
         "工具调用完成: success=%s error=%s output_length=%s",

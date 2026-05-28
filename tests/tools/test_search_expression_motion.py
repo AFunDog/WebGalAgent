@@ -61,8 +61,6 @@ def test_search_expression_motion_uses_expression_motion_json_only(monkeypatch) 
 
         assert result.success is True
         payload = json.loads(result.output)
-        assert payload["backend"] == "heuristic"
-        assert payload["source"] == "characters/千早爱音/expression_motion.json"
         assert len(payload["candidates"]) == 2
         assert payload["candidates"][0]["action"] == "anon/thinking02"
     finally:
@@ -172,9 +170,55 @@ def test_search_expression_motion_returns_llm_raw_output_on_fallback(monkeypatch
 
         assert result.success is True
         payload = json.loads(result.output)
-        assert payload["backend"] == "heuristic_fallback"
-        assert payload["llm_error"] == "重排模型未返回有效候选"
-        assert payload["llm_raw_output"] == "not json at all"
+        assert payload["candidates"][0]["action"] == "anon/thinking02"
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_search_expression_motion_accepts_empty_llm_result(monkeypatch) -> None:
+    temp_dir = _make_temp_dir()
+    knowledge_file = (
+        temp_dir / "knowledge" / "characters" / "千早爱音" / "expression_motion.json"
+    )
+    knowledge_file.parent.mkdir(parents=True)
+    knowledge_file.write_text(
+        json.dumps(
+            [
+                {
+                    "action": "anon/thinking02",
+                    "description": "双臂交叉，短暂闭眼低头，表现出沉思和无奈。",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("WEBGAL_KNOWLEDGE_DIR", str(temp_dir / "knowledge"))
+
+    async def _return_empty_candidates(**kwargs):
+        return []
+
+    try:
+        tool = SearchExpressionMotionTool(
+            provider_config=ProviderConfig(
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                base_url="https://api.deepseek.com",
+                api_key="test-key",
+            )
+        )
+        monkeypatch.setattr(tool, "_rerank_with_llm", _return_empty_candidates)
+        result = asyncio.run(
+            tool.execute(
+                character_id="anon",
+                query_text="她低头沉思。",
+                top_k=1,
+            )
+        )
+
+        assert result.success is True
+        payload = json.loads(result.output)
+        assert payload["candidates"] == []
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -195,3 +239,49 @@ def test_extract_json_array_recovers_array_from_verbose_text() -> None:
             "reason": "最符合沉思和无奈。",
         }
     ]
+
+
+def test_search_expression_motion_sends_all_candidates_to_llm(monkeypatch) -> None:
+    temp_dir = _make_temp_dir()
+    knowledge_file = (
+        temp_dir / "knowledge" / "characters" / "千早爱音" / "expression_motion.json"
+    )
+    knowledge_file.parent.mkdir(parents=True)
+    entries = [
+        {"action": f"anon/test{i:02d}", "description": f"这是第 {i} 个完整描述。" * 10}
+        for i in range(1, 6)
+    ]
+    knowledge_file.write_text(json.dumps(entries, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setenv("WEBGAL_KNOWLEDGE_DIR", str(temp_dir / "knowledge"))
+    captured: dict[str, object] = {}
+
+    async def _capture_rerank(**kwargs):
+        captured.update(kwargs)
+        return []
+
+    try:
+        tool = SearchExpressionMotionTool(
+            provider_config=ProviderConfig(
+                provider="deepseek",
+                model="deepseek-v4-flash",
+                base_url="https://api.deepseek.com",
+                api_key="test-key",
+            )
+        )
+        monkeypatch.setattr(tool, "_rerank_with_llm", _capture_rerank)
+        result = asyncio.run(
+            tool.execute(
+                character_id="anon",
+                query_text="测试场景",
+                top_k=3,
+            )
+        )
+
+        assert result.success is True
+        assert len(captured["shortlist"]) == 5
+        assert all(
+            len(str(item["description"])) == len(entries[idx]["description"])
+            for idx, item in enumerate(captured["shortlist"])
+        )
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
