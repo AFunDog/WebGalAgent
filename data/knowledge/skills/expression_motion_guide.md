@@ -10,11 +10,11 @@ title: 角色动作与表情一览表
 > 需要角色专属的动作表情语义时，优先调用 `search_expression_motion` 按需检索 `expression_motion.json`，不要依赖把整份角色动作文档预先塞进上下文。
 > 角色专属的动作表情对照、特色表情和演出建议仍保存在各角色目录下的 `expression_motion.md`，供人工维护和离线查阅：
 >
-> - `data/knowledge/characters/千早爱音/expression_motion.md`
-> - `data/knowledge/characters/长崎素世/expression_motion.md`
-> - `data/knowledge/characters/要乐奈/expression_motion.md`
-> - `data/knowledge/characters/椎名立希/expression_motion.md`
-> - `data/knowledge/characters/高松灯/expression_motion.md`
+> - `data/knowledge/characters/anon/expression_motion.md`
+> - `data/knowledge/characters/soyo/expression_motion.md`
+> - `data/knowledge/characters/rana/expression_motion.md`
+> - `data/knowledge/characters/taki/expression_motion.md`
+> - `data/knowledge/characters/tomori/expression_motion.md`
 >
 > 本文档保留“如何选择和使用动作表情”的通用规则。
 
