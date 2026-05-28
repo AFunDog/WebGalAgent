@@ -233,6 +233,24 @@ def _extract_json_array(text: str) -> list[dict[str, object]] | None:
     return None
 
 
+def _extract_candidate_items(text: str) -> list[dict[str, object]] | None:
+    parsed = _extract_json_array(text)
+    if parsed is not None:
+        return parsed
+
+    stripped = _strip_markdown_fence(text)
+    try:
+        obj = json.loads(stripped)
+    except json.JSONDecodeError:
+        return None
+
+    if isinstance(obj, dict):
+        candidates = obj.get("candidates")
+        if isinstance(candidates, list):
+            return candidates
+    return None
+
+
 class SearchExpressionMotionTool(Tool):
     """从 expression_motion.json 检索最相关的动作和表情候选。"""
 
@@ -395,6 +413,10 @@ class SearchExpressionMotionTool(Tool):
         payload["reference_markdown"] = markdown
         self._emitted_reference_markdown.add(character_id)
 
+    def _uses_json_object_response_format(self) -> bool:
+        provider = getattr(self._provider_config, "provider", "")
+        return str(provider).lower().strip() == "deepseek"
+
     async def _rerank_with_llm(
         self,
         *,
@@ -444,19 +466,28 @@ class SearchExpressionMotionTool(Tool):
         if self._provider_config.extra_body:
             extra_kwargs["extra_body"] = self._provider_config.extra_body
 
-        response = await client.chat.completions.create(
-            model=self._provider_config.model,
-            messages=[
+        request_kwargs: dict[str, Any] = {
+            "model": self._provider_config.model,
+            "messages": [
                 {"role": "system", "content": self._system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=min(self._provider_config.temperature, 0.3),
-            max_tokens=min(self._provider_config.max_tokens, 1200),
+            "temperature": min(self._provider_config.temperature, 0.3),
+            "max_tokens": self._provider_config.max_tokens,
             **extra_kwargs,
-        )
+        }
+        if self._uses_json_object_response_format():
+            request_kwargs["response_format"] = {"type": "json_object"}
+
+        response = await client.chat.completions.create(**request_kwargs)
         content = response.choices[0].message.content or "[]"
-        parsed = _extract_json_array(content)
+        finish_reason = getattr(response.choices[0], "finish_reason", None)
+        logger.debug("LLM finish_reason: %s", finish_reason)
+        logger.debug("LLM 原始输出: %s", content)
+        parsed = _extract_candidate_items(content)
         if parsed is None:
+            if finish_reason == "length":
+                raise LLMRerankError("重排模型输出被截断", raw_output=content)
             raise LLMRerankError("重排模型未返回合法 JSON", raw_output=content)
 
         shortlist_by_action = {str(item["action"]): item for item in shortlist}

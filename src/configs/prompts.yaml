@@ -344,7 +344,7 @@ expression_motion_retriever:
         "description": "低头思考并带有无奈感。"
       },
       {
-        "action": "anon/sad01",
+        "action": "soyo/sad01",
         "score": 0.61,
         "reason": "低落情绪接近，但思考感稍弱。",
         "description": "低落站姿，情绪偏悲伤。"

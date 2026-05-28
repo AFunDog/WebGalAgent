@@ -10,6 +10,7 @@ from webgal_agent.config.provider_manager import ProviderConfig
 from webgal_agent.tools.search_expression_motion import (
     LLMRerankError,
     SearchExpressionMotionTool,
+    _extract_candidate_items,
     _extract_json_array,
     load_expression_motion_retriever_prompt,
 )
@@ -307,6 +308,26 @@ def test_extract_json_array_recovers_array_from_verbose_text() -> None:
             "action": "anon/thinking02",
             "score": 0.96,
             "reason": "最符合沉思和无奈。",
+        }
+    ]
+
+
+def test_extract_candidate_items_accepts_candidate_object() -> None:
+    text = (
+        '{'
+        '"candidates":[{"action":"anon/thinking02","score":0.96,'
+        '"reason":"最符合沉思和无奈。","description":"低头思考并带有无奈感。"}]'
+        "}"
+    )
+
+    parsed = _extract_candidate_items(text)
+
+    assert parsed == [
+        {
+            "action": "anon/thinking02",
+            "score": 0.96,
+            "reason": "最符合沉思和无奈。",
+            "description": "低头思考并带有无奈感。",
         }
     ]
 
