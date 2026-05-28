@@ -23,11 +23,15 @@ def _make_temp_dir() -> Path:
 
 def test_search_expression_motion_uses_expression_motion_json_only(monkeypatch) -> None:
     temp_dir = _make_temp_dir()
-    knowledge_file = (
+    anon_knowledge_file = (
         temp_dir / "knowledge" / "characters" / "千早爱音" / "expression_motion.json"
     )
-    knowledge_file.parent.mkdir(parents=True)
-    knowledge_file.write_text(
+    soyo_knowledge_file = (
+        temp_dir / "knowledge" / "characters" / "长崎素世" / "expression_motion.json"
+    )
+    anon_knowledge_file.parent.mkdir(parents=True)
+    soyo_knowledge_file.parent.mkdir(parents=True)
+    anon_knowledge_file.write_text(
         json.dumps(
             [
                 {
@@ -42,6 +46,18 @@ def test_search_expression_motion_uses_expression_motion_json_only(monkeypatch) 
                     "action": "anon/angry01",
                     "description": "眉头紧锁，语气强硬，明显生气。",
                 },
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    soyo_knowledge_file.write_text(
+        json.dumps(
+            [
+                {
+                    "action": "soyo/smile01",
+                    "description": "温和微笑，神情柔和放松。",
+                }
             ],
             ensure_ascii=False,
         ),
@@ -63,17 +79,27 @@ def test_search_expression_motion_uses_expression_motion_json_only(monkeypatch) 
         payload = json.loads(result.output)
         assert len(payload["candidates"]) == 2
         assert payload["candidates"][0]["action"] == "anon/thinking02"
+        assert {item["action"] for item in payload["candidates"]} <= {
+            "anon/thinking02",
+            "anon/smile01",
+            "anon/angry01",
+            "soyo/smile01",
+        }
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 def test_search_expression_motion_respects_allowed_actions(monkeypatch) -> None:
     temp_dir = _make_temp_dir()
-    knowledge_file = (
+    anon_knowledge_file = (
         temp_dir / "knowledge" / "characters" / "千早爱音" / "expression_motion.json"
     )
-    knowledge_file.parent.mkdir(parents=True)
-    knowledge_file.write_text(
+    soyo_knowledge_file = (
+        temp_dir / "knowledge" / "characters" / "长崎素世" / "expression_motion.json"
+    )
+    anon_knowledge_file.parent.mkdir(parents=True)
+    soyo_knowledge_file.parent.mkdir(parents=True)
+    anon_knowledge_file.write_text(
         json.dumps(
             [
                 {
@@ -89,6 +115,18 @@ def test_search_expression_motion_respects_allowed_actions(monkeypatch) -> None:
         ),
         encoding="utf-8",
     )
+    soyo_knowledge_file.write_text(
+        json.dumps(
+            [
+                {
+                    "action": "soyo/smile01",
+                    "description": "温和微笑，神情柔和放松。",
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setenv("WEBGAL_KNOWLEDGE_DIR", str(temp_dir / "knowledge"))
 
     try:
@@ -98,13 +136,13 @@ def test_search_expression_motion_respects_allowed_actions(monkeypatch) -> None:
                 character_id="anon",
                 query_text="她轻轻笑了一下，气氛缓和下来。",
                 top_k=2,
-                allowed_actions=["anon/smile01"],
+                allowed_actions=["soyo/smile01"],
             )
         )
 
         assert result.success is True
         payload = json.loads(result.output)
-        assert [item["action"] for item in payload["candidates"]] == ["anon/smile01"]
+        assert [item["action"] for item in payload["candidates"]] == ["soyo/smile01"]
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 

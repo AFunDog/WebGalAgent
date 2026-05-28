@@ -60,16 +60,12 @@ def load_expression_motion_retriever_prompt(
     return prompt or DEFAULT_RETRIEVER_PROMPT
 
 
-def _load_expression_motion_entries(
-    character_id: str,
-) -> tuple[list[ExpressionMotionEntry], str | None]:
+def _load_expression_motion_entries() -> list[ExpressionMotionEntry]:
     knowledge_root = _resolve_knowledge_dir() / "characters"
     if not knowledge_root.exists():
-        return [], None
+        return []
 
-    best_entries: list[ExpressionMotionEntry] = []
-    best_source: str | None = None
-    best_score = 0
+    entries: list[ExpressionMotionEntry] = []
 
     for path in sorted(knowledge_root.rglob("expression_motion.json")):
         try:
@@ -80,8 +76,6 @@ def _load_expression_motion_entries(
         if not isinstance(data, list):
             continue
 
-        entries: list[ExpressionMotionEntry] = []
-        score = 0
         for item in data:
             if not isinstance(item, dict):
                 continue
@@ -89,16 +83,9 @@ def _load_expression_motion_entries(
             description = item.get("description")
             if not isinstance(action, str) or not isinstance(description, str):
                 continue
-            if action.startswith(f"{character_id}/"):
-                entries.append(ExpressionMotionEntry(action=action, description=description))
-                score += 1
+            entries.append(ExpressionMotionEntry(action=action, description=description))
 
-        if score > best_score and entries:
-            best_score = score
-            best_entries = entries
-            best_source = path.relative_to(knowledge_root.parent).as_posix()
-
-    return best_entries, best_source
+    return entries
 
 
 def _normalize_text(text: str) -> list[str]:
@@ -206,8 +193,8 @@ class SearchExpressionMotionTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "仅从角色的 expression_motion.json 检索最符合当前场景描述的动作/表情候选。"
-            "适合在 read_model 拿到合法动作列表后，按语义进一步缩小候选范围。"
+            "仅从 expression_motion.json 检索最符合当前场景描述的动作/表情候选。"
+            "如果传入 allowed_actions，则只在这些 action 中检索；否则会使用所有角色的条目。"
         )
 
     @property
@@ -217,7 +204,10 @@ class SearchExpressionMotionTool(Tool):
             "properties": {
                 "character_id": {
                     "type": "string",
-                    "description": "角色ID，例如 anon、soyo、taki。",
+                    "description": (
+                        "当前场景重点角色ID，例如 anon、soyo、taki。"
+                        "用于提示模型，不限制候选来源。"
+                    ),
                 },
                 "query_text": {
                     "type": "string",
@@ -234,7 +224,7 @@ class SearchExpressionMotionTool(Tool):
                     "items": {"type": "string"},
                     "description": (
                         "可选。只在这些 action 中检索，"
-                        "例如 read_model 返回的 motions/expressions。"
+                        "例如 read_model 返回的 motions/expressions。为空时使用所有角色条目。"
                     ),
                 },
             },
@@ -252,16 +242,16 @@ class SearchExpressionMotionTool(Tool):
         if not query_text:
             return ToolResult(success=False, error="缺少 'query_text' 参数")
 
-        entries, source = _load_expression_motion_entries(character_id)
+        entries = _load_expression_motion_entries()
         if not entries:
             return ToolResult(
                 success=False,
-                error=f"未找到角色 {character_id} 的 expression_motion.json 数据",
+                error="未找到可用的 expression_motion.json 数据",
             )
 
         allowed_actions = {
             action for action in allowed_actions_raw
-            if isinstance(action, str) and action.startswith(f"{character_id}/")
+            if isinstance(action, str) and "/" in action
         }
         if allowed_actions:
             entries = [entry for entry in entries if entry.action in allowed_actions]
@@ -289,7 +279,6 @@ class SearchExpressionMotionTool(Tool):
                 llm_candidates = await self._rerank_with_llm(
                     character_id=character_id,
                     query_text=query_text,
-                    source=source,
                     shortlist=shortlist,
                     top_k=top_k,
                 )
@@ -333,7 +322,6 @@ class SearchExpressionMotionTool(Tool):
         *,
         character_id: str,
         query_text: str,
-        source: str | None,
         shortlist: list[dict[str, object]],
         top_k: int,
     ) -> list[dict[str, object]]:
@@ -358,7 +346,6 @@ class SearchExpressionMotionTool(Tool):
         user_prompt = json.dumps(
             {
                 "character_id": character_id,
-                "source": source,
                 "query_text": query_text,
                 "top_k": top_k,
                 "candidates": candidate_lines,
