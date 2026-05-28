@@ -39,6 +39,7 @@ The repository also includes a browser automation and recording subsystem used t
 - `src/webgal_agent/agents/`: concrete agent wrappers
 - `src/webgal_agent/api/`: FastAPI app, task manager, routes
 - `src/webgal_agent/browser/`: browser client, demo CLI, screencast recorder
+- `src/webgal_agent/knowledge/`: knowledge loading plus multimodal expression/motion asset description generation
 - `src/webgal_agent/tools/`: agent tools
 - `src/configs/`: `default.yaml`, `prompts.yaml`, `providers.yaml.sample`, `record.yaml`
 - `src/frontend/`: frontend app

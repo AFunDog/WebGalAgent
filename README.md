@@ -40,7 +40,7 @@ WebGalAgent/
 
 - `src/webgal_agent/api/`: FastAPI 应用、任务编排、录制/知识库/供应商/软链接路由
 - `src/webgal_agent/browser/`: CLI、会话逻辑、录制器、音频抓取、FFmpeg 编码
-- `src/webgal_agent/knowledge/`: 知识库加载与查询
+- `src/webgal_agent/knowledge/`: 知识库加载、查询与角色动作素材知识生成
 - `src/webgal_agent/scene_link/`: 场景软链接管理
 - `src/frontend/`: 前端页面与 API 客户端
 - `src/configs/`: 默认配置、提示词、provider 样例、录制默认值
@@ -167,6 +167,20 @@ title: 千早爱音
 
 - `profile.md`: 角色身份、背景、性格、关系
 - `expression_motion.md`: 立绘、表情、动作、演出相关信息
+
+仓库还提供一个多模态素材描述模块，可扫描角色目录下的图片/视频动作素材并生成 `expression_motion.json`：
+
+```powershell
+.\.venv\Scripts\python.exe -m webgal_agent.knowledge.asset_describer --asset-root data/figure_assets --character-id anon
+```
+
+说明：
+
+- 模块默认读取 `providers.yaml` 中的 `asset_describer` 槽位
+- 素材目录结构默认是 `data/figure_assets/<角色ID>/...`
+- 文件名可直接使用状态名，如 `smile01.png`，也可使用 `anon__smile01.png`
+- 输出文件为 `data/knowledge/characters/<角色名>/expression_motion.json`
+- 图片会作为 `input_image` 发送；视频会作为通用文件输入发送，是否真正支持取决于所用模型和服务端
 
 ## 验证命令
 
