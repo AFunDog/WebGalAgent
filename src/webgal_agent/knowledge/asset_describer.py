@@ -8,20 +8,21 @@ import base64
 import json
 import mimetypes
 import os
+import re
 from collections import defaultdict
-from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
 from openai import AsyncOpenAI
-from pydantic import BaseModel, Field
 
+from webgal_agent.config.prompt_config import extract_system_prompts, load_prompt_config
 from webgal_agent.config.provider_manager import ProviderConfig, ProviderConfigManager
 
 DEFAULT_PROVIDER_SLOT = "asset_describer"
 DEFAULT_ASSET_ROOT = Path("data/figure_assets")
 DEFAULT_OUTPUT_ROOT = Path("data/knowledge/characters")
+DEFAULT_PROMPTS_PATH = Path("src/configs/prompts.yaml")
 SUPPORTED_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 SUPPORTED_VIDEO_SUFFIXES = (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v")
 DEFAULT_CHARACTER_ALIASES: dict[str, str] = {
@@ -31,6 +32,11 @@ DEFAULT_CHARACTER_ALIASES: dict[str, str] = {
     "tomori": "高松灯",
     "rana": "要乐奈",
 }
+DEFAULT_ASSET_DESCRIBER_PROMPT = (
+    "你在为视觉小说脚本转换流程标注角色动作素材。"
+    "只描述素材里能稳定观察到的表情、视线、姿态、动作趋势和整体气质。"
+    "不要编造剧情，不要复述文件名。"
+)
 
 
 @dataclass(slots=True)
@@ -46,23 +52,7 @@ class CharacterAsset:
 
 @dataclass(slots=True)
 class AssetDescription:
-    summary: str
-    emotion: str
-    pose: str
-    cues: list[str]
-    usage: str
-    confidence: str
-    note: str = ""
-
-
-class AssetDescriptionPayload(BaseModel):
-    summary: str = Field(description="一句简洁中文概述，不重复状态名")
-    emotion: str = Field(description="从素材中能观察出的情绪")
-    pose: str = Field(description="姿态、朝向或动作主体")
-    cues: list[str] = Field(description="可稳定观察到的关键线索")
-    usage: str = Field(description="适合用于什么脚本演出场景")
-    confidence: str = Field(description="high、medium、low 或 unsupported_video")
-    note: str = Field(default="", description="补充限制、遮挡或视频兼容情况")
+    text: str
 
 
 class AssetDescriber(Protocol):
@@ -70,10 +60,11 @@ class AssetDescriber(Protocol):
         """为单个素材生成结构化描述。"""
 
 
-def _schema_for_payload() -> dict[str, Any]:
-    schema = AssetDescriptionPayload.model_json_schema()
-    schema["additionalProperties"] = False
-    return schema
+def _strip_markdown_fence(text: str) -> str:
+    fenced = re.search(r"```(?:text|markdown)?\s*(.*?)\s*```", text, re.DOTALL)
+    if fenced:
+        return fenced.group(1)
+    return text.strip()
 
 
 def _guess_mime_type(path: Path) -> str:
@@ -84,6 +75,13 @@ def _guess_mime_type(path: Path) -> str:
 def _to_data_url(path: Path) -> str:
     encoded = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:{_guess_mime_type(path)};base64,{encoded}"
+
+
+def _to_dashscope_file_uri(path: Path) -> str:
+    resolved = path.resolve()
+    if os.name == "nt":
+        return f"file://{resolved.as_posix()}"
+    return resolved.as_uri()
 
 
 def _load_character_aliases(alias_path: Path | None) -> dict[str, str]:
@@ -103,6 +101,13 @@ def _load_character_aliases(alias_path: Path | None) -> dict[str, str]:
             if isinstance(key, str) and isinstance(value, str):
                 aliases[key] = value
     return aliases
+
+
+def load_asset_describer_prompt(prompts_path: str | Path = DEFAULT_PROMPTS_PATH) -> str:
+    prompt_config = load_prompt_config(prompts_path)
+    prompts = extract_system_prompts(prompt_config)
+    prompt = prompts.get("asset_describer", "").strip()
+    return prompt or DEFAULT_ASSET_DESCRIBER_PROMPT
 
 
 def _is_supported_media(path: Path) -> bool:
@@ -176,11 +181,12 @@ def discover_character_assets(
 class OpenAIMultimodalAssetDescriber:
     """调用 OpenAI 兼容多模态模型描述动作素材。"""
 
-    def __init__(self, provider_config: ProviderConfig) -> None:
+    def __init__(self, provider_config: ProviderConfig, system_prompt: str) -> None:
         base_url = provider_config.base_url
         if base_url.endswith("/chat/completions"):
             base_url = base_url[: -len("/chat/completions")]
         self._config = provider_config
+        self._system_prompt = system_prompt.strip() or DEFAULT_ASSET_DESCRIBER_PROMPT
         self._client = AsyncOpenAI(
             api_key=provider_config.api_key or "sk-placeholder",
             base_url=base_url,
@@ -192,10 +198,8 @@ class OpenAIMultimodalAssetDescriber:
             {
                 "type": "input_text",
                 "text": (
-                    "你在为视觉小说脚本转换流程标注角色动作素材。"
-                    "只描述素材里能稳定观察到的表情、视线、姿态、动作趋势和整体气质。"
-                    "不要编造剧情，不要复述文件名。"
-                    f" 角色ID={asset.character_id}，状态名={asset.state_name}，"
+                    f"{self._system_prompt} "
+                    f"角色ID={asset.character_id}，状态名={asset.state_name}，"
                     f"素材类型={asset.media_type}，相对路径={asset.relative_path}。"
                 ),
             }
@@ -230,43 +234,90 @@ class OpenAIMultimodalAssetDescriber:
             input=[{"role": "user", "content": content}],
             temperature=min(self._config.temperature, 0.3),
             max_output_tokens=min(self._config.max_tokens, 1200),
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "character_asset_description",
-                    "schema": _schema_for_payload(),
-                    "strict": True,
-                },
-                "verbosity": "low",
-            },
+            text={"verbosity": "low"},
             **extra_kwargs,
         )
-        payload = AssetDescriptionPayload.model_validate_json(response.output_text)
-        return AssetDescription(**payload.model_dump())
+        return AssetDescription(text=_strip_markdown_fence(response.output_text))
+
+
+class DashScopeMultimodalAssetDescriber:
+    """调用 DashScope 原生多模态 SDK 描述动作素材。"""
+
+    def __init__(self, provider_config: ProviderConfig, system_prompt: str) -> None:
+        self._config = provider_config
+        self._system_prompt = system_prompt.strip() or DEFAULT_ASSET_DESCRIBER_PROMPT
+
+    async def describe(self, asset: CharacterAsset) -> AssetDescription:
+        return await asyncio.to_thread(self._describe_sync, asset)
+
+    def _describe_sync(self, asset: CharacterAsset) -> AssetDescription:
+        try:
+            import dashscope
+            from dashscope import MultiModalConversation
+        except ImportError as exc:
+            raise RuntimeError(
+                "DashScope provider 需要安装 `dashscope` 包。"
+            ) from exc
+
+        if self._config.base_url:
+            dashscope.base_http_api_url = self._config.base_url
+
+        media_payload: dict[str, Any]
+        if asset.media_type == "video":
+            media_payload = {
+                "video": _to_dashscope_file_uri(asset.source_path),
+                "fps": self._config.extra_body.get("fps", 2) if self._config.extra_body else 2,
+            }
+        else:
+            media_payload = {"image": _to_dashscope_file_uri(asset.source_path)}
+
+        prompt = (
+            f"{self._system_prompt} "
+            f"角色ID={asset.character_id}，状态名={asset.state_name}，"
+            f"素材类型={asset.media_type}，相对路径={asset.relative_path}。"
+            " 请直接输出一段中文描述文本，不要输出 JSON、标题、列表或额外解释。"
+        )
+
+        response = MultiModalConversation.call(
+            api_key=self._config.api_key or os.getenv("DASHSCOPE_API_KEY"),
+            model=self._config.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        media_payload,
+                        {"text": prompt},
+                    ],
+                }
+            ],
+        )
+
+        try:
+            raw_text = response.output.choices[0].message.content[0]["text"]
+        except (AttributeError, IndexError, KeyError, TypeError) as exc:
+            raise RuntimeError(f"无法解析 DashScope 响应: {response}") from exc
+
+        return AssetDescription(text=_strip_markdown_fence(raw_text))
+
+
+def build_asset_describer(provider_config: ProviderConfig, system_prompt: str) -> AssetDescriber:
+    provider_name = provider_config.provider.lower().strip()
+    if provider_name == "dashscope":
+        return DashScopeMultimodalAssetDescriber(provider_config, system_prompt)
+    return OpenAIMultimodalAssetDescriber(provider_config, system_prompt)
 
 
 def _build_output_payload(
-    display_name: str,
     character_assets: list[CharacterAsset],
     descriptions: dict[str, AssetDescription],
-) -> dict[str, Any]:
-    return {
-        "character_id": character_assets[0].character_id,
-        "display_name": display_name,
-        "generated_at": datetime.now(UTC).isoformat(),
-        "asset_count": len(character_assets),
-        "assets": [
-            {
-                "asset_name": asset.asset_name,
-                "state_name": asset.state_name,
-                "media_type": asset.media_type,
-                "relative_path": asset.relative_path,
-                "source_path": asset.source_path.as_posix(),
-                "description": asdict(descriptions[asset.relative_path]),
-            }
-            for asset in character_assets
-        ],
-    }
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "action": f"{asset.character_id}/{asset.state_name}",
+            "description": descriptions[asset.relative_path].text,
+        }
+        for asset in character_assets
+    ]
 
 
 async def generate_character_asset_json(
@@ -285,7 +336,7 @@ async def generate_character_asset_json(
         for asset in character_assets:
             descriptions[asset.relative_path] = await describer.describe(asset)
 
-        payload = _build_output_payload(display_name, character_assets, descriptions)
+        payload = _build_output_payload(character_assets, descriptions)
         output_path = output_root / display_name / "expression_motion.json"
         if not dry_run:
             output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -315,6 +366,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="providers.yaml 路径",
     )
     parser.add_argument(
+        "--prompts-path",
+        default=os.getenv("WEBGAL_PROMPTS_PATH", str(DEFAULT_PROMPTS_PATH)),
+        help="prompts.yaml 路径",
+    )
+    parser.add_argument(
         "--provider-slot",
         default=DEFAULT_PROVIDER_SLOT,
         help="provider 槽位名，默认 asset_describer",
@@ -339,6 +395,7 @@ async def _async_main(args: argparse.Namespace) -> int:
     alias_map = _load_character_aliases(alias_path)
     provider_manager = ProviderConfigManager(args.providers_path)
     provider_config = provider_manager.get(args.provider_slot)
+    system_prompt = load_asset_describer_prompt(args.prompts_path)
 
     assets = discover_character_assets(
         asset_root=Path(args.asset_root),
@@ -349,7 +406,7 @@ async def _async_main(args: argparse.Namespace) -> int:
         print("未发现符合条件的动作素材")
         return 1
 
-    describer = OpenAIMultimodalAssetDescriber(provider_config)
+    describer = build_asset_describer(provider_config, system_prompt)
     written = await generate_character_asset_json(
         assets=assets,
         describer=describer,

@@ -24,12 +24,14 @@ script_converter:
   <<: *defaults
 
 # 可选：用于 `python -m webgal_agent.knowledge.asset_describer`
-# 的多模态模型槽位。建议单独指定支持图像输入的模型；
-# 如果要直接分析视频文件，请确认所接的服务端也支持文件/视频理解。
+# 的多模态模型槽位。
+# `provider: dashscope` 时会走 DashScope 原生 SDK，可直接传本地图片/视频路径。
 asset_describer:
-  provider: openai
-  model: gpt-4.1-mini
-  base_url: https://api.openai.com/v1
-  api_key: "your-api-key-here"
+  provider: dashscope
+  model: qwen3.6-plus
+  base_url: https://dashscope.aliyuncs.com/api/v1
+  api_key: "your-dashscope-api-key-here"
   temperature: 0.2
   max_tokens: 4096
+  extra_body:
+    fps: 2

@@ -44,6 +44,10 @@ PROVIDER_PRESETS: dict[str, dict[str, str]] = {
         "provider": "anthropic",
         "base_url": "https://api.anthropic.com/v1",
     },
+    "dashscope": {
+        "provider": "dashscope",
+        "base_url": "https://dashscope.aliyuncs.com/api/v1",
+    },
     "ollama": {
         "provider": "ollama",
         "base_url": "http://localhost:11434/v1",

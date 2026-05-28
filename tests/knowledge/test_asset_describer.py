@@ -5,12 +5,18 @@ import shutil
 import uuid
 from pathlib import Path
 
+from webgal_agent.config.provider_manager import ProviderConfig
 from webgal_agent.knowledge.asset_describer import (
     AssetDescription,
     CharacterAsset,
+    DashScopeMultimodalAssetDescriber,
+    OpenAIMultimodalAssetDescriber,
     _load_character_aliases,
+    _to_dashscope_file_uri,
+    build_asset_describer,
     discover_character_assets,
     generate_character_asset_json,
+    load_asset_describer_prompt,
 )
 
 
@@ -61,15 +67,7 @@ def test_discover_character_assets_parses_prefixed_names() -> None:
 
 class _FakeDescriber:
     async def describe(self, asset: CharacterAsset) -> AssetDescription:
-        return AssetDescription(
-            summary=f"{asset.state_name} 的概述",
-            emotion="平静",
-            pose="站姿",
-            cues=[asset.media_type, asset.state_name],
-            usage="用于脚本转换",
-            confidence="high",
-            note="",
-        )
+        return AssetDescription(text=f"{asset.state_name} 的描述文本")
 
 
 async def test_generate_character_asset_json_writes_grouped_json() -> None:
@@ -99,10 +97,65 @@ async def test_generate_character_asset_json_writes_grouped_json() -> None:
 
         assert written == [output_root / "千早爱音" / "expression_motion.json"]
         payload = json.loads(written[0].read_text(encoding="utf-8"))
-        assert payload["character_id"] == "anon"
-        assert payload["display_name"] == "千早爱音"
-        assert payload["asset_count"] == 1
-        assert payload["assets"][0]["state_name"] == "smile01"
-        assert payload["assets"][0]["description"]["summary"] == "smile01 的概述"
+        assert payload == [
+            {
+                "action": "anon/smile01",
+                "description": "smile01 的描述文本",
+            }
+        ]
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_build_asset_describer_selects_dashscope_provider() -> None:
+    describer = build_asset_describer(
+        ProviderConfig(
+            provider="dashscope",
+            model="qwen3.6-plus",
+            base_url="https://dashscope.aliyuncs.com/api/v1",
+            api_key="test-key",
+        )
+        ,
+        "test prompt",
+    )
+
+    assert isinstance(describer, DashScopeMultimodalAssetDescriber)
+
+
+def test_build_asset_describer_defaults_to_openai_compatible() -> None:
+    describer = build_asset_describer(
+        ProviderConfig(
+            provider="openai",
+            model="gpt-4.1-mini",
+            base_url="https://api.openai.com/v1",
+            api_key="test-key",
+        )
+        ,
+        "test prompt",
+    )
+
+    assert isinstance(describer, OpenAIMultimodalAssetDescriber)
+
+
+def test_to_dashscope_file_uri_uses_local_file_scheme() -> None:
+    path = Path("D:/images/test.png")
+
+    assert _to_dashscope_file_uri(path) == "file://D:/images/test.png"
+
+
+def test_load_asset_describer_prompt_reads_from_prompts_yaml() -> None:
+    temp_dir = _make_temp_dir()
+    prompts_path = temp_dir / "prompts.yaml"
+    prompts_path.write_text(
+        """
+asset_describer:
+  system_prompt: |
+    这是素材描述提示词
+""".strip(),
+        encoding="utf-8",
+    )
+
+    try:
+        assert load_asset_describer_prompt(prompts_path) == "这是素材描述提示词"
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)

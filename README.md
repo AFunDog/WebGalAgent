@@ -180,7 +180,8 @@ title: 千早爱音
 - 素材目录结构默认是 `data/figure_assets/<角色ID>/...`
 - 文件名可直接使用状态名，如 `smile01.png`，也可使用 `anon__smile01.png`
 - 输出文件为 `data/knowledge/characters/<角色名>/expression_motion.json`
-- 图片会作为 `input_image` 发送；视频会作为通用文件输入发送，是否真正支持取决于所用模型和服务端
+- 当 `provider: dashscope` 时，会通过 DashScope 原生 SDK 直接传入本地图片/视频路径
+- OpenAI 兼容 provider 仍可用于图片输入；如果要直接分析视频，优先使用 DashScope 原生 SDK 路径
 
 ## 验证命令
 
