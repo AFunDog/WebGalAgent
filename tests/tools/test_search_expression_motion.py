@@ -218,6 +218,9 @@ def test_search_expression_motion_accepts_empty_llm_result(monkeypatch) -> None:
     knowledge_file = (
         temp_dir / "knowledge" / "characters" / "千早爱音" / "expression_motion.json"
     )
+    markdown_file = (
+        temp_dir / "knowledge" / "characters" / "千早爱音" / "expression_motion.md"
+    )
     knowledge_file.parent.mkdir(parents=True)
     knowledge_file.write_text(
         json.dumps(
@@ -229,6 +232,16 @@ def test_search_expression_motion_accepts_empty_llm_result(monkeypatch) -> None:
             ],
             ensure_ascii=False,
         ),
+        encoding="utf-8",
+    )
+    markdown_file.write_text(
+        "---\n"
+        "category: character\n"
+        "tags: [kind:character-expression]\n"
+        "title: 千早爱音·动作与表情\n"
+        "---\n\n"
+        "# 千早爱音·动作与表情\n\n"
+        "这是一次性回退参考。",
         encoding="utf-8",
     )
     monkeypatch.setenv("WEBGAL_KNOWLEDGE_DIR", str(temp_dir / "knowledge"))
@@ -257,6 +270,18 @@ def test_search_expression_motion_accepts_empty_llm_result(monkeypatch) -> None:
         assert result.success is True
         payload = json.loads(result.output)
         assert payload["candidates"] == []
+        assert payload["reference_markdown"].startswith("---\ncategory: character")
+
+        result_second = asyncio.run(
+            tool.execute(
+                character_id="anon",
+                query_text="她低头沉思。",
+                top_k=1,
+            )
+        )
+        payload_second = json.loads(result_second.output)
+        assert payload_second["candidates"] == []
+        assert "reference_markdown" not in payload_second
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 

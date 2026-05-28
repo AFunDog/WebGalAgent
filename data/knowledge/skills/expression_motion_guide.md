@@ -7,7 +7,8 @@ title: 角色动作与表情一览表
 # 角色动作与表情一览表
 
 > 使用 `read_model` 工具读取角色 model.json 可获取该角色实际可用的动作和表情列表。
-> 角色专属的动作表情对照、特色表情和演出建议已拆分到各角色目录下的 `expression_motion.md`：
+> 需要角色专属的动作表情语义时，优先调用 `search_expression_motion` 按需检索 `expression_motion.json`，不要依赖把整份角色动作文档预先塞进上下文。
+> 角色专属的动作表情对照、特色表情和演出建议仍保存在各角色目录下的 `expression_motion.md`，供人工维护和离线查阅：
 >
 > - `data/knowledge/characters/千早爱音/expression_motion.md`
 > - `data/knowledge/characters/长崎素世/expression_motion.md`

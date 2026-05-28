@@ -1,6 +1,6 @@
 ---
 category: character
-tags: [kind:character-expression, audience:script-converter]
+tags: [kind:character-expression]
 title: 长崎素世·动作与表情
 ---
 

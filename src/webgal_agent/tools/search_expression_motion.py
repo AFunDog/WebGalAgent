@@ -36,6 +36,7 @@ logger = get_logger("webgal_agent.search_expression_motion")
 class ExpressionMotionEntry:
     action: str
     description: str
+    source_dir: Path
 
 
 class LLMRerankError(RuntimeError):
@@ -83,9 +84,44 @@ def _load_expression_motion_entries() -> list[ExpressionMotionEntry]:
             description = item.get("description")
             if not isinstance(action, str) or not isinstance(description, str):
                 continue
-            entries.append(ExpressionMotionEntry(action=action, description=description))
+            entries.append(
+                ExpressionMotionEntry(
+                    action=action,
+                    description=description,
+                    source_dir=path.parent,
+                )
+            )
 
     return entries
+
+
+def _load_expression_motion_markdown(character_id: str) -> str:
+    knowledge_root = _resolve_knowledge_dir() / "characters"
+    if not knowledge_root.exists():
+        return ""
+
+    target_prefix = f"{character_id}/"
+    for path in sorted(knowledge_root.rglob("expression_motion.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(data, list):
+            continue
+        if any(
+            isinstance(item, dict)
+            and isinstance(item.get("action"), str)
+            and item["action"].startswith(target_prefix)
+            for item in data
+        ):
+            md_path = path.with_suffix(".md")
+            if md_path.exists():
+                try:
+                    return md_path.read_text(encoding="utf-8").strip()
+                except Exception:
+                    return ""
+            return ""
+    return ""
 
 
 def _normalize_text(text: str) -> list[str]:
@@ -185,6 +221,7 @@ class SearchExpressionMotionTool(Tool):
     ) -> None:
         self._provider_config = provider_config
         self._system_prompt = load_expression_motion_retriever_prompt(prompts_path)
+        self._emitted_reference_markdown: set[str] = set()
 
     @property
     def name(self) -> str:
@@ -283,6 +320,7 @@ class SearchExpressionMotionTool(Tool):
                     top_k=top_k,
                 )
                 payload = {"candidates": llm_candidates}
+                self._attach_reference_markdown_once(payload, character_id)
                 return ToolResult(success=True, output=json.dumps(payload, ensure_ascii=False))
             except Exception as exc:
                 raw_output = exc.raw_output if isinstance(exc, LLMRerankError) else ""
@@ -316,6 +354,24 @@ class SearchExpressionMotionTool(Tool):
             ],
         }
         return ToolResult(success=True, output=json.dumps(payload, ensure_ascii=False))
+
+    def _attach_reference_markdown_once(
+        self,
+        payload: dict[str, object],
+        character_id: str,
+    ) -> None:
+        candidates = payload.get("candidates")
+        if not isinstance(candidates, list) or candidates:
+            return
+        if character_id in self._emitted_reference_markdown:
+            return
+
+        markdown = _load_expression_motion_markdown(character_id)
+        if not markdown:
+            return
+
+        payload["reference_markdown"] = markdown
+        self._emitted_reference_markdown.add(character_id)
 
     async def _rerank_with_llm(
         self,

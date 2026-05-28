@@ -1,6 +1,6 @@
 ---
 category: character
-tags: [kind:character-expression, audience:script-converter]
+tags: [kind:character-expression]
 title: 高松灯·动作与表情
 ---
 
