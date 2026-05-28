@@ -40,7 +40,7 @@ def test_load_character_aliases_merges_custom_values() -> None:
 
         assert aliases["anon"] == "测试爱音"
         assert aliases["new"] == "新角色"
-        assert aliases["soyo"] == "长崎素世"
+        assert "soyo" not in aliases
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -56,11 +56,11 @@ def test_discover_character_assets_parses_prefixed_names() -> None:
     (asset_dir / "notes.txt").write_text("skip", encoding="utf-8")
 
     try:
-        assets = discover_character_assets(temp_dir, {"anon": "千早爱音"})
+        assets = discover_character_assets(temp_dir, {})
 
         assert sorted(asset.state_name for asset in assets) == ["idle02", "smile01"]
         assert sorted(asset.media_type for asset in assets) == ["image", "video"]
-        assert all(asset.display_name == "千早爱音" for asset in assets)
+        assert all(asset.display_name == "anon" for asset in assets)
         assert {asset.relative_path for asset in assets} == {"alt/idle02.webm", "anon__smile01.png"}
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
@@ -76,7 +76,7 @@ def test_discover_character_assets_scans_direct_asset_root() -> None:
     try:
         assets = discover_character_assets(
             asset_dir,
-            {"anon": "千早爱音"},
+            {},
             character_filter={"anon"},
         )
 
@@ -104,7 +104,7 @@ async def test_generate_character_asset_json_writes_grouped_json() -> None:
     assets = [
         CharacterAsset(
             character_id="anon",
-            display_name="千早爱音",
+            display_name="anon",
             asset_name="anon__smile01",
             state_name="smile01",
             source_path=source_file,
@@ -120,7 +120,7 @@ async def test_generate_character_asset_json_writes_grouped_json() -> None:
             output_root=output_root,
         )
 
-        assert written == [output_root / "千早爱音" / "expression_motion.json"]
+        assert written == [output_root / "anon" / "expression_motion.json"]
         payload = json.loads(written[0].read_text(encoding="utf-8"))
         assert payload == [
             {

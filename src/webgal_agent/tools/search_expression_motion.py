@@ -26,8 +26,10 @@ DEFAULT_PROMPTS_PATH = Path("src/configs/prompts.yaml")
 DEFAULT_RETRIEVER_PROMPT = (
     "你是一个动作表情检索重排器。"
     "你只能从给定候选中挑选最符合场景语义的 action，不能编造新 action。"
-    "请输出 JSON 数组，每个元素包含 action、score、reason。"
-    "score 使用 0 到 1 的数字，reason 用一句简短中文说明。"
+    "请输出 JSON 数组，每个元素包含 action、score、reason、description。"
+    "score 使用 0 到 1 的数字，reason 用一句简短中文说明，"
+    "description 用一句简短中文概括该候选动作，不超过 25 个字。"
+    "除非所有候选都明显不匹配，否则至少返回 1 个最接近的候选，不要轻易返回空数组。"
 )
 logger = get_logger("webgal_agent.search_expression_motion")
 
@@ -165,6 +167,26 @@ def _strip_markdown_fence(text: str) -> str:
     if fenced:
         return fenced.group(1)
     return text.strip()
+
+
+def _compact_description(description: str, max_length: int = 25) -> str:
+    text = re.sub(r"\s+", " ", description.strip())
+    if not text:
+        return ""
+
+    sentence_parts = [part.strip() for part in re.split(r"[。！？；]+", text) if part.strip()]
+    summary = sentence_parts[0] if sentence_parts else text
+    summary = re.sub(r"[，、]\s*", "，", summary)
+
+    if len(summary) > max_length:
+        fragments = [part.strip() for part in re.split(r"[，,]", summary) if part.strip()]
+        if len(fragments) >= 2:
+            summary = "，".join(fragments[:2])
+        if len(summary) > max_length:
+            summary = summary[: max_length - 1].rstrip("，、,")
+
+    summary = summary.rstrip("。！？；，、,")
+    return f"{summary}。" if summary else ""
 
 
 def _extract_json_array(text: str) -> list[dict[str, object]] | None:
@@ -333,7 +355,7 @@ class SearchExpressionMotionTool(Tool):
                     "candidates": [
                         {
                             "action": item["action"],
-                            "description": item["description"],
+                            "description": _compact_description(str(item["description"])),
                             "score": round(float(item["score"]), 4),
                             "reason": "基于场景文本与动作描述的启发式匹配。",
                         }
@@ -346,7 +368,7 @@ class SearchExpressionMotionTool(Tool):
             "candidates": [
                 {
                     "action": item["action"],
-                    "description": item["description"],
+                    "description": _compact_description(str(item["description"])),
                     "score": round(float(item["score"]), 4),
                     "reason": "基于场景文本与动作描述的启发式匹配。",
                 }
@@ -408,6 +430,7 @@ class SearchExpressionMotionTool(Tool):
                 "output_rules": {
                     "must_choose_from_candidates_only": True,
                     "allow_empty_array": True,
+                    "prefer_non_empty_array": True,
                     "max_items": top_k,
                     "return_json_only": True,
                 },
@@ -445,16 +468,22 @@ class SearchExpressionMotionTool(Tool):
             if not isinstance(action, str) or action not in shortlist_by_action:
                 continue
             reason = item.get("reason", "")
+            llm_description = item.get("description", "")
             score = item.get("score", 0)
             original = shortlist_by_action[action]
             try:
                 numeric_score = round(float(score), 4)
             except (TypeError, ValueError):
                 numeric_score = round(float(original["score"]), 4)
+            compact_description = _compact_description(
+                str(llm_description).strip()
+                if isinstance(llm_description, str) and llm_description.strip()
+                else str(original["description"])
+            )
             candidates.append(
                 {
                     "action": action,
-                    "description": str(original["description"]),
+                    "description": compact_description,
                     "score": numeric_score,
                     "reason": str(reason).strip() or "本地模型认为该动作与场景语义更贴近。",
                 }

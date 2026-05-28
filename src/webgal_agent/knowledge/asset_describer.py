@@ -27,13 +27,6 @@ DEFAULT_OUTPUT_ROOT = Path("data/knowledge/characters")
 DEFAULT_PROMPTS_PATH = Path("src/configs/prompts.yaml")
 SUPPORTED_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 SUPPORTED_VIDEO_SUFFIXES = (".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v")
-DEFAULT_CHARACTER_ALIASES: dict[str, str] = {
-    "anon": "千早爱音",
-    "soyo": "长崎素世",
-    "taki": "椎名立希",
-    "tomori": "高松灯",
-    "rana": "要乐奈",
-}
 DEFAULT_ASSET_DESCRIBER_PROMPT = (
     "你在为视觉小说脚本转换流程标注角色动作素材。"
     "只描述素材里能稳定观察到的表情、视线、姿态、动作趋势和整体气质。"
@@ -95,9 +88,9 @@ def _normalize_dashscope_sdk_base_url(base_url: str) -> str:
 
 
 def _load_character_aliases(alias_path: Path | None) -> dict[str, str]:
-    aliases = dict(DEFAULT_CHARACTER_ALIASES)
+    aliases: dict[str, str] = {}
     if alias_path is None or not alias_path.exists():
-        logger.debug("未提供别名映射文件，使用默认角色别名")
+        logger.debug("未提供别名映射文件，使用角色ID原样输出")
         return aliases
 
     if alias_path.suffix.lower() == ".json":
@@ -482,16 +475,15 @@ async def generate_character_asset_json(
 ) -> list[Path]:
     grouped: dict[str, list[CharacterAsset]] = defaultdict(list)
     for asset in assets:
-        grouped[asset.display_name].append(asset)
+        grouped[asset.character_id].append(asset)
 
     logger.info("开始生成描述 JSON: characters=%s assets=%s", len(grouped), len(assets))
 
     written_paths: list[Path] = []
-    for display_name, character_assets in grouped.items():
+    for character_id, character_assets in grouped.items():
         logger.info(
-            "处理角色素材组: display_name=%s character_id=%s asset_count=%s",
-            display_name,
-            character_assets[0].character_id,
+            "处理角色素材组: character_id=%s asset_count=%s",
+            character_id,
             len(character_assets),
         )
         descriptions: dict[str, AssetDescription] = {}
@@ -499,7 +491,7 @@ async def generate_character_asset_json(
             descriptions[asset.relative_path] = await describer.describe(asset)
 
         payload = _build_output_payload(character_assets, descriptions)
-        output_path = output_root / display_name / "expression_motion.json"
+        output_path = output_root / character_id / "expression_motion.json"
         if not dry_run:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_text(

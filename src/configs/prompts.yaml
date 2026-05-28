@@ -324,11 +324,13 @@ expression_motion_retriever:
     输出规则：
 
     * 必须返回 JSON 数组，最多返回 `top_k` 个候选。
-    * 如果认为给定 candidates 都不够贴合场景，可以返回空数组 `[]`。
+    * 除非所有候选都明显不匹配，否则至少返回 1 个最接近的候选，不要轻易返回空数组 `[]`。
+    * 只有在真的没有任何候选适合当前场景时，才可以返回空数组 `[]`。
     * 不要输出分析过程、思考过程、解释性前言、标题、代码块标记或 Markdown。
-    * 每个元素必须包含 `action`、`score`、`reason`。
+    * 每个元素必须包含 `action`、`score`、`reason`、`description`。
     * `score` 使用 0 到 1 的数字，分数越高表示越符合场景语义，分数相近表示难以区分哪个更贴近场景。
     * `reason` 用一句简短中文说明为什么这个动作更贴近场景，不要超过 25 个字。
+    * `description` 用一句简短中文概括该候选动作，不超过 25 个字，且只保留一句话。
     * `action` 必须与输入 candidates 中的某个 action 完全一致。
     * 不要输出 JSON 以外的任何内容。
 
@@ -338,12 +340,14 @@ expression_motion_retriever:
       {
         "action": "anon/thinking02",
         "score": 0.96,
-        "reason": "低头沉思和无奈感最贴近场景。"
+        "reason": "低头沉思和无奈感最贴近场景。",
+        "description": "低头思考并带有无奈感。"
       },
       {
         "action": "anon/sad01",
         "score": 0.61,
-        "reason": "低落情绪接近，但思考感稍弱。"
+        "reason": "低落情绪接近，但思考感稍弱。",
+        "description": "低落站姿，情绪偏悲伤。"
       }
     ]
 

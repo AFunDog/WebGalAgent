@@ -165,6 +165,13 @@ expression_motion_retriever:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def test_expression_motion_retriever_prompt_discourages_empty_array() -> None:
+    prompt = load_expression_motion_retriever_prompt()
+
+    assert "至少返回 1 个最接近的候选" in prompt
+    assert "不要轻易返回空数组" in prompt
+
+
 def test_search_expression_motion_returns_llm_raw_output_on_fallback(monkeypatch) -> None:
     temp_dir = _make_temp_dir()
     knowledge_file = (
@@ -346,5 +353,49 @@ def test_search_expression_motion_sends_all_candidates_to_llm(monkeypatch) -> No
             len(str(item["description"])) == len(entries[idx]["description"])
             for idx, item in enumerate(captured["shortlist"])
         )
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_search_expression_motion_compacts_description(monkeypatch) -> None:
+    temp_dir = _make_temp_dir()
+    knowledge_file = (
+        temp_dir / "knowledge" / "characters" / "千早爱音" / "expression_motion.json"
+    )
+    knowledge_file.parent.mkdir(parents=True)
+    long_description = (
+        "角色呈站立姿态，身体伴随着轻微的呼吸节奏进行自然的左右晃动和起伏。"
+        "初始表情显得忧伤且略带无助，眉头微蹙，眼神低垂且显得黯淡，嘴角微微向下。"
+    )
+    knowledge_file.write_text(
+        json.dumps(
+            [
+                {
+                    "action": "anon/sad01",
+                    "description": long_description,
+                }
+            ],
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("WEBGAL_KNOWLEDGE_DIR", str(temp_dir / "knowledge"))
+
+    try:
+        tool = SearchExpressionMotionTool(provider_config=None)
+        result = asyncio.run(
+            tool.execute(
+                character_id="anon",
+                query_text="她看起来很难过。",
+                top_k=1,
+            )
+        )
+
+        assert result.success is True
+        payload = json.loads(result.output)
+        description = payload["candidates"][0]["description"]
+        assert description != long_description
+        assert len(description) < len(long_description)
+        assert description.endswith("。")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
