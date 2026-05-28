@@ -1,16 +1,71 @@
-"""模型文件读取工具：读取角色 model.json 提取动作和表情列表。"""
+"""模型文件读取工具：读取角色 model.json 提取动作、表情和附加描述。"""
 
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 
-from webgal_agent.tools.base import Tool, ToolResult
 from webgal_agent.tools._paths import resolve_asset_dir
+from webgal_agent.tools.base import Tool, ToolResult
+
+DEFAULT_KNOWLEDGE_DIR = pathlib.Path("data/knowledge")
+
+
+def _resolve_knowledge_dir() -> pathlib.Path:
+    knowledge_dir = os.getenv("WEBGAL_KNOWLEDGE_DIR", str(DEFAULT_KNOWLEDGE_DIR)).strip()
+    return pathlib.Path(knowledge_dir)
+
+
+def _load_expression_motion_descriptions(character_id: str) -> tuple[dict[str, str], str | None]:
+    knowledge_root = _resolve_knowledge_dir() / "characters"
+    if not knowledge_root.exists():
+        return {}, None
+
+    best_descriptions: dict[str, str] = {}
+    best_source: str | None = None
+    best_score = 0
+
+    for path in sorted(knowledge_root.rglob("expression_motion.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        if not isinstance(data, list):
+            continue
+
+        descriptions: dict[str, str] = {}
+        score = 0
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            action = item.get("action")
+            description = item.get("description")
+            if not isinstance(action, str) or not isinstance(description, str):
+                continue
+            if action.startswith(f"{character_id}/"):
+                descriptions[action] = description
+                score += 1
+
+        if score > best_score and descriptions:
+            best_score = score
+            best_descriptions = descriptions
+            best_source = path.relative_to(knowledge_root.parent).as_posix()
+
+    return best_descriptions, best_source
+
+
+def _extract_character_id(rel_path: str) -> str:
+    path = pathlib.PurePosixPath(rel_path.replace("\\", "/"))
+    parts = path.parts
+    if parts:
+        return parts[0]
+    return path.stem or ""
 
 
 class ReadModelTool(Tool):
-    """读取角色 model.json 文件，仅返回 motions（动作）和 expressions（表情）列表。"""
+    """读取角色 model.json 文件，返回 motions、expressions 和附加描述。"""
 
     def __init__(self, figure_dir: str | pathlib.Path | None = None) -> None:
         if figure_dir is not None:
@@ -25,8 +80,9 @@ class ReadModelTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "读取角色模型文件(model.json)，提取可用的动作(motions)和表情(expressions)列表。"
-            "传入 query_assets 返回的 model*.json 路径即可。"
+            "读取角色模型文件(model.json)，提取可用的动作(motions)、表情(expressions)"
+            "以及同角色 expression_motion.json 中的描述映射。传入 query_assets 返回的 "
+            "model*.json 路径即可。"
         )
 
     @property
@@ -70,6 +126,8 @@ class ReadModelTool(Tool):
 
         motions: list[str] = []
         expressions: list[str] = []
+        descriptions: dict[str, str] = {}
+        description_source: str | None = None
 
         motions_data = data.get("motions")
         if isinstance(motions_data, dict):
@@ -82,13 +140,19 @@ class ReadModelTool(Tool):
                 if isinstance(item, dict) and "name" in item
             )
 
-        output = json.dumps(
-            {
-                "path": str(rel_path),
-                "motions": motions,
-                "expressions": expressions,
-            },
-            ensure_ascii=False,
-        )
+        character_id = _extract_character_id(str(rel_path))
+        if character_id:
+            descriptions, description_source = _load_expression_motion_descriptions(character_id)
+
+        payload: dict[str, object] = {
+            "path": str(rel_path),
+            "motions": motions,
+            "expressions": expressions,
+            "descriptions": descriptions,
+        }
+        if description_source:
+            payload["description_source"] = description_source
+
+        output = json.dumps(payload, ensure_ascii=False)
 
         return ToolResult(success=True, output=output)

@@ -22,19 +22,28 @@ def build_agents(
     from webgal_agent.tools.asset_query import AssetQueryTool
     from webgal_agent.tools.file_ops import ReadFileTool, WriteResultTool
     from webgal_agent.tools.read_model import ReadModelTool
+    from webgal_agent.tools.search_expression_motion import SearchExpressionMotionTool
 
     result_dir = str(Path(task_dir) / task_id / "result") if task_id else None
     read_file_tool = ReadFileTool(result_dir=result_dir)
 
     asset_tool = AssetQueryTool()
     read_model_tool = ReadModelTool()
+    retriever_config = None
+    if provider_manager and "expression_motion_retriever" in provider_manager.list_agent_names():
+        retriever_config = provider_manager.get("expression_motion_retriever")
+    search_expression_motion_tool = SearchExpressionMotionTool(provider_config=retriever_config)
     write_result_tool = WriteResultTool(task_id=task_id, task_dir=task_dir) if task_id else None
 
     agent_tools: dict[str, list[Tool]] = {
         "outline_writer": [],
         "script_writer": [],
-        "script_converter": [read_file_tool, asset_tool, read_model_tool]
-        + ([write_result_tool] if write_result_tool else []),
+        "script_converter": [
+            read_file_tool,
+            asset_tool,
+            read_model_tool,
+            search_expression_motion_tool,
+        ] + ([write_result_tool] if write_result_tool else []),
     }
 
     agents: dict[str, Agent] = {}

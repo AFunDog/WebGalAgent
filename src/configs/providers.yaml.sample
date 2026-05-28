@@ -35,3 +35,13 @@ asset_describer:
   max_tokens: 4096
   extra_body:
     fps: 2
+
+# 可选：用于 `search_expression_motion` 的本地小模型重排槽位。
+# 建议接 OpenAI 兼容的本地服务，例如 Ollama / vLLM / LM Studio。
+expression_motion_retriever:
+  provider: ollama
+  model: qwen2.5:7b-instruct
+  base_url: http://localhost:11434/v1
+  api_key: "ollama"
+  temperature: 0.1
+  max_tokens: 1200

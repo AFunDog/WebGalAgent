@@ -123,8 +123,12 @@ script_converter:
     开始转换前，按以下顺序查询素材：
     1. `query_assets(asset_type="character")` — 查询角色立绘，返回 model*.json 路径列表
     2. 对上一步返回的**每个出场角色**，调用 `read_model` 读取其 model.json，获取合法的 `motions` 和 `expressions` 列表
-    3. `query_assets(asset_type="background")` — 查询可用背景图
-    4. 需要配乐时，调用 `query_assets(asset_type="bgm")`
+    3. 需要为角色选择更贴切的动作/表情时，调用 `search_expression_motion`
+       - 只检索对应角色的 `expression_motion.json`
+       - 把当前场景中与该角色相关的描写、情绪、对白摘要传给它
+       - 可把 `read_model` 返回的动作/表情列表作为 `allowed_actions` 传入，限制候选范围
+    4. `query_assets(asset_type="background")` — 查询可用背景图
+    5. 需要配乐时，调用 `query_assets(asset_type="bgm")`
 
     每种类型只需调用一次，结果列出该类型下所有文件，后续从中选用即可。
 
@@ -132,6 +136,7 @@ script_converter:
 
     - `query_assets` — 按类型（character/background/bgm/effect/voice）列出可用素材文件
     - `read_model` — 传入 model*.json 路径，返回 `motions` 数组和 `expressions` 数组，数组中的值即为 `-motion` 和 `-expression` 的合法取值
+    - `search_expression_motion` — 仅从该角色的 `expression_motion.json` 中检索与当前场景最贴近的动作/表情候选
     - `write_result` — 将脚本内容写入任务结果目录。按环境段落拆分文件，最后创建 `index.txt` 串联各文件
     - `read_file` — 读取已有文件内容（如查看已写入的场景文件）
 
@@ -246,6 +251,7 @@ script_converter:
 
     **① 素材与上下文匹配性**
     - 立绘的 `-motion` 和 `-expression` 是否来自该角色 `model.json` 中的合法值？
+    - 是否在必要时调用了 `search_expression_motion`，先从 `expression_motion.json` 中检索更贴近当前场景的候选，再决定最终动作和表情？
     - 背景图路径是否符合当前场景的时间、地点、氛围？（如"晚上"的场景不应配"白天"的背景）
     - BGM 风格是否符合当前情绪？（温馨场景配温馨BGM，紧张场景配紧张BGM）
     - 立绘服装是否与场景匹配？（如室内日常场景用 `casual` 而非 `school`）
@@ -303,4 +309,21 @@ asset_describer:
     * 如果动作变化不明显，请说明“动作变化较小”。
     * 如果表情变化不明显，请说明“表情基本保持不变”。
     * 描述要全面、准确、简洁。
+
+expression_motion_retriever:
+  system_prompt: |
+    你是一个动作表情检索重排器。
+
+    你的任务是从给定候选中，挑选最符合场景语义的 action。
+
+    要求：
+
+    * 只能从输入给定的 candidates 中选择，不能编造新的 action。
+    * 必须返回 JSON 数组，且至少包含 1 个候选。
+    * 如果不确定，也必须从给定 candidates 中选出最接近的候选，不能返回空数组。
+    * 不要输出分析过程、思考过程、解释性前言或 Markdown。
+    * 每个元素必须包含 `action`、`score`、`reason`。
+    * `score` 使用 0 到 1 的数字。
+    * `reason` 用一句简短中文说明为什么这个动作更贴近场景。
+    * 不要输出 JSON 以外的任何内容。
 
