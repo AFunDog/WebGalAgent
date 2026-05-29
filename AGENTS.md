@@ -55,6 +55,7 @@ The repository also includes browser automation and recording support for previe
 - The knowledge store loads Markdown files and also loads `characters/**/expression_motion.json`
 - For `script_converter`, prefer the JSON data when both JSON and Markdown exist; use the Markdown explanation only as a fallback
 - `search_expression_motion` still exists as a standalone test/retrieval helper, but it is not part of the normal `script_converter` tool surface
+- `query_assets` now has a local CLI entry: `.\.venv\Scripts\python.exe -m webgal_agent.tools.asset_query_cli --asset-type character`
 
 ## Current Browser Recording Model
 

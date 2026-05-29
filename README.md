@@ -133,6 +133,12 @@ The multimodal generator that produces `expression_motion.json` is:
 .\.venv\Scripts\python.exe -m webgal_agent.knowledge.asset_describer --asset-root data/figure_assets --character-id anon
 ```
 
+The asset query helper also has a local CLI now:
+
+```powershell
+.\.venv\Scripts\python.exe -m webgal_agent.tools.asset_query_cli --asset-type character
+```
+
 Important facts:
 
 - `asset_describer` reads character model metadata and writes structured JSON back into `data/knowledge/characters/<角色名>/expression_motion.json`
