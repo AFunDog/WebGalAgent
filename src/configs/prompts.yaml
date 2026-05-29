@@ -173,6 +173,7 @@ script_converter:
     - **表情与动作来源**：`-expression` 和 `-motion` 的参数值必须来自 `read_model` 返回的列表，严禁编造。
     - 首次出场时设置立绘并指定 `-motion` 和 `-expression`。
     - 对话时根据情绪变化切换表情和动作，每次切换都应使用 model.json 中存在的 expression/motion 名称。
+    - 在每次 `changeFigure` 之前，先写一条简短准确的中文注释，对这次动作/表情的准确简洁的说明；注释必须写进脚本中，优先使用单独一行的 WebGal 注释语法 `; 说明内容`，内容控制在一句话内。
     - **立绘切换时机**：`changeFigure`（含 `-motion` 和 `-expression`）必须写在**对应角色对话的上方/之前**，并在末尾加 `-next` 使动画与对话同时进行，绝不能写在对话之后。
       - ✅ 正确：`changeFigure:... -motion=anon/cry01 -expression=anon/cry01 -next;` 然后 `千早爱音:台词内容;`
       - ❌ 错误：`千早爱音:台词内容;` 然后 `changeFigure:... -motion=anon/cry01 -expression=anon/cry01 -next;`
