@@ -16,13 +16,13 @@ Working notes for Codex and other code agents in this repository.
 
 ## Project Summary
 
-WebGalAgent is a multi-agent workflow for visual novel writing and WebGal script generation.
+WebGalAgent is a local workbench for visual-novel writing and WebGal script generation.
 
 Main stages:
 
 `outline_writer -> script_writer -> script_converter`
 
-The repository also includes a browser automation and recording subsystem used to preview and record WebGal games.
+The repository also includes browser automation and recording support for previewing and capturing WebGal games.
 
 ## Tech Stack
 
@@ -37,14 +37,24 @@ The repository also includes a browser automation and recording subsystem used t
 
 - `src/webgal_agent/core/`: agent base classes, memory, message model
 - `src/webgal_agent/agents/`: concrete agent wrappers
-- `src/webgal_agent/api/`: FastAPI app, task manager, routes
+- `src/webgal_agent/api/`: FastAPI app, task manager, routes, workflow metadata
 - `src/webgal_agent/browser/`: browser client, demo CLI, screencast recorder
-- `src/webgal_agent/knowledge/`: knowledge loading plus multimodal expression/motion asset description generation
+- `src/webgal_agent/knowledge/`: knowledge loading plus multimodal character-asset description generation
+- `src/webgal_agent/scene_link/`: scene-link manager for mapping results into the WebGal game tree
 - `src/webgal_agent/tools/`: agent tools
-- `src/configs/`: `default.yaml`, `prompts.yaml`, `providers.yaml.sample`, `record.yaml`
+- `src/configs/`: `default.yaml`, `prompts.yaml`, `providers.yaml`, `providers.yaml.sample`, `record.yaml`
 - `src/frontend/`: frontend app
-- `data/knowledge/`: markdown knowledge base
+- `data/knowledge/`: Markdown knowledge base plus generated character expression/action JSON
 - `docs/roadmap/issues-and-roadmap.md`: active engineering issues and roadmap
+
+## Knowledge Model
+
+- Character identity/background lives in `profile.md`
+- Character expression/motion guidance lives in `expression_motion.md`
+- Generated action/expression mappings live in `expression_motion.json`
+- The knowledge store loads Markdown files and also loads `characters/**/expression_motion.json`
+- For `script_converter`, prefer the JSON data when both JSON and Markdown exist; use the Markdown explanation only as a fallback
+- `search_expression_motion` still exists as a standalone test/retrieval helper, but it is not part of the normal `script_converter` tool surface
 
 ## Current Browser Recording Model
 
@@ -54,26 +64,9 @@ The repository also includes a browser automation and recording subsystem used t
 - After capture, FFmpeg encodes frames offline into `.mp4` or `.webm`
 - Optional audio capture uses WebAudio hook + `MediaStreamTrackProcessor` and is merged later as WAV input
 - API recording route `src/webgal_agent/api/routes/record.py` runs the CLI as a subprocess instead of embedding Playwright inside FastAPI
-
-## Browser Recording Rules
-
-- Keep recording-related behavior aligned across:
-  - `src/webgal_agent/browser/demo.py`
-  - `src/webgal_agent/browser/screencast.py`
-  - `src/webgal_agent/api/routes/record.py`
 - `--selector auto` should try `#root` first, then `canvas`
 - `--duration 0` is valid only when `--stop-on` is provided
-- Use `msedge` channel only when the repo already expects Edge behavior; do not silently switch browsers in docs or code
-- AV sync debug pulses are page-level diagnostics: a full-screen red overlay and square-wave tone must be triggered from the same injected page callback, not from separate host-side timers
-
-## WebGal Config Injection Rule
-
-When injecting game config through IndexedDB in `browser/demo.py`:
-
-- `window.saveConfig()` must be treated as an async IndexedDB write trigger even if it is called like a normal function
-- Do not touch the same IndexedDB store immediately after `saveConfig()`
-- Leave a short delay first; current debugging established that immediate access can conflict with the write started by `saveConfig()`
-- The IndexedDB database name is `localforage`, not `_localforage`
+- `window.saveConfig()` is an async IndexedDB write trigger; do not touch the same store immediately after calling it
 
 ## Windows Event Loop Rule
 
@@ -98,6 +91,7 @@ Do not set it in business modules such as:
 - Do not revert unrelated user changes
 - When changing response shapes in backend routes, check the frontend API and views
 - When touching recording code, validate assumptions against the actual code, not old docs
+- When updating docs, treat code as the source of truth and rewrite stale prose instead of patching around it
 
 ## Validation
 
