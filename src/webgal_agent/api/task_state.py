@@ -56,6 +56,7 @@ class TaskInfo:
         self.status: str = "pending"
         self.current_step: int = 0
         self.step_results: dict[int, str] = {}
+        self.step_output_history: dict[int, list[dict[str, object]]] = {}
         self.messages: list[Message] = []
         self.errors: list[str] = []
         self.created_at = datetime.utcnow()
@@ -75,6 +76,30 @@ class TaskInfo:
         self.total_tokens = sum(
             usage.get("total_tokens", 0) for usage in self.token_usage_by_step.values()
         )
+
+    def record_step_output(
+        self,
+        step_index: int,
+        content: str,
+        source: str,
+        revision_instruction: str | None = None,
+    ) -> None:
+        """记录某一步的一次输出版本。"""
+        entry: dict[str, object] = {
+            "content": content,
+            "source": source,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        if revision_instruction:
+            entry["revision_instruction"] = revision_instruction
+        self.step_output_history.setdefault(step_index, []).append(entry)
+
+    def ensure_step_output_history(self, step_index: int, content: str, source: str) -> None:
+        """确保当前版本已进入历史记录，兼容旧任务快照。"""
+        history = self.step_output_history.setdefault(step_index, [])
+        if history and history[-1].get("content") == content:
+            return
+        self.record_step_output(step_index, content, source)
 
     def discard_from_step(self, step_index: int, pipeline_order: list[str]) -> None:
         """清理某一步及其之后的结果、消息和 token 统计。"""
@@ -106,6 +131,9 @@ class TaskInfo:
             "title": self.title,
             "current_step": self.current_step,
             "step_results": {str(k): v for k, v in self.step_results.items()},
+            "step_output_history": {
+                str(k): v for k, v in self.step_output_history.items()
+            },
             "messages": [
                 {
                     "id": m.id,

@@ -68,6 +68,7 @@ The repository also includes browser automation and recording support for previe
 - `--selector auto` should try `#root` first, then `canvas`
 - `--duration 0` is valid only when `--stop-on` is provided
 - `window.saveConfig()` is an async IndexedDB write trigger; do not touch the same store immediately after calling it
+- Feedback-based step revision should feed the previous step output back into the model and preserve both the old and new outputs in task history for comparison
 
 ## Windows Event Loop Rule
 

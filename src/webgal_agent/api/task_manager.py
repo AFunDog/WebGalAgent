@@ -103,6 +103,7 @@ class TaskManager:
                 idx = int(idx_str)
                 if 0 <= idx < start_step:
                     task.step_results[idx] = output
+                    task.record_step_output(idx, output, "skipped")
                     # 添加对应的 RESULT 消息
                     agent_name = PIPELINE_ORDER[idx]
                     msg = Message(
@@ -165,6 +166,9 @@ class TaskManager:
         if not cleaned_instruction:
             raise ValueError("修订提示词不能为空")
 
+        previous_output = task.step_results.get(step_index, "")
+        if previous_output:
+            task.ensure_step_output_history(step_index, previous_output, "previous")
         task.discard_from_step(step_index, PIPELINE_ORDER)
         task.errors = []
         agent_name = PIPELINE_ORDER[step_index]
@@ -185,11 +189,20 @@ class TaskManager:
         save_task_to_disk(task, self._task_dir)
 
         self._running_task = asyncio.create_task(
-            self._run_step_background(task, revision_instruction=cleaned_instruction)
+            self._run_step_background(
+                task,
+                revision_instruction=cleaned_instruction,
+                revision_source_output=previous_output or None,
+            )
         )
         return task
 
-    async def _run_step_background(self, task: TaskInfo, revision_instruction: str | None = None) -> None:
+    async def _run_step_background(
+        self,
+        task: TaskInfo,
+        revision_instruction: str | None = None,
+        revision_source_output: str | None = None,
+    ) -> None:
         """在后台执行单步智能体。
 
         这是任务状态流转的关键节点：
@@ -217,6 +230,7 @@ class TaskManager:
                 agent_name,
                 step_index,
                 knowledge_contexts,
+                revision_source_output=revision_source_output,
                 revision_instruction=revision_instruction,
             )
 
@@ -238,6 +252,12 @@ class TaskManager:
             # 保存结果
             task.messages.append(result)
             task.step_results[step_index] = result.content
+            task.record_step_output(
+                step_index,
+                result.content,
+                "revision" if revision_instruction else "generated",
+                revision_instruction=revision_instruction,
+            )
             task.current_step = step_index + 1
 
             # 累加 Token 用量
@@ -289,6 +309,7 @@ class TaskManager:
             raise ValueError("任务正在执行中，无法修改")
 
         task.step_results[step_index] = content
+        task.record_step_output(step_index, content, "manual")
 
         # 同步更新 messages 中对应的 RESULT 消息
         agent_name = PIPELINE_ORDER[step_index]

@@ -28,6 +28,9 @@ def save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) -
         "title": task.title,
         "current_step": task.current_step,
         "step_results": {str(k): v for k, v in task.step_results.items()},
+        "step_output_history": {
+            str(k): v for k, v in task.step_output_history.items()
+        },
         "created_at": task.created_at.isoformat(),
         "errors": task.errors,
         "token_usage_by_step": {str(k): v for k, v in task.token_usage_by_step.items()},
@@ -55,8 +58,9 @@ def save_task_to_disk(task: TaskInfo, task_dir: str | Path = DEFAULT_TASK_DIR) -
     )
 
     result_file = task_path / "result.txt"
-    if task.messages:
-        (task_path / "result.txt").write_text(task.messages[-1].content, encoding="utf-8")
+    if task.step_results:
+        latest_step_index = max(task.step_results)
+        result_file.write_text(task.step_results[latest_step_index], encoding="utf-8")
     elif result_file.exists():
         result_file.unlink()
 
@@ -93,6 +97,8 @@ def load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, T
             task.status = data.get("status", "unknown")
             task.current_step = data.get("current_step", 0)
             task.step_results = {int(k): v for k, v in data.get("step_results", {}).items()}
+            raw_history = data.get("step_output_history", {})
+            task.step_output_history = {int(k): v for k, v in raw_history.items()}
             task.errors = data.get("errors", [])
             task.created_at = datetime.fromisoformat(data["created_at"])
             task.token_usage_by_step = {
@@ -109,6 +115,10 @@ def load_tasks_from_disk(task_dir: str | Path = DEFAULT_TASK_DIR) -> dict[str, T
                         task.token_usage_by_step[i] = token_usage
                 if task.token_usage_by_step:
                     task.recalc_token_totals()
+
+            if not task.step_output_history:
+                for step_index, content in task.step_results.items():
+                    task.record_step_output(step_index, content, "loaded")
 
             for step in data.get("steps", []):
                 task.messages.append(

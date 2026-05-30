@@ -127,6 +127,27 @@
                 style="font-size:12px;font-family:monospace"
               />
               <pre v-else class="step-result-preview">{{ getStepResult(task, idx) }}</pre>
+              <details v-if="getStepHistory(task, idx).length" class="details-panel" style="margin-top:8px">
+                <summary>
+                  <span>历史版本</span>
+                  <span class="summary-chevron">▶</span>
+                </summary>
+                <div class="details-panel__body">
+                  <div class="stack-tight">
+                    <div
+                      v-for="(entry, histIdx) in getStepHistory(task, idx)"
+                      :key="`${task.id}-${idx}-history-${histIdx}-${entry.created_at}`"
+                      class="step-history-item"
+                    >
+                      <div class="step-history-item__meta">
+                        <span>{{ formatHistorySource(entry) }}</span>
+                        <span>{{ new Date(entry.created_at).toLocaleString() }}</span>
+                      </div>
+                      <pre class="step-result-preview">{{ entry.content }}</pre>
+                    </div>
+                  </div>
+                </div>
+              </details>
               <div class="step-revise-box">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
                   <span style="font-size:12px;color:var(--text-muted)">额外修订要求</span>
@@ -178,7 +199,7 @@ import { api } from '../api'
 import MessageBubble from '../components/MessageBubble.vue'
 import { useTaskPolling } from '../composables/useTaskPolling'
 import { PIPELINE_STEPS } from '../constants/pipeline'
-import type { Task, TokenSummary } from '../types'
+import type { StepOutputHistoryEntry, Task, TokenSummary } from '../types'
 import { agentLabel, formatTokenCount, getStepStatus, getStepStatusText, statusBadgeClass, statusLabel } from '../utils/taskDisplay'
 
 const tasks = ref<Task[]>([])
@@ -211,6 +232,11 @@ function getStepResult(task: Task, idx: number): string {
   return task.step_results[String(idx)] || ''
 }
 
+function getStepHistory(task: Task, idx: number): StepOutputHistoryEntry[] {
+  const history = task.step_output_history?.[String(idx)] ?? []
+  return history.length > 1 ? history.slice(0, -1).reverse() : []
+}
+
 function startEdit(taskId: string, idx: number, content: string) {
   editingKey.value = `${taskId}-${idx}`
   editContent.value = content
@@ -227,6 +253,16 @@ function getRevisionInstruction(taskId: string, idx: number): string {
 
 function setRevisionInstruction(taskId: string, idx: number, value: string) {
   revisionInstructions.value[`${taskId}-${idx}`] = value
+}
+
+function formatHistorySource(entry: StepOutputHistoryEntry): string {
+  if (entry.source === 'revision') return '反馈重生成'
+  if (entry.source === 'generated') return '首次生成'
+  if (entry.source === 'skipped') return '跳步预填'
+  if (entry.source === 'manual') return '手动修改'
+  if (entry.source === 'loaded') return '历史载入'
+  if (entry.source === 'previous') return '重生成前版本'
+  return entry.source || '历史版本'
 }
 
 async function saveEdit(taskId: string, idx: number) {
@@ -500,6 +536,19 @@ onUnmounted(() => {
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
+}
+.step-history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.step-history-item__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 .step-running {
   display: flex;

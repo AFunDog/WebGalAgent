@@ -268,6 +268,27 @@
               <div v-if="isSelectedCompleted" class="node-actions">
                 <button class="btn btn-sm btn-primary" @click="saveSelectedOutput">保存输出</button>
               </div>
+              <details v-if="selectedOutputHistory.length" class="details-panel" style="margin-top:10px">
+                <summary>
+                  <span>历史版本</span>
+                  <span class="summary-chevron">▶</span>
+                </summary>
+                <div class="details-panel__body">
+                  <div class="stack-tight">
+                    <div
+                      v-for="(entry, idx) in selectedOutputHistory"
+                      :key="`history-${selectedStepIndex}-${idx}-${entry.created_at}`"
+                      class="node-history-item"
+                    >
+                      <div class="node-history-item__meta">
+                        <span>{{ formatHistorySource(entry) }}</span>
+                        <span>{{ new Date(entry.created_at).toLocaleString() }}</span>
+                      </div>
+                      <pre class="node-preview">{{ entry.content }}</pre>
+                    </div>
+                  </div>
+                </div>
+              </details>
             </section>
 
             <section class="node-section">
@@ -346,7 +367,14 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
 import PipelineGraph from '../components/PipelineGraph.vue'
 import { PIPELINE_STEPS } from '../constants/pipeline'
-import type { AgentInfo, AgentKnowledgeRequirements, AgentToolInfo, Task, TaskMessage } from '../types'
+import type {
+  AgentInfo,
+  AgentKnowledgeRequirements,
+  AgentToolInfo,
+  StepOutputHistoryEntry,
+  Task,
+  TaskMessage,
+} from '../types'
 import { formatTokenCount, statusBadgeClass, statusLabel } from '../utils/taskDisplay'
 
 const agentDefs = ref<AgentInfo[]>([])
@@ -442,6 +470,12 @@ const selectedMessages = computed<TaskMessage[]>(() => {
   )
 })
 
+const selectedOutputHistory = computed(() => {
+  if (!activeTask.value) return []
+  const history = activeTask.value.step_output_history?.[String(selectedStepIndex.value)] ?? []
+  return history.length > 1 ? history.slice(0, -1).reverse() : []
+})
+
 const selectedEffectiveInput = computed(() => {
   if (!activeTask.value) return ''
   const parts: string[] = []
@@ -489,6 +523,16 @@ function getDependencyDraft(stepIndex: number): string {
 
 function setDependencyDraft(stepIndex: number, value: string) {
   dependencyDrafts.value[String(stepIndex)] = value
+}
+
+function formatHistorySource(entry: StepOutputHistoryEntry): string {
+  if (entry.source === 'revision') return '反馈重生成'
+  if (entry.source === 'generated') return '首次生成'
+  if (entry.source === 'skipped') return '跳步预填'
+  if (entry.source === 'manual') return '手动修改'
+  if (entry.source === 'loaded') return '历史载入'
+  if (entry.source === 'previous') return '重生成前版本'
+  return entry.source || '历史版本'
 }
 
 async function createTaskFromSelectedNode() {
@@ -784,6 +828,21 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.node-history-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.node-history-item__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .node-message__meta {

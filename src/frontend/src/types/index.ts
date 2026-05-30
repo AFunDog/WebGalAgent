@@ -68,6 +68,13 @@ export interface TaskMessage {
   created_at: string
 }
 
+export interface StepOutputHistoryEntry {
+  content: string
+  source: string
+  created_at: string
+  revision_instruction?: string
+}
+
 export interface Task {
   id: string
   status: string
@@ -76,6 +83,7 @@ export interface Task {
   title: string
   current_step: number
   step_results: Record<string, string>
+  step_output_history: Record<string, StepOutputHistoryEntry[]>
   messages: TaskMessage[]
   errors: string[]
   created_at: string

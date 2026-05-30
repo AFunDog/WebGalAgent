@@ -108,6 +108,7 @@ class TaskResponse(BaseModel):
     title: str = ""
     current_step: int = 0
     step_results: dict[str, str] = Field(default_factory=dict)
+    step_output_history: dict[str, list[dict[str, object]]] = Field(default_factory=dict)
     messages: list[TaskMessageResponse]
     errors: list[str]
     created_at: datetime

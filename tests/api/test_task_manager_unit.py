@@ -174,11 +174,18 @@ async def test_revise_step_restarts_from_target_step_and_appends_instruction() -
         assert stored.status == "completed"
         assert stored.current_step == 3
         assert stored.step_results[2] == "新 WebGal 脚本"
+        assert 2 in stored.step_output_history
+        assert len(stored.step_output_history[2]) == 2
+        assert stored.step_output_history[2][0]["content"] == "旧 WebGal 脚本"
+        assert stored.step_output_history[2][1]["content"] == "新 WebGal 脚本"
         assert stored.total_tokens == 20
         assert converter.last_message is not None
+        assert "【上一次输出】\n旧 WebGal 脚本" in converter.last_message.content
         assert "【script_writer 的输出】\n旧剧本正文" in converter.last_message.content
         assert "【本轮修订要求】" in converter.last_message.content
         assert "请减少旁白，增加对白张力" in converter.last_message.content
         assert any(msg.type == MessageType.FEEDBACK for msg in stored.messages)
+        process_file = task_dir / task.id / "process.json"
+        assert '"step_output_history"' in process_file.read_text(encoding="utf-8")
     finally:
         shutil.rmtree(task_dir, ignore_errors=True)

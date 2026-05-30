@@ -116,6 +116,7 @@ Implementation notes:
 - It receives `read_file`, `query_assets`, `read_model`, and `write_result`
 - It does not receive `search_expression_motion` in the formal tool surface
 - For character expressions and motions, `script_converter` is guided to prefer `expression_motion.json` when available and fall back to `expression_motion.md` only when JSON is missing or incomplete
+- When a step is revised by feedback, the previous output is sent back into the model together with the new revision instruction, and both the replaced version and the new version are kept in task history for later comparison
 
 ## Knowledge Base
 
