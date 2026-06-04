@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import abc
-import json
 import re
 from pathlib import Path
 
@@ -98,15 +97,12 @@ class FileKnowledgeStore(KnowledgeStore):
         self._load_all()
 
     def _load_all(self) -> None:
-        """递归加载数据目录中的 Markdown 和补充 JSON 文件。"""
+        """递归加载数据目录中的 Markdown 文件。"""
         if not self._data_dir.exists():
             return
 
         for path in sorted(self._data_dir.rglob("*.md")):
             self._load_file(path)
-
-        for path in sorted(self._data_dir.rglob("expression_motion.json")):
-            self._load_expression_motion_json(path)
 
     @staticmethod
     def _extract_markdown_title(path: Path, text: str) -> str:
@@ -143,31 +139,6 @@ class FileKnowledgeStore(KnowledgeStore):
             title=title,
             tags=meta.get("tags", []),
             body=body.strip(),
-            source=str(path.relative_to(self._data_dir)),
-        )
-        self.add(entry)
-
-    def _load_expression_motion_json(self, path: Path) -> None:
-        """加载角色动作表情 JSON 资料，作为更精确的数据源。"""
-        text = path.read_text(encoding="utf-8")
-        data = json.loads(text)
-        if not isinstance(data, list):
-            raise ValueError(f"expression_motion.json 格式错误: {path}")
-
-        title = f"{path.parent.name}·动作与表情 JSON 数据"
-        sibling_md = path.with_suffix(".md")
-        if sibling_md.exists():
-            base_title = self._extract_markdown_title(
-                sibling_md, sibling_md.read_text(encoding="utf-8")
-            )
-            title = f"{base_title}（JSON 数据）"
-
-        body = json.dumps(data, ensure_ascii=False, indent=2)
-        entry = KnowledgeEntry(
-            category=KnowledgeCategory.SKILL,
-            title=title,
-            tags=["kind:reference-expression-json", "audience:script-converter"],
-            body=body,
             source=str(path.relative_to(self._data_dir)),
         )
         self.add(entry)

@@ -116,6 +116,7 @@
 - motion 列表
 - 立绘演出建议
 - 表情切换节奏建议
+- 仅保留给人阅读的中文说明，不再依赖 `expression_motion.json` 进入脚本转换上下文
 
 用途：
 
@@ -231,7 +232,7 @@ tags: [kind:world-overview, franchise:bang-dream, topic:music, audience:story-wr
 这一步的目标是：
 
 - 保留 WebGal 语法和动画配方
-- 额外补充角色立绘表情动作信息
+- 额外补充角色立绘表情动作的中文说明
 
 ## 维护规则
 

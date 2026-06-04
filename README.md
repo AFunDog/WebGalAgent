@@ -12,7 +12,7 @@ In practice, the repository currently provides:
 
 - A FastAPI backend that runs the workflow, exposes knowledge/task/provider/asset/record APIs, and serves the built frontend
 - A Vue 3 + TypeScript frontend for knowledge browsing, pipeline inspection, task execution, provider editing, scene-link management, and recording control
-- A Markdown-based knowledge store with supplemental generated JSON knowledge for character action/expression data
+- A Markdown-based knowledge store with supplemental generated metadata for character action/expression data
 - Browser automation and recording tooling built around Playwright, CDP screencasting, and FFmpeg offline encoding
 
 This repository is not just a recorder and not just a generic agent framework. The code is organized around WebGal production tasks.
@@ -115,7 +115,7 @@ Implementation notes:
 - `script_converter` is intentionally tool-limited compared with the other agents
 - It receives `read_file`, `query_assets`, `read_model`, and `write_result`
 - It does not receive `search_expression_motion` in the formal tool surface
-- For character expressions and motions, `script_converter` is guided to prefer `expression_motion.json` when available and fall back to `expression_motion.md` only when JSON is missing or incomplete
+- For character expressions and motions, `script_converter` relies on `read_model` for the legal `motions` and `expressions` list and can consult `expression_motion.md` for human-readable guidance
 - When a step is revised by feedback, the previous output is sent back into the model together with the new revision instruction, and both the replaced version and the new version are kept in task history for later comparison
 
 ## Knowledge Base
@@ -126,7 +126,7 @@ Current character-knowledge convention:
 
 - `profile.md`: identity, background, personality, relationships
 - `expression_motion.md`: human-readable guidance for expressions, motions, and staging suggestions
-- `expression_motion.json`: generated action/expression mapping data, treated as the more authoritative source for exact action names
+- `expression_motion.json`: generated action/expression mapping data used by the asset-description pipeline, not the script-conversion knowledge path
 
 The multimodal generator that produces `expression_motion.json` is:
 
@@ -143,8 +143,8 @@ The asset query helper also has a local CLI now:
 Important facts:
 
 - `asset_describer` reads character model metadata and writes structured JSON back into `data/knowledge/characters/<角色名>/expression_motion.json`
-- The workflow knowledge loader now makes both the Markdown and JSON entries available to the agents
-- When both sources exist, the JSON data is the preferred source for action/expression selection
+- The workflow knowledge loader reads Markdown knowledge entries; `expression_motion.json` is no longer injected into the script-conversion knowledge context
+- `read_model` now returns only the model's legal `motions` and `expressions` lists
 - The standalone `search_expression_motion` helper still exists for testing and experiments, but it is not part of the normal `script_converter` toolchain
 
 ## Browser Recording

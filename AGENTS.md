@@ -51,9 +51,9 @@ The repository also includes browser automation and recording support for previe
 
 - Character identity/background lives in `profile.md`
 - Character expression/motion guidance lives in `expression_motion.md`
-- Generated action/expression mappings live in `expression_motion.json`
-- The knowledge store loads Markdown files and also loads `characters/**/expression_motion.json`
-- For `script_converter`, prefer the JSON data when both JSON and Markdown exist; use the Markdown explanation only as a fallback
+- Generated action/expression mappings still live in `expression_motion.json`, but the script-conversion flow no longer reads that JSON directly
+- The knowledge store loads Markdown files from `data/knowledge/`
+- For `script_converter`, rely on `read_model` for the legal motion/expression list and use Markdown guidance when available
 - `search_expression_motion` still exists as a standalone test/retrieval helper, but it is not part of the normal `script_converter` tool surface
 - `query_assets` now has a local CLI entry: `.\.venv\Scripts\python.exe -m webgal_agent.tools.asset_query_cli --asset-type character`
 

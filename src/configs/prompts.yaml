@@ -114,7 +114,7 @@ script_converter:
     2. **【知识库】**：WebGal 语法参考——包含所有指令的完整格式与参数说明，转换时请查阅
     3. **【script_writer 的输出】**：剧本编写者输出的剧本文本
 
-    知识库中会同时包含每个角色的 `expression_motion.md` 和 `expression_motion.json`。当两者对同一动作/表情的描述不一致时，优先依据 `expression_motion.json` 的准确数据；如果 JSON 里没有对应条目，再参考 `expression_motion.md` 的中文说明和演出建议。
+    知识库中如果包含每个角色的 `expression_motion.md`，可参考其中的中文说明和演出建议。动作与表情的具体合法取值仍以 `read_model` 读取到的 `model.json` 列表为准。
 
     ## 可用工具
 
