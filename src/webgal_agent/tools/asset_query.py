@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import os
 import pathlib
 from collections import defaultdict
 
@@ -23,6 +24,37 @@ class AssetQueryTool(Tool):
             self._assets_dir = pathlib.Path(assets_dir)
         else:
             self._assets_dir = pathlib.Path("data/assets")
+
+    def _iter_files_following_links(self, root: pathlib.Path) -> list[pathlib.Path]:
+        """递归遍历目录，显式跟随符号链接目录。"""
+        files: list[pathlib.Path] = []
+        stack: list[pathlib.Path] = [root]
+        visited_dirs: set[str] = set()
+
+        while stack:
+            current = stack.pop()
+            try:
+                current_key = current.resolve().as_posix()
+            except OSError:
+                current_key = current.as_posix()
+            if current_key in visited_dirs:
+                continue
+            visited_dirs.add(current_key)
+
+            try:
+                with os.scandir(current) as entries:
+                    for entry in sorted(entries, key=lambda item: item.name):
+                        try:
+                            if entry.is_dir(follow_symlinks=True):
+                                stack.append(pathlib.Path(entry.path))
+                            elif entry.is_file(follow_symlinks=True):
+                                files.append(pathlib.Path(entry.path))
+                        except OSError:
+                            continue
+            except (FileNotFoundError, NotADirectoryError, PermissionError):
+                continue
+
+        return files
 
     @property
     def name(self) -> str:
@@ -112,7 +144,7 @@ class AssetQueryTool(Tool):
         asset_dir = resolve_asset_dir(resolved_type) or self._assets_dir / resolved_type
 
         if asset_dir.exists():
-            for f in sorted(asset_dir.rglob("*")):
+            for f in self._iter_files_following_links(asset_dir):
                 if f.is_file() and f.suffix.lower() in exts:
                     if name_filters is not None and not any(
                         fnmatch.fnmatch(f.name, pat) for pat in name_filters
